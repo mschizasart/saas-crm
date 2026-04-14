@@ -1,0 +1,36 @@
+{
+  "name": "saas-crm",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:migrate": "pnpm --filter api prisma migrate dev",
+    "db:generate": "pnpm --filter api prisma generate",
+    "db:studio": "pnpm --filter api prisma studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.3"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "bcrypt",
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "@nestjs/core",
+      "puppeteer",
+      "msgpackr-extract",
+      "unrs-resolver",
+      "@scarf/scarf"
+    ]
+  }
+}
