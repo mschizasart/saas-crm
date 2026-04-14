@@ -72,22 +72,30 @@ DECLARE
   t TEXT;
 BEGIN
   FOREACH t IN ARRAY tenant_tables LOOP
-    -- Enable RLS
-    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
-    -- Force RLS even for table owner (important!)
-    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
+    BEGIN
+      -- Enable RLS
+      EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+      -- Force RLS even for table owner (important!)
+      EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
 
-    -- Drop existing policy if any
-    EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t);
+      -- Drop existing policy if any
+      EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', t);
 
-    -- Create policy: only show rows matching current org
-    EXECUTE format(
-      'CREATE POLICY tenant_isolation ON %I
-       USING (organization_id = app_current_organization_id())',
-      t
-    );
+      -- Create policy: only show rows matching current org
+      -- Prisma stores organizationId as camelCase in PostgreSQL
+      EXECUTE format(
+        'CREATE POLICY tenant_isolation ON %I
+         USING ("organizationId" = app_current_organization_id())',
+        t
+      );
 
-    RAISE NOTICE 'RLS enabled on %', t;
+      RAISE NOTICE 'RLS enabled on %', t;
+    EXCEPTION
+      WHEN undefined_table THEN
+        RAISE NOTICE 'Table % does not exist, skipping', t;
+      WHEN undefined_column THEN
+        RAISE NOTICE 'Table % has no organizationId column, skipping', t;
+    END;
   END LOOP;
 END $$;
 
@@ -113,4 +121,4 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS users_email_trgm_idx
 CREATE INDEX CONCURRENTLY IF NOT EXISTS leads_name_trgm_idx
   ON leads USING gin(name gin_trgm_ops);
 
-RAISE NOTICE 'RLS policies and search indexes applied successfully';
+DO $$ BEGIN RAISE NOTICE 'RLS policies and search indexes applied successfully'; END $$;
