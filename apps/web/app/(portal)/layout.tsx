@@ -20,6 +20,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     return <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">{children}</div>;
   }
 
+  // Public pages (no auth required) render without portal shell
+  const isPublic =
+    pathname?.startsWith('/contracts/sign/') ||
+    pathname?.startsWith('/proposals/view/');
+  if (isPublic) {
+    return <>{children}</>;
+  }
+
   function signOut() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('access_token');

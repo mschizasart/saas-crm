@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
-import { BullModule } from '@nestjs/bull';
+import { QueueModule } from './modules/queue/queue.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
@@ -26,6 +26,7 @@ import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { EmailsModule } from './modules/emails/emails.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { ExportsModule } from './modules/exports/exports.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { AiModule } from './modules/ai/ai.module';
@@ -34,6 +35,11 @@ import { GoalsModule } from './modules/goals/goals.module';
 import { CronModule } from './modules/cron/cron.module';
 import { PdfModule } from './modules/pdf/pdf.module';
 import { ActivityLogModule } from './modules/activity-log/activity-log.module';
+import { CalendarModule } from './modules/calendar/calendar.module';
+import { TodosModule } from './modules/todos/todos.module';
+import { AnnouncementsModule } from './modules/announcements/announcements.module';
+import { TagsModule } from './modules/tags/tags.module';
+import { VaultModule } from './modules/vault/vault.module';
 
 @Module({
   imports: [
@@ -46,14 +52,8 @@ import { ActivityLogModule } from './modules/activity-log/activity-log.module';
     // Cron scheduler
     ScheduleModule.forRoot(),
 
-    // BullMQ job queues
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (config: ConfigService) => ({
-        redis: config.get('REDIS_URL'),
-      }),
-      inject: [ConfigService],
-    }),
+    // BullMQ job queues (global)
+    QueueModule,
 
     // Prisma database
     DatabaseModule,
@@ -81,6 +81,7 @@ import { ActivityLogModule } from './modules/activity-log/activity-log.module';
     NotificationsModule,
     EmailsModule,
     ReportsModule,
+    ExportsModule,
     BillingModule,
     StorageModule,
     AiModule,
@@ -89,6 +90,11 @@ import { ActivityLogModule } from './modules/activity-log/activity-log.module';
     CronModule,
     PdfModule,
     ActivityLogModule,
+    CalendarModule,
+    TodosModule,
+    AnnouncementsModule,
+    TagsModule,
+    VaultModule,
   ],
 })
 export class AppModule {}

@@ -1,6 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { GatewayFactory } from './gateways/gateway.factory';
 
 export interface CreatePaymentDto {
   invoiceId: string;
@@ -17,7 +22,103 @@ export class PaymentsService {
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
+    private gatewayFactory: GatewayFactory,
   ) {}
+
+  // ─── Gateway Checkout & Webhooks ───────────────────────────
+
+  listGateways() {
+    return this.gatewayFactory.list();
+  }
+
+  async createCheckoutForInvoice(
+    invoiceId: string,
+    gatewayName: string,
+    successUrl: string,
+    cancelUrl: string,
+  ) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        client: { select: { id: true, company: true } },
+        currency: { select: { code: true } },
+        payments: true,
+      },
+    });
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    if (!this.gatewayFactory.has(gatewayName)) {
+      throw new BadRequestException(
+        `Payment gateway '${gatewayName}' is not available`,
+      );
+    }
+
+    const paidSum = invoice.payments.reduce(
+      (acc, p) => acc + Number(p.amount),
+      0,
+    );
+    const balance = Number(invoice.total) - paidSum;
+    if (balance <= 0) {
+      throw new BadRequestException('Invoice is already paid');
+    }
+
+    const gateway = this.gatewayFactory.get(gatewayName);
+    return gateway.createCheckout({
+      invoiceId: invoice.id,
+      amount: balance,
+      currency: invoice.currency?.code ?? 'USD',
+      description: `Invoice ${invoice.number}`,
+      successUrl,
+      cancelUrl,
+    });
+  }
+
+  async handleGatewayWebhook(
+    gatewayName: string,
+    rawBody: Buffer | string,
+    signature: string,
+  ) {
+    if (!this.gatewayFactory.has(gatewayName)) {
+      throw new BadRequestException(
+        `Payment gateway '${gatewayName}' is not available`,
+      );
+    }
+    const gateway = this.gatewayFactory.get(gatewayName);
+    const result = await gateway.handleWebhook(rawBody, signature);
+    if (!result || result.status !== 'success' || !result.invoiceId) {
+      return { received: true };
+    }
+
+    // Lookup invoice to get orgId
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: result.invoiceId },
+    });
+    if (!invoice) return { received: true };
+
+    // Idempotency: skip if a payment with this transactionId already exists
+    if (result.transactionId) {
+      const existing = await this.prisma.payment.findFirst({
+        where: {
+          organizationId: invoice.organizationId,
+          transactionId: result.transactionId,
+        },
+      });
+      if (existing) return { received: true };
+    }
+
+    await this.create(
+      invoice.organizationId,
+      {
+        invoiceId: invoice.id,
+        amount: result.amount ?? Number(invoice.total),
+        paymentDate: new Date().toISOString(),
+        transactionId: result.transactionId,
+        note: `Paid via ${gatewayName}`,
+      },
+      'system',
+    );
+
+    return { received: true };
+  }
 
   // ─── Payments CRUD ─────────────────────────────────────────
 

@@ -6,9 +6,12 @@ import {
   Body,
   Param,
   Query,
+  Req,
+  Headers,
   UseGuards,
   HttpCode,
   HttpStatus,
+  RawBodyRequest,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PaymentsService, CreatePaymentDto } from './payments.service';
@@ -16,7 +19,10 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Permissions } from '../../common/decorators/permissions.decorator';
+import {
+  Permissions,
+  Public,
+} from '../../common/decorators/permissions.decorator';
 
 @ApiTags('Payments')
 @Controller({ version: '1', path: 'payments' })
@@ -24,6 +30,74 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @ApiBearerAuth()
 export class PaymentsController {
   constructor(private service: PaymentsService) {}
+
+  // ─── Gateways ──────────────────────────────────────────────
+
+  @Get('gateways')
+  @Public()
+  @ApiOperation({ summary: 'List available payment gateways' })
+  listGateways() {
+    return { gateways: this.service.listGateways() };
+  }
+
+  @Post('checkout/:invoiceId')
+  @Public()
+  @ApiOperation({ summary: 'Create a checkout session for an invoice' })
+  async createCheckout(
+    @Param('invoiceId') invoiceId: string,
+    @Body()
+    body: { gateway: string; successUrl: string; cancelUrl: string },
+  ) {
+    return this.service.createCheckoutForInvoice(
+      invoiceId,
+      body.gateway,
+      body.successUrl,
+      body.cancelUrl,
+    );
+  }
+
+  @Post('webhook/stripe')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Stripe payment webhook' })
+  async stripeWebhook(
+    @Req() req: RawBodyRequest<any>,
+    @Headers('stripe-signature') signature: string,
+  ) {
+    return this.service.handleGatewayWebhook(
+      'stripe',
+      req.rawBody ?? JSON.stringify(req.body ?? {}),
+      signature,
+    );
+  }
+
+  @Post('webhook/paypal')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'PayPal payment webhook' })
+  async paypalWebhook(
+    @Req() req: RawBodyRequest<any>,
+    @Headers('paypal-transmission-sig') signature: string,
+  ) {
+    return this.service.handleGatewayWebhook(
+      'paypal',
+      req.rawBody ?? JSON.stringify(req.body ?? {}),
+      signature ?? '',
+    );
+  }
+
+  @Post('webhook/mollie')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mollie payment webhook' })
+  async mollieWebhook(@Req() req: RawBodyRequest<any>) {
+    const raw =
+      req.rawBody ??
+      (req.body && typeof req.body === 'object'
+        ? new URLSearchParams(req.body as Record<string, string>).toString()
+        : '');
+    return this.service.handleGatewayWebhook('mollie', raw, '');
+  }
 
   // ─── Stats ─────────────────────────────────────────────────
 

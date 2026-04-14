@@ -40,6 +40,36 @@ export default function PortalInvoiceDetailPage() {
   const [inv, setInv] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [gateway, setGateway] = useState<'stripe' | 'paypal' | 'mollie'>('stripe');
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const handlePay = async () => {
+    if (!inv) return;
+    setPaying(true);
+    setPayError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/payments/checkout/${inv.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gateway,
+          successUrl: window.location.href,
+          cancelUrl: window.location.href,
+        }),
+      });
+      if (!res.ok) throw new Error(`Checkout failed (${res.status})`);
+      const data = await res.json();
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : 'Failed to start checkout');
+      setPaying(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -114,9 +144,28 @@ export default function PortalInvoiceDetailPage() {
       </div>
 
       {balance > 0 && inv.status !== 'paid' && (
-        <div className="mt-6 flex justify-end gap-3">
-          <button className="px-4 py-2 border border-gray-200 text-sm rounded-lg hover:bg-gray-50">Download PDF</button>
-          <button className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90">Pay Now</button>
+        <div className="mt-6 flex flex-col items-end gap-2">
+          {payError && <p className="text-xs text-red-600">{payError}</p>}
+          <div className="flex items-center justify-end gap-3">
+            <button className="px-4 py-2 border border-gray-200 text-sm rounded-lg hover:bg-gray-50">Download PDF</button>
+            <select
+              value={gateway}
+              onChange={(e) => setGateway(e.target.value as 'stripe' | 'paypal' | 'mollie')}
+              className="px-3 py-2 border border-gray-200 text-sm rounded-lg bg-white"
+              disabled={paying}
+            >
+              <option value="stripe">Stripe</option>
+              <option value="paypal">PayPal</option>
+              <option value="mollie">Mollie</option>
+            </select>
+            <button
+              onClick={handlePay}
+              disabled={paying}
+              className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
+            >
+              {paying ? 'Redirecting…' : 'Pay Now'}
+            </button>
+          </div>
         </div>
       )}
 

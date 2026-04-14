@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { AdminSidebar } from '@/components/admin-sidebar';
 import { AdminTopbar } from '@/components/admin-topbar';
+import { AnnouncementsBanner } from '@/components/announcements-banner';
 
 export default async function AdminLayout({
   children,
@@ -17,6 +18,7 @@ export default async function AdminLayout({
       <AdminSidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <AdminTopbar user={session.user} />
+        <AnnouncementsBanner />
         <main className="flex-1 overflow-y-auto p-6">
           {children}
         </main>

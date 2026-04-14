@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { OnEvent, EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../database/prisma.service';
 
 export interface CreateNotificationDto {
@@ -11,11 +11,14 @@ export interface CreateNotificationDto {
 
 @Injectable()
 export class NotificationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private events: EventEmitter2,
+  ) {}
 
   async create(userId: string, orgId: string, dto: CreateNotificationDto) {
     // Schema uses `description` instead of `body`.
-    return this.prisma.notification.create({
+    const notification = await this.prisma.notification.create({
       data: {
         organizationId: orgId,
         userId,
@@ -25,6 +28,8 @@ export class NotificationsService {
         link: dto.link ?? null,
       },
     });
+    this.events.emit('notification.created', { notification });
+    return notification;
   }
 
   async findForUser(

@@ -58,6 +58,8 @@ services:
     environment:
       DATABASE_URL: postgresql://crm:${POSTGRES_PASSWORD:-crmpassword}@postgres:5432/crm
       REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}

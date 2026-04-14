@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import * as nodemailer from 'nodemailer';
 
 @Injectable()
@@ -8,7 +10,10 @@ export class EmailsService {
   private readonly logger = new Logger(EmailsService.name);
   private transporter: nodemailer.Transporter;
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    @InjectQueue('emails') private emailsQueue: Queue,
+  ) {
     this.transporter = nodemailer.createTransport({
       host: this.config.get('SMTP_HOST', 'localhost'),
       port: parseInt(this.config.get('SMTP_PORT', '587') as string),
@@ -17,6 +22,25 @@ export class EmailsService {
         user: this.config.get('SMTP_USER'),
         pass: this.config.get('SMTP_PASS'),
       },
+    });
+  }
+
+  /**
+   * Enqueue an email for background delivery via BullMQ.
+   * Prefer this over `send()` for anything triggered by events/user actions
+   * so transient SMTP failures get retried automatically.
+   */
+  async queue(opts: {
+    to: string;
+    subject: string;
+    html: string;
+    attachments?: any[];
+  }) {
+    await this.emailsQueue.add('send-email', opts, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+      removeOnComplete: 1000,
+      removeOnFail: 5000,
     });
   }
 
@@ -50,7 +74,7 @@ export class EmailsService {
       invoice.client?.primaryEmail ??
       invoice.client?.email;
     if (!to) return;
-    await this.send({
+    await this.queue({
       to,
       subject: `Invoice ${invoice.number} from ${invoice.organization?.name ?? 'Us'}`,
       html: `<p>Hi ${invoice.client?.company ?? ''},</p>
@@ -71,7 +95,7 @@ export class EmailsService {
       contract.client?.email;
     if (!to) return;
     const signUrl = `${process.env.APP_URL}/contract/${contract.hash}`;
-    await this.send({
+    await this.queue({
       to,
       subject: `Please sign: ${contract.subject}`,
       html: `<p>You have a new contract to review and sign.</p>
@@ -83,7 +107,7 @@ export class EmailsService {
   async handleTicketCreated(payload: { ticket: any; orgId: string }) {
     const { ticket } = payload;
     if (!ticket.assignee?.email) return;
-    await this.send({
+    await this.queue({
       to: ticket.assignee.email,
       subject: `New ticket assigned: ${ticket.subject}`,
       html: `<p>A new ticket has been assigned to you: <strong>${ticket.subject}</strong></p>
@@ -97,7 +121,7 @@ export class EmailsService {
     token: string;
     resetUrl: string;
   }) {
-    await this.send({
+    await this.queue({
       to: payload.user.email,
       subject: 'Password Reset Request',
       html: `<p>Click the link below to reset your password:</p>
@@ -110,7 +134,7 @@ export class EmailsService {
   async handleOrgRegistered(payload: { org: any }) {
     const admin = payload.org.users?.[0];
     if (!admin?.email) return;
-    await this.send({
+    await this.queue({
       to: admin.email,
       subject: `Welcome to CRM — ${payload.org.name}`,
       html: `<p>Hi ${admin.firstName ?? ''},</p>

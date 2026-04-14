@@ -82,6 +82,7 @@ model Organization {
   expenseCategories  ExpenseCategory[]
   contractTypes      ContractType[]
   clientGroups       ClientGroup[]
+  events             Event[]
 
   @@map("organizations")
 }
@@ -1537,6 +1538,34 @@ model SavedFilter {
 // ═══════════════════════════════════════════════════════════════
 //  TODO LIST (per-staff)
 // ═══════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+//  CALENDAR / EVENTS
+// ═══════════════════════════════════════════════════════════════
+
+model Event {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String?
+  title          String
+  description    String?
+  startDate      DateTime
+  endDate        DateTime?
+  allDay         Boolean  @default(false)
+  type           String   @default("event") // event | meeting | task_deadline | reminder
+  color          String?
+  relatedType    String?  // 'task' | 'project' | 'invoice' | etc
+  relatedId      String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, startDate])
+  @@map("events")
+}
 
 model Todo {
   id             String   @id @default(uuid())

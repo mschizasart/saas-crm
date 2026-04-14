@@ -1,0 +1,411 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+
+interface CalEvent {
+  id: string;
+  title: string;
+  description?: string | null;
+  startDate: string;
+  endDate?: string | null;
+  allDay: boolean;
+  type: string;
+  color?: string | null;
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+function getToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('access_token');
+}
+
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+// Build 6-week grid starting Monday for a given month.
+function buildMonthGrid(year: number, month: number): Date[] {
+  const first = new Date(year, month, 1);
+  const jsDow = first.getDay(); // Sun = 0
+  const mondayOffset = (jsDow + 6) % 7; // how many days before the 1st to start the grid
+  const gridStart = new Date(year, month, 1 - mondayOffset);
+  const days: Date[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    days.push(d);
+  }
+  return days;
+}
+
+function sameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function toInputDate(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export default function CalendarPage() {
+  const [cursor, setCursor] = useState(() => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), 1);
+  });
+  const [events, setEvents] = useState<CalEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [editingEvent, setEditingEvent] = useState<CalEvent | null>(null);
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    startDate: '',
+    endDate: '',
+    type: 'event',
+    color: '#3b82f6',
+    allDay: false,
+  });
+
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const today = new Date();
+
+  const fetchEvents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const from = new Date(year, month, 1);
+      const to = new Date(year, month + 1, 0, 23, 59, 59, 999);
+      const params = new URLSearchParams({
+        from: from.toISOString(),
+        to: to.toISOString(),
+      });
+      const token = getToken();
+      const res = await fetch(
+        `${API_BASE}/api/v1/calendar/events?${params.toString()}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (res.ok) {
+        const json = await res.json();
+        setEvents(Array.isArray(json) ? json : json.data ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [year, month]);
+
+  useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
+
+  const grid = buildMonthGrid(year, month);
+
+  const eventsByDay = new Map<string, CalEvent[]>();
+  for (const ev of events) {
+    const key = toInputDate(new Date(ev.startDate));
+    const arr = eventsByDay.get(key) ?? [];
+    arr.push(ev);
+    eventsByDay.set(key, arr);
+  }
+
+  function openCreate(date: Date) {
+    setEditingEvent(null);
+    setSelectedDate(date);
+    setForm({
+      title: '',
+      description: '',
+      startDate: toInputDate(date) + 'T09:00',
+      endDate: '',
+      type: 'event',
+      color: '#3b82f6',
+      allDay: false,
+    });
+  }
+
+  function openEdit(ev: CalEvent) {
+    setEditingEvent(ev);
+    setSelectedDate(null);
+    setForm({
+      title: ev.title,
+      description: ev.description ?? '',
+      startDate: ev.startDate.slice(0, 16),
+      endDate: ev.endDate ? ev.endDate.slice(0, 16) : '',
+      type: ev.type,
+      color: ev.color ?? '#3b82f6',
+      allDay: ev.allDay,
+    });
+  }
+
+  function closeModal() {
+    setSelectedDate(null);
+    setEditingEvent(null);
+  }
+
+  async function save() {
+    const token = getToken();
+    const body = {
+      title: form.title,
+      description: form.description || undefined,
+      startDate: new Date(form.startDate).toISOString(),
+      endDate: form.endDate ? new Date(form.endDate).toISOString() : undefined,
+      type: form.type,
+      color: form.color,
+      allDay: form.allDay,
+    };
+    const url = editingEvent
+      ? `${API_BASE}/api/v1/calendar/events/${editingEvent.id}`
+      : `${API_BASE}/api/v1/calendar/events`;
+    const method = editingEvent ? 'PATCH' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      closeModal();
+      fetchEvents();
+    }
+  }
+
+  async function remove() {
+    if (!editingEvent) return;
+    if (!confirm('Delete this event?')) return;
+    const token = getToken();
+    const res = await fetch(
+      `${API_BASE}/api/v1/calendar/events/${editingEvent.id}`,
+      { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (res.ok || res.status === 204) {
+      closeModal();
+      fetchEvents();
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Calendar</h1>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCursor(new Date(year, month - 1, 1))}
+            className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white hover:bg-gray-50"
+          >
+            &larr;
+          </button>
+          <button
+            onClick={() => {
+              const n = new Date();
+              setCursor(new Date(n.getFullYear(), n.getMonth(), 1));
+            }}
+            className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white hover:bg-gray-50"
+          >
+            Today
+          </button>
+          <button
+            onClick={() => setCursor(new Date(year, month + 1, 1))}
+            className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white hover:bg-gray-50"
+          >
+            &rarr;
+          </button>
+          <span className="ml-4 text-lg font-semibold text-gray-800 min-w-[180px]">
+            {MONTHS[month]} {year}
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-100">
+          {WEEKDAYS.map((d) => (
+            <div
+              key={d}
+              className="px-2 py-2 text-xs font-semibold text-gray-500 uppercase text-center"
+            >
+              {d}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7">
+          {grid.map((day, i) => {
+            const isCurrentMonth = day.getMonth() === month;
+            const isToday = sameDay(day, today);
+            const key = toInputDate(day);
+            const dayEvents = eventsByDay.get(key) ?? [];
+            return (
+              <div
+                key={i}
+                onClick={() => openCreate(day)}
+                className={[
+                  'min-h-[110px] border-b border-r border-gray-100 p-1.5 cursor-pointer hover:bg-gray-50/70 transition-colors',
+                  isCurrentMonth ? 'bg-white' : 'bg-gray-50/30',
+                ].join(' ')}
+              >
+                <div
+                  className={[
+                    'text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full',
+                    isToday
+                      ? 'bg-primary text-white'
+                      : isCurrentMonth
+                        ? 'text-gray-700'
+                        : 'text-gray-300',
+                  ].join(' ')}
+                >
+                  {day.getDate()}
+                </div>
+                <div className="space-y-1">
+                  {dayEvents.slice(0, 3).map((ev) => (
+                    <div
+                      key={ev.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEdit(ev);
+                      }}
+                      className="text-[11px] px-1.5 py-0.5 rounded truncate text-white font-medium"
+                      style={{ backgroundColor: ev.color ?? '#3b82f6' }}
+                      title={ev.title}
+                    >
+                      {ev.title}
+                    </div>
+                  ))}
+                  {dayEvents.length > 3 && (
+                    <div className="text-[10px] text-gray-400 pl-1">
+                      +{dayEvents.length - 3} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {loading && (
+        <p className="text-xs text-gray-400 mt-2">Loading events...</p>
+      )}
+
+      {(selectedDate || editingEvent) && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+          onClick={closeModal}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold mb-4">
+              {editingEvent ? 'Edit Event' : 'New Event'}
+            </h2>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600">Title</label>
+                <input
+                  type="text"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                  rows={2}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Start</label>
+                  <input
+                    type="datetime-local"
+                    value={form.startDate}
+                    onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                    className="w-full border border-gray-200 rounded px-2 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">End</label>
+                  <input
+                    type="datetime-local"
+                    value={form.endDate}
+                    onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                    className="w-full border border-gray-200 rounded px-2 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Type</label>
+                  <select
+                    value={form.type}
+                    onChange={(e) => setForm({ ...form, type: e.target.value })}
+                    className="w-full border border-gray-200 rounded px-2 py-2 text-sm bg-white"
+                  >
+                    <option value="event">Event</option>
+                    <option value="meeting">Meeting</option>
+                    <option value="task_deadline">Task Deadline</option>
+                    <option value="reminder">Reminder</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Color</label>
+                  <input
+                    type="color"
+                    value={form.color}
+                    onChange={(e) => setForm({ ...form, color: e.target.value })}
+                    className="w-full h-9 border border-gray-200 rounded"
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.allDay}
+                  onChange={(e) => setForm({ ...form, allDay: e.target.checked })}
+                />
+                All day
+              </label>
+            </div>
+            <div className="flex items-center justify-between mt-6">
+              {editingEvent ? (
+                <button
+                  onClick={remove}
+                  className="text-sm text-red-600 hover:text-red-700"
+                >
+                  Delete
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={closeModal}
+                  className="px-4 py-2 text-sm border border-gray-200 rounded-md hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={save}
+                  disabled={!form.title || !form.startDate}
+                  className="px-4 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

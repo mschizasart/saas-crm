@@ -11,6 +11,7 @@ import {
   ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { getSocket } from '@/lib/socket';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -62,6 +63,19 @@ function NotificationBell() {
     loadCount();
     const t = setInterval(loadCount, 30000);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const handler = (notif: NotifPreview) => {
+      setCount((c) => c + 1);
+      setItems((prev) => [notif, ...prev].slice(0, 10));
+    };
+    socket.on('notification', handler);
+    return () => {
+      socket.off('notification', handler);
+    };
   }, []);
 
   useEffect(() => {

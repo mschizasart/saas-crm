@@ -2,6 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from 'recharts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -300,6 +309,18 @@ export default function DashboardPage() {
   const [leadColumns, setLeadColumns] = useState<KanbanColumn[]>([]);
   const [loadingLeads, setLoadingLeads] = useState(true);
 
+  // -- Mini revenue chart (last 6 months) --
+  const [revenueSeries, setRevenueSeries] = useState<
+    Array<{ period: string; revenue: number }>
+  >([]);
+  const [loadingRevenue, setLoadingRevenue] = useState(true);
+
+  // -- Activity feed --
+  const [activityItems, setActivityItems] = useState<
+    Array<{ id: string; description?: string; action?: string; createdAt: string }>
+  >([]);
+  const [loadingActivity, setLoadingActivity] = useState(true);
+
   // ---------------------------------------------------------------------------
   // Fetch everything in parallel on mount
   // ---------------------------------------------------------------------------
@@ -350,6 +371,34 @@ export default function DashboardPage() {
       })
       .catch(() => {})
       .finally(() => setLoadingTickets(false));
+
+    // ---- Last 6 months revenue ----
+    {
+      const to = new Date();
+      const from = new Date(to.getFullYear(), to.getMonth() - 5, 1);
+      const qs = new URLSearchParams({
+        from: from.toISOString().slice(0, 10),
+        to: to.toISOString().slice(0, 10),
+      });
+      fetch(`${API_BASE}/api/v1/reports/sales?${qs}`, { headers })
+        .then(async (res) => {
+          if (!res.ok) return;
+          const json = await res.json();
+          setRevenueSeries(json.byMonth ?? []);
+        })
+        .catch(() => {})
+        .finally(() => setLoadingRevenue(false));
+    }
+
+    // ---- Activity feed ----
+    fetch(`${API_BASE}/api/v1/activity-log?limit=10`, { headers })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const json = await res.json();
+        setActivityItems(json.data ?? json ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingActivity(false));
 
     // ---- Leads kanban ----
     fetch(`${API_BASE}/api/v1/leads/kanban`, { headers })
@@ -552,6 +601,58 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      {/* -------------------------------------------------------------------- */}
+      {/* Revenue chart + Activity feed                                          */}
+      {/* -------------------------------------------------------------------- */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <SectionHeader title="Revenue (last 6 months)" href="/reports/sales" linkLabel="Full report" />
+          <div style={{ width: '100%', height: 220 }}>
+            {loadingRevenue ? (
+              <div className="h-full bg-gray-50 rounded animate-pulse" />
+            ) : revenueSeries.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">No paid invoices yet.</p>
+            ) : (
+              <ResponsiveContainer>
+                <BarChart data={revenueSeries}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                  <Bar dataKey="revenue" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <SectionHeader title="Recent Activity" href="/activity" linkLabel="View all" />
+          {loadingActivity ? (
+            <div className="space-y-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-6 bg-gray-50 rounded animate-pulse" />
+              ))}
+            </div>
+          ) : activityItems.length === 0 ? (
+            <p className="text-sm text-gray-400 py-4 text-center">No recent activity.</p>
+          ) : (
+            <ul className="space-y-2">
+              {activityItems.map((a) => (
+                <li key={a.id} className="text-sm border-b border-gray-50 last:border-0 pb-2 last:pb-0">
+                  <p className="text-gray-700 truncate">
+                    {a.description ?? a.action ?? 'Activity'}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {new Date(a.createdAt).toLocaleString()}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 
