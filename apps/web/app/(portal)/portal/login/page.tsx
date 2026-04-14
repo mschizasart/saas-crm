@@ -27,7 +27,7 @@ export default function PortalLoginPage() {
       const token = json.access_token ?? json.token ?? json.data?.access_token;
       if (!token) throw new Error('No token returned');
       localStorage.setItem('access_token', token);
-      router.push('/dashboard');
+      router.push('/portal/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign in');
     } finally {

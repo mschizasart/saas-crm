@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
 const NAV = [
-  { label: 'Dashboard', href: '/dashboard' },
-  { label: 'Invoices', href: '/invoices' },
-  { label: 'Projects', href: '/projects' },
-  { label: 'Tickets', href: '/tickets' },
-  { label: 'Knowledge Base', href: '/knowledge-base' },
+  { label: 'Dashboard', href: '/portal/dashboard' },
+  { label: 'Invoices', href: '/portal/invoices' },
+  { label: 'Projects', href: '/portal/projects' },
+  { label: 'Tickets', href: '/portal/tickets' },
+  { label: 'Knowledge Base', href: '/portal/knowledge-base' },
 ];
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
@@ -16,14 +16,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const router = useRouter();
 
   // Login page has no shell
-  if (pathname === '/login') {
+  if (pathname === '/portal/login') {
     return <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">{children}</div>;
   }
 
   // Public pages (no auth required) render without portal shell
   const isPublic =
-    pathname?.startsWith('/contracts/sign/') ||
-    pathname?.startsWith('/proposals/view/');
+    pathname?.startsWith('/portal/contracts/sign/') ||
+    pathname?.startsWith('/portal/proposals/view/');
   if (isPublic) {
     return <>{children}</>;
   }
@@ -31,7 +31,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   function signOut() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('access_token');
-      router.push('/login');
+      router.push('/portal/login');
     }
   }
 

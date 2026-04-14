@@ -54,7 +54,7 @@ export default function PortalProjectDetailPage() {
 
   return (
     <div>
-      <div className="mb-4"><Link href="/projects" className="text-sm text-gray-500 hover:text-primary">← Back to projects</Link></div>
+      <div className="mb-4"><Link href="/portal/projects" className="text-sm text-gray-500 hover:text-primary">← Back to projects</Link></div>
 
       <div className="flex items-start justify-between mb-6">
         <div>

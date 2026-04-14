@@ -47,9 +47,9 @@ export default function PortalDashboardPage() {
       {error && <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 text-sm text-red-600 rounded-lg">{error}</div>}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard loading={loading} label="Open Invoices" value={stats.openInvoices ?? 0} href="/invoices" />
-        <StatCard loading={loading} label="Open Tickets" value={stats.openTickets ?? 0} href="/tickets" />
-        <StatCard loading={loading} label="Active Projects" value={stats.activeProjects ?? 0} href="/projects" />
+        <StatCard loading={loading} label="Open Invoices" value={stats.openInvoices ?? 0} href="/portal/invoices" />
+        <StatCard loading={loading} label="Open Tickets" value={stats.openTickets ?? 0} href="/portal/tickets" />
+        <StatCard loading={loading} label="Active Projects" value={stats.activeProjects ?? 0} href="/portal/projects" />
       </div>
     </div>
   );

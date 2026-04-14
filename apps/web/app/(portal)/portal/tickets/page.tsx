@@ -49,7 +49,7 @@ export default function PortalTicketsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Support Tickets</h1>
-        <Link href="/tickets/new" className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90">
+        <Link href="/portal/tickets/new" className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90">
           <span className="text-lg leading-none">+</span>New Ticket
         </Link>
       </div>

@@ -82,7 +82,7 @@ export default function PortalTicketDetailPage() {
 
   return (
     <div>
-      <div className="mb-4"><Link href="/tickets" className="text-sm text-gray-500 hover:text-primary">← Back to tickets</Link></div>
+      <div className="mb-4"><Link href="/portal/tickets" className="text-sm text-gray-500 hover:text-primary">← Back to tickets</Link></div>
 
       <div className="flex items-start justify-between mb-6">
         <div>

@@ -93,7 +93,7 @@ export default function PortalInvoiceDetailPage() {
 
   return (
     <div>
-      <div className="mb-4"><Link href="/invoices" className="text-sm text-gray-500 hover:text-primary">← Back to invoices</Link></div>
+      <div className="mb-4"><Link href="/portal/invoices" className="text-sm text-gray-500 hover:text-primary">← Back to invoices</Link></div>
 
       <div className="flex items-start justify-between mb-6">
         <div>

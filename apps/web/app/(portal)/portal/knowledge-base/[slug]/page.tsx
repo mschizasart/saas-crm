@@ -46,7 +46,7 @@ export default function PortalArticlePage() {
 
   return (
     <article className="max-w-3xl mx-auto">
-      <div className="mb-4"><Link href="/knowledge-base" className="text-sm text-gray-500 hover:text-primary">← Back to knowledge base</Link></div>
+      <div className="mb-4"><Link href="/portal/knowledge-base" className="text-sm text-gray-500 hover:text-primary">← Back to knowledge base</Link></div>
       <h1 className="text-3xl font-bold text-gray-900 mb-2">{article.title}</h1>
       {article.group && <p className="text-sm text-gray-500 mb-6">in {article.group.name}</p>}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8">
