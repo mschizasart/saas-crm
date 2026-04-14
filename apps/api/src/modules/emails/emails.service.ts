@@ -1,8 +1,121 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../database/prisma.service';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { OnEvent } from '@nestjs/event-emitter';
+import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class EmailsService {
-  constructor(private prisma: PrismaService) {}
-  // TODO: implement in Phase 2+
+  private readonly logger = new Logger(EmailsService.name);
+  private transporter: nodemailer.Transporter;
+
+  constructor(private config: ConfigService) {
+    this.transporter = nodemailer.createTransport({
+      host: this.config.get('SMTP_HOST', 'localhost'),
+      port: parseInt(this.config.get('SMTP_PORT', '587') as string),
+      secure: this.config.get('SMTP_PORT') === '465',
+      auth: {
+        user: this.config.get('SMTP_USER'),
+        pass: this.config.get('SMTP_PASS'),
+      },
+    });
+  }
+
+  async send(opts: {
+    to: string;
+    subject: string;
+    html: string;
+    attachments?: any[];
+  }) {
+    try {
+      const from = this.config.get(
+        'SMTP_FROM',
+        'CRM <noreply@idealhost.cloud>',
+      );
+      const info = await this.transporter.sendMail({ from, ...opts });
+      this.logger.log(`Email sent to ${opts.to}: ${info.messageId}`);
+      return info;
+    } catch (e) {
+      this.logger.error(`Email send failed to ${opts.to}`, e as any);
+      throw e;
+    }
+  }
+
+  // ─── Event listeners ──────────────────────────────────────────────────────
+
+  @OnEvent('invoice.sent')
+  async handleInvoiceSent(payload: { invoice: any; orgId: string }) {
+    const { invoice } = payload;
+    const to =
+      invoice.client?.contacts?.[0]?.email ??
+      invoice.client?.primaryEmail ??
+      invoice.client?.email;
+    if (!to) return;
+    await this.send({
+      to,
+      subject: `Invoice ${invoice.number} from ${invoice.organization?.name ?? 'Us'}`,
+      html: `<p>Hi ${invoice.client?.company ?? ''},</p>
+<p>Please find your invoice <strong>${invoice.number}</strong> for ${invoice.currency} ${invoice.total}.</p>
+<p><a href="${process.env.APP_URL}/portal/invoices/${invoice.id}">View Invoice</a></p>`,
+    });
+  }
+
+  @OnEvent('contract.sent_for_signing')
+  async handleContractSentForSigning(payload: {
+    contract: any;
+    orgId: string;
+  }) {
+    const { contract } = payload;
+    const to =
+      contract.client?.contacts?.[0]?.email ??
+      contract.client?.primaryEmail ??
+      contract.client?.email;
+    if (!to) return;
+    const signUrl = `${process.env.APP_URL}/contract/${contract.hash}`;
+    await this.send({
+      to,
+      subject: `Please sign: ${contract.subject}`,
+      html: `<p>You have a new contract to review and sign.</p>
+<p><a href="${signUrl}">Click here to view and sign</a></p>`,
+    });
+  }
+
+  @OnEvent('ticket.created')
+  async handleTicketCreated(payload: { ticket: any; orgId: string }) {
+    const { ticket } = payload;
+    if (!ticket.assignee?.email) return;
+    await this.send({
+      to: ticket.assignee.email,
+      subject: `New ticket assigned: ${ticket.subject}`,
+      html: `<p>A new ticket has been assigned to you: <strong>${ticket.subject}</strong></p>
+<p><a href="${process.env.APP_URL}/tickets/${ticket.id}">Open ticket</a></p>`,
+    });
+  }
+
+  @OnEvent('auth.password_reset_requested')
+  async handlePasswordReset(payload: {
+    user: any;
+    token: string;
+    resetUrl: string;
+  }) {
+    await this.send({
+      to: payload.user.email,
+      subject: 'Password Reset Request',
+      html: `<p>Click the link below to reset your password:</p>
+<p><a href="${payload.resetUrl}">Reset Password</a></p>
+<p>This link expires in 1 hour.</p>`,
+    });
+  }
+
+  @OnEvent('organization.registered')
+  async handleOrgRegistered(payload: { org: any }) {
+    const admin = payload.org.users?.[0];
+    if (!admin?.email) return;
+    await this.send({
+      to: admin.email,
+      subject: `Welcome to CRM — ${payload.org.name}`,
+      html: `<p>Hi ${admin.firstName ?? ''},</p>
+<p>Your organization <strong>${payload.org.name}</strong> has been created. You're currently on a 14-day free trial.</p>
+<p><a href="${process.env.APP_URL}/dashboard">Go to Dashboard</a></p>`,
+    });
+  }
 }

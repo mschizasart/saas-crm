@@ -1,60 +1,70 @@
-import { redirect } from 'next/navigation';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import Link from 'next/link';
-import { FileText, FolderKanban, Headphones, FileSignature } from 'lucide-react';
+'use client';
 
-const PORTAL_NAV = [
-  { label: 'Invoices', href: '/portal/invoices', icon: FileText },
-  { label: 'Estimates', href: '/portal/estimates', icon: FileText },
-  { label: 'Proposals', href: '/portal/proposals', icon: FileText },
-  { label: 'Projects', href: '/portal/projects', icon: FolderKanban },
-  { label: 'Support', href: '/portal/tickets', icon: Headphones },
-  { label: 'Contracts', href: '/portal/contracts', icon: FileSignature },
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+
+const NAV = [
+  { label: 'Dashboard', href: '/dashboard' },
+  { label: 'Invoices', href: '/invoices' },
+  { label: 'Projects', href: '/projects' },
+  { label: 'Tickets', href: '/tickets' },
+  { label: 'Knowledge Base', href: '/knowledge-base' },
 ];
 
-export default async function PortalLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect('/login');
+export default function PortalLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  // Login page has no shell
+  if (pathname === '/login') {
+    return <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">{children}</div>;
+  }
+
+  function signOut() {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('access_token');
+      router.push('/login');
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Portal Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+      <header className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 bg-primary rounded-md flex items-center justify-center">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">C</span>
               </div>
               <span className="font-semibold text-gray-800">Client Portal</span>
             </div>
             <nav className="hidden md:flex items-center gap-1">
-              {PORTAL_NAV.map((item) => (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <item.icon className="w-4 h-4" />
-                  {item.label}
-                </Link>
-              ))}
+              {NAV.map((item) => {
+                const active = pathname?.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                      active ? 'bg-primary/10 text-primary font-medium' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+              <button
+                onClick={signOut}
+                className="ml-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+              >
+                Sign Out
+              </button>
             </nav>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">{session.user?.email}</span>
-            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        {children}
-      </main>
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">{children}</main>
     </div>
   );
 }

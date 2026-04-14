@@ -7,10 +7,12 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { EstimatesService, CreateEstimateDto } from './estimates.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -18,13 +20,39 @@ import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { PdfService } from '../pdf/pdf.service';
+import { renderEstimateHtml } from '../pdf/templates/estimate.template';
 
 @ApiTags('Estimates')
 @Controller({ version: '1', path: 'estimates' })
 @UseGuards(JwtAuthGuard, RbacGuard)
 @ApiBearerAuth()
 export class EstimatesController {
-  constructor(private service: EstimatesService) {}
+  constructor(
+    private service: EstimatesService,
+    private pdfService: PdfService,
+  ) {}
+
+  // ─── Download PDF ──────────────────────────────────────────────────────────
+
+  @Get(':id/pdf')
+  @Permissions('invoices.view')
+  @ApiOperation({ summary: 'Download estimate as PDF' })
+  async downloadPdf(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const estimate = await this.service.findOne(org.id, id);
+    const html = renderEstimateHtml(estimate, org);
+    const pdf = await this.pdfService.generatePdf(html);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="estimate-${estimate.number}.pdf"`,
+    );
+    res.end(pdf);
+  }
 
   // ─── Stats ─────────────────────────────────────────────────────────────────
 

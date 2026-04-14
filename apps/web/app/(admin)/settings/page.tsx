@@ -1,0 +1,327 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+function getToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('access_token');
+}
+
+type TabKey = 'company' | 'email' | 'gateways' | 'taxes' | 'currencies' | 'appearance';
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'company', label: 'Company' },
+  { key: 'email', label: 'Email (SMTP)' },
+  { key: 'gateways', label: 'Gateways' },
+  { key: 'taxes', label: 'Taxes' },
+  { key: 'currencies', label: 'Currencies' },
+  { key: 'appearance', label: 'Appearance' },
+];
+
+interface Tax { id?: string; name: string; rate: number }
+interface Currency { id?: string; code: string; symbol: string; name: string }
+
+export default function SettingsPage() {
+  const [tab, setTab] = useState<TabKey>('company');
+  const [org, setOrg] = useState<any>(null);
+  const [settings, setSettings] = useState<Record<string, any>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const [taxes, setTaxes] = useState<Tax[]>([]);
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = getToken();
+        const res = await fetch(`${API_BASE}/api/v1/organizations/current`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json();
+        setOrg(data);
+        setSettings((data.settings ?? {}) as Record<string, any>);
+        setTaxes((data.settings?.taxes ?? []) as Tax[]);
+        setCurrencies((data.settings?.currencies ?? []) as Currency[]);
+      } catch {
+        setMessage('Failed to load settings');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const setProfile = (k: string, v: any) => setOrg((o: any) => ({ ...o, [k]: v }));
+  const setSetting = (k: string, v: any) => setSettings((s) => ({ ...s, [k]: v }));
+
+  const save = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const token = getToken();
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      };
+
+      // Profile fields
+      await fetch(`${API_BASE}/api/v1/organizations/profile`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          name: org?.name,
+          logo: org?.logo,
+          address: org?.address,
+          city: org?.city,
+          state: org?.state,
+          zipCode: org?.zipCode,
+          country: org?.country,
+          phone: org?.phone,
+          website: org?.website,
+          vatNumber: org?.vatNumber,
+        }),
+      });
+
+      // Settings merged with taxes/currencies
+      const payload = { ...settings, taxes, currencies };
+      await fetch(`${API_BASE}/api/v1/organizations/settings`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      setMessage('Saved');
+    } catch {
+      setMessage('Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="p-6 text-gray-500 text-sm">Loading…</div>;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+        <button
+          onClick={save}
+          disabled={saving}
+          className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+      {message && (
+        <div className="mb-4 text-sm text-gray-700 bg-blue-50 border border-blue-100 rounded px-3 py-2">
+          {message}
+        </div>
+      )}
+
+      <div className="border-b border-gray-200 mb-6 flex gap-2 overflow-x-auto">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tab === t.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 max-w-3xl">
+        {tab === 'company' && (
+          <div className="space-y-4">
+            <Field label="Company name" value={org?.name ?? ''} onChange={(v) => setProfile('name', v)} />
+            <Field label="Logo URL" value={org?.logo ?? ''} onChange={(v) => setProfile('logo', v)} />
+            <Field label="Address" value={org?.address ?? ''} onChange={(v) => setProfile('address', v)} />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="City" value={org?.city ?? ''} onChange={(v) => setProfile('city', v)} />
+              <Field label="State" value={org?.state ?? ''} onChange={(v) => setProfile('state', v)} />
+              <Field label="Zip" value={org?.zipCode ?? ''} onChange={(v) => setProfile('zipCode', v)} />
+              <Field label="Country" value={org?.country ?? ''} onChange={(v) => setProfile('country', v)} />
+            </div>
+            <Field label="Phone" value={org?.phone ?? ''} onChange={(v) => setProfile('phone', v)} />
+            <Field label="Email" value={settings.email ?? ''} onChange={(v) => setSetting('email', v)} />
+            <Field label="Website" value={org?.website ?? ''} onChange={(v) => setProfile('website', v)} />
+            <Field label="VAT Number" value={org?.vatNumber ?? ''} onChange={(v) => setProfile('vatNumber', v)} />
+          </div>
+        )}
+
+        {tab === 'email' && (
+          <div className="space-y-4">
+            <Field label="SMTP Host" value={settings.smtpHost ?? ''} onChange={(v) => setSetting('smtpHost', v)} />
+            <Field label="SMTP Port" value={settings.smtpPort ?? ''} onChange={(v) => setSetting('smtpPort', v)} />
+            <Field label="SMTP User" value={settings.smtpUser ?? ''} onChange={(v) => setSetting('smtpUser', v)} />
+            <Field label="SMTP Password" type="password" value={settings.smtpPass ?? ''} onChange={(v) => setSetting('smtpPass', v)} />
+            <Field label="From Address" value={settings.smtpFrom ?? ''} onChange={(v) => setSetting('smtpFrom', v)} />
+            <button
+              type="button"
+              onClick={() => setMessage('Test email queued (stub)')}
+              className="text-sm px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-50"
+            >
+              Send test email
+            </button>
+          </div>
+        )}
+
+        {tab === 'gateways' && (
+          <div className="space-y-4">
+            <h2 className="font-semibold text-gray-800">Stripe</h2>
+            <Field label="Publishable key" type="password" value={settings.stripePk ?? ''} onChange={(v) => setSetting('stripePk', v)} />
+            <Field label="Secret key" type="password" value={settings.stripeSk ?? ''} onChange={(v) => setSetting('stripeSk', v)} />
+            <h2 className="font-semibold text-gray-800 pt-4">PayPal</h2>
+            <Field label="Client ID" type="password" value={settings.paypalClientId ?? ''} onChange={(v) => setSetting('paypalClientId', v)} />
+            <Field label="Secret" type="password" value={settings.paypalSecret ?? ''} onChange={(v) => setSetting('paypalSecret', v)} />
+          </div>
+        )}
+
+        {tab === 'taxes' && (
+          <CrudList
+            items={taxes}
+            setItems={setTaxes}
+            columns={[
+              { key: 'name', label: 'Name' },
+              { key: 'rate', label: 'Rate %', type: 'number' },
+            ]}
+            blank={{ name: '', rate: 0 }}
+          />
+        )}
+
+        {tab === 'currencies' && (
+          <CrudList
+            items={currencies}
+            setItems={setCurrencies}
+            columns={[
+              { key: 'code', label: 'Code' },
+              { key: 'symbol', label: 'Symbol' },
+              { key: 'name', label: 'Name' },
+            ]}
+            blank={{ code: '', symbol: '', name: '' }}
+          />
+        )}
+
+        {tab === 'appearance' && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Primary color</label>
+              <input
+                type="color"
+                value={settings.primaryColor ?? '#2563eb'}
+                onChange={(e) => setSetting('primaryColor', e.target.value)}
+                className="h-10 w-20 rounded border border-gray-200"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Date format</label>
+              <select
+                value={settings.dateFormat ?? 'YYYY-MM-DD'}
+                onChange={(e) => setSetting('dateFormat', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              >
+                <option>YYYY-MM-DD</option>
+                <option>DD/MM/YYYY</option>
+                <option>MM/DD/YYYY</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Time format</label>
+              <select
+                value={settings.timeFormat ?? '24h'}
+                onChange={(e) => setSetting('timeFormat', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              >
+                <option value="24h">24-hour</option>
+                <option value="12h">12-hour</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = 'text',
+}: {
+  label: string;
+  value: string | number;
+  onChange: (v: string) => void;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      <input
+        type={type}
+        value={value as any}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+      />
+    </div>
+  );
+}
+
+function CrudList<T extends Record<string, any>>({
+  items,
+  setItems,
+  columns,
+  blank,
+}: {
+  items: T[];
+  setItems: (v: T[]) => void;
+  columns: { key: keyof T & string; label: string; type?: string }[];
+  blank: T;
+}) {
+  const update = (i: number, key: string, val: any) => {
+    const next = [...items];
+    next[i] = { ...next[i], [key]: val };
+    setItems(next);
+  };
+  return (
+    <div className="space-y-3">
+      {items.length === 0 && <p className="text-sm text-gray-400">No items yet.</p>}
+      {items.map((item, i) => (
+        <div key={i} className="flex gap-2 items-end">
+          {columns.map((c) => (
+            <div key={c.key} className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1">{c.label}</label>
+              <input
+                type={c.type ?? 'text'}
+                value={item[c.key] ?? ''}
+                onChange={(e) =>
+                  update(i, c.key, c.type === 'number' ? Number(e.target.value) : e.target.value)
+                }
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              />
+            </div>
+          ))}
+          <button
+            onClick={() => setItems(items.filter((_, j) => j !== i))}
+            className="text-xs text-red-600 hover:underline px-2 py-2"
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() => setItems([...items, { ...blank }])}
+        className="text-sm px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-50"
+      >
+        + Add
+      </button>
+    </div>
+  );
+}

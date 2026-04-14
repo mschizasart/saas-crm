@@ -32,6 +32,8 @@ import { AiModule } from './modules/ai/ai.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { GoalsModule } from './modules/goals/goals.module';
 import { CronModule } from './modules/cron/cron.module';
+import { PdfModule } from './modules/pdf/pdf.module';
+import { ActivityLogModule } from './modules/activity-log/activity-log.module';
 
 @Module({
   imports: [
@@ -85,6 +87,8 @@ import { CronModule } from './modules/cron/cron.module';
     SurveysModule,
     GoalsModule,
     CronModule,
+    PdfModule,
+    ActivityLogModule,
   ],
 })
 export class AppModule {}

@@ -15,6 +15,9 @@ RUN cd apps/api && node_modules/.bin/tsc --noEmitOnError false 2>&1 | tail -5 ||
 
 FROM node:20-alpine AS runner
 WORKDIR /app
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 RUN npm install -g pnpm@9
 COPY --from=builder /app/package.json /app/pnpm-workspace.yaml ./
 COPY --from=builder /app/node_modules ./node_modules

@@ -10,7 +10,116 @@ import {
   BarChart3, Settings, Bell, Building2, Zap, ClipboardList,
   ChevronDown, ChevronRight,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+interface NotifPreview {
+  id: string;
+  title: string;
+  description: string | null;
+  link: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+function NotificationBell() {
+  const [count, setCount] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<NotifPreview[]>([]);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const token = () =>
+    typeof window === 'undefined' ? null : localStorage.getItem('access_token');
+
+  const loadCount = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/notifications/unread-count`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setCount(data.count ?? 0);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const loadList = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/notifications?limit=10`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setItems(data.data ?? []);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  useEffect(() => {
+    loadCount();
+    const t = setInterval(loadCount, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (open) loadList();
+  }, [open]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="relative p-1.5 rounded-md hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground"
+        aria-label="Notifications"
+      >
+        <Bell className="w-4 h-4" />
+        {count > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 text-[10px] bg-red-500 text-white rounded-full flex items-center justify-center">
+            {count > 9 ? '9+' : count}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-2 w-72 bg-white text-gray-900 rounded-lg shadow-lg border border-gray-100 z-50 max-h-96 overflow-y-auto">
+          <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
+            <span className="text-sm font-semibold">Notifications</span>
+            <Link href="/notifications" className="text-xs text-primary hover:underline">
+              View all
+            </Link>
+          </div>
+          {items.length === 0 ? (
+            <p className="p-4 text-xs text-gray-400 text-center">No notifications</p>
+          ) : (
+            <ul>
+              {items.map((n) => (
+                <li
+                  key={n.id}
+                  className={`px-3 py-2 border-b border-gray-50 text-xs ${
+                    n.read ? '' : 'bg-primary/5'
+                  }`}
+                >
+                  <p className="font-medium">{n.title}</p>
+                  {n.description && <p className="text-gray-500 mt-0.5">{n.description}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface NavItem {
   label: string;
@@ -142,7 +251,8 @@ export function AdminSidebar() {
         <div className="w-7 h-7 bg-primary rounded-md flex items-center justify-center">
           <span className="text-white font-bold text-sm">C</span>
         </div>
-        <span className="font-semibold text-sidebar-foreground">SaaS CRM</span>
+        <span className="font-semibold text-sidebar-foreground flex-1">SaaS CRM</span>
+        <NotificationBell />
       </div>
 
       {/* Nav */}

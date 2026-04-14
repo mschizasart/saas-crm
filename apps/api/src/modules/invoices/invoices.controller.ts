@@ -7,10 +7,12 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { InvoicesService, CreateInvoiceDto } from './invoices.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -18,13 +20,39 @@ import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { PdfService } from '../pdf/pdf.service';
+import { renderInvoiceHtml } from '../pdf/templates/invoice.template';
 
 @ApiTags('Invoices')
 @Controller({ version: '1', path: 'invoices' })
 @UseGuards(JwtAuthGuard, RbacGuard)
 @ApiBearerAuth()
 export class InvoicesController {
-  constructor(private service: InvoicesService) {}
+  constructor(
+    private service: InvoicesService,
+    private pdfService: PdfService,
+  ) {}
+
+  // ─── Download PDF ──────────────────────────────────────────────────────────
+
+  @Get(':id/pdf')
+  @Permissions('invoices.view')
+  @ApiOperation({ summary: 'Download invoice as PDF' })
+  async downloadPdf(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const invoice = await this.service.findOne(org.id, id);
+    const html = renderInvoiceHtml(invoice, org);
+    const pdf = await this.pdfService.generatePdf(html);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="invoice-${invoice.number}.pdf"`,
+    );
+    res.end(pdf);
+  }
 
   // ─── Stats ─────────────────────────────────────────────────────────────────
 
