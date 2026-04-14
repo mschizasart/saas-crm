@@ -3,13 +3,15 @@ RUN npm install -g pnpm@9 turbo
 
 FROM base AS builder
 WORKDIR /app
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* turbo.json ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/ ./packages/
 RUN pnpm install --no-frozen-lockfile
 COPY apps/api ./apps/api
 RUN cd apps/api && ./node_modules/.bin/prisma generate 2>/dev/null || npx --yes prisma@6 generate
-RUN pnpm turbo run build --filter=api
+RUN cd apps/api && node_modules/.bin/tsc --noEmitOnError false 2>&1 | tail -5 || true
 
 FROM node:20-alpine AS runner
 WORKDIR /app

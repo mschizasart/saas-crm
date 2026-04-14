@@ -85,7 +85,7 @@ BEGIN
       -- Prisma stores organizationId as camelCase in PostgreSQL
       EXECUTE format(
         'CREATE POLICY tenant_isolation ON %I
-         USING ("organizationId" = app_current_organization_id())',
+         USING ("organizationId"::uuid = app_current_organization_id())',
         t
       );
 
