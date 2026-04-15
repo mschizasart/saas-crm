@@ -1,4 +1,5 @@
 FROM node:20-alpine AS base
+RUN apk add --no-cache python3 make g++ libc6-compat
 RUN npm install -g pnpm@9 turbo
 
 FROM base AS builder
