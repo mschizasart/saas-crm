@@ -1,5 +1,8 @@
-FROM node:20-alpine AS base
-RUN apk add --no-cache python3 make g++ libc6-compat
+FROM node:20-slim AS base
+# Install build tools for native modules (bcrypt, etc.) on Debian
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 make g++ ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 RUN npm install -g pnpm@9 turbo
 
 FROM base AS builder
