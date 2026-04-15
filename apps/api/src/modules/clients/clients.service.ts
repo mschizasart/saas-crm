@@ -171,7 +171,7 @@ export class ClientsService {
     });
     if (existing) throw new ConflictException('A user with this email already exists');
 
-    const bcrypt = await import('bcrypt');
+    const bcrypt = await import('bcryptjs');
     const hash = await bcrypt.hash(Math.random().toString(36).slice(-12), 12);
 
     return this.prisma.withOrganization(orgId, async (tx) => {

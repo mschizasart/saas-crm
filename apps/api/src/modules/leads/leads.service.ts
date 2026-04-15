@@ -213,7 +213,7 @@ export class LeadsService {
       if (lead.email) {
         const [firstName, ...rest] = (lead.name || '').split(' ');
         const lastName = rest.join(' ') || '-';
-        const bcrypt = await import('bcrypt');
+        const bcrypt = await import('bcryptjs');
         const hash = await bcrypt.hash(
           Math.random().toString(36).slice(-12),
           12,
