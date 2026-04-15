@@ -7,6 +7,12 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
+// Polyfill BigInt.prototype.toJSON so Fastify/JSON.stringify can serialize BigInt fields
+// (e.g. Organization.storageBytes) as strings instead of crashing
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString();
+};
+
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
