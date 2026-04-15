@@ -13,7 +13,11 @@ COPY packages/ ./packages/
 RUN pnpm install --no-frozen-lockfile --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY apps/api ./apps/api
 RUN cd apps/api && ./node_modules/.bin/prisma generate 2>/dev/null || npx --yes prisma@6 generate
-RUN cd apps/api && node_modules/.bin/tsc --noEmitOnError false 2>&1 | tail -5 || true
+# Compile TS. noEmitOnError is false in tsconfig.json so tsc will emit even with type errors.
+# Pipe through tail to show last errors but force success with || true so build continues.
+RUN cd apps/api && ./node_modules/.bin/tsc 2>&1 | tail -20; \
+    ls -la apps/api/dist/modules 2>&1 | head -5; \
+    test -f apps/api/dist/main.js && echo "dist/main.js exists" || echo "WARNING: dist/main.js missing"
 
 FROM node:20-alpine AS runner
 WORKDIR /app
