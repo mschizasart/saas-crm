@@ -16,7 +16,12 @@ RUN cd apps/api && node_modules/.bin/tsc --noEmitOnError false 2>&1 | tail -5 ||
 
 FROM node:20-alpine AS runner
 WORKDIR /app
-RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
+# Install chromium from Alpine edge repos (main Alpine has broken dependencies for chromium)
+RUN echo "https://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories && \
+    echo "https://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories && \
+    apk update && \
+    apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont || \
+    echo "Chromium install failed - PDF generation will be disabled"
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 RUN npm install -g pnpm@9
