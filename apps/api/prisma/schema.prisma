@@ -46,7 +46,14 @@ model Organization {
   stripeCustomerId   String?   @unique
   stripeSubscriptionId String? @unique
   subscriptionStatus String    @default("trialing") // trialing | active | past_due | canceled | unpaid
+  subscriptionPlan   String?                    // slug of PlatformPlan
   trialEndsAt        DateTime?
+  currentPeriodEnd   DateTime?
+  // Usage limits (override plan defaults)
+  maxStaff           Int       @default(5)
+  maxClients         Int       @default(50)
+  maxActiveProjects  Int       @default(10)
+  storageBytes       BigInt    @default(0)
   // Settings (replaces flat tbloptions key-value table)
   settings           Json      @default("{}")
   createdAt          DateTime  @default(now())
@@ -1581,4 +1588,34 @@ model Todo {
 
   @@index([organizationId, userId])
   @@map("todos")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PLATFORM SUBSCRIPTION PLANS
+// ═══════════════════════════════════════════════════════════════
+
+model PlatformPlan {
+  id                   String   @id @default(uuid())
+  name                 String   // "Starter", "Growth", "Pro", "Enterprise"
+  slug                 String   @unique   // "starter", "growth", etc
+  description          String?
+  monthlyPrice         Decimal  @db.Decimal(10, 2) @default(0)
+  yearlyPrice          Decimal  @db.Decimal(10, 2) @default(0)
+  currency             String   @default("USD")
+  stripePriceIdMonthly String?
+  stripePriceIdYearly  String?
+  // Limits
+  maxStaff             Int      @default(5)
+  maxClients           Int      @default(50)
+  maxActiveProjects    Int      @default(10)
+  maxStorageMB         Int      @default(1000)
+  // Features (JSON array of feature keys for display)
+  features             Json?    @default("[]")
+  active               Boolean  @default(true)
+  public               Boolean  @default(true)
+  order                Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("platform_plans")
 }

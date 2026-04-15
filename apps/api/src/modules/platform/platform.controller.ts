@@ -133,4 +133,74 @@ export class PlatformController {
   async getRecent(@Query('limit') limit?: string) {
     return this.service.getRecentOrganizations(limit ? Number(limit) : 10);
   }
+
+  // ─── Plans ─────────────────────────────────────────────────
+
+  @Get('plans')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  async listPlans() {
+    return this.service.listPlans();
+  }
+
+  @Get('plans/:id')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  async getPlan(@Param('id') id: string) {
+    return this.service.getPlan(id);
+  }
+
+  @Post('plans')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  async createPlan(@Body() dto: any) {
+    return this.service.createPlan(dto);
+  }
+
+  @Patch('plans/:id')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  async updatePlan(@Param('id') id: string, @Body() dto: any) {
+    return this.service.updatePlan(id, dto);
+  }
+
+  @Delete('plans/:id')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deletePlan(@Param('id') id: string) {
+    return this.service.deletePlan(id);
+  }
+
+  // ─── Billing stats ─────────────────────────────────────────
+
+  @Get('billing/stats')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  async getBillingStats() {
+    return this.service.getBillingStats();
+  }
+
+  @Get('billing/revenue-by-month')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  async getRevenue(@Query('months') months?: string) {
+    return this.service.getRevenueByMonth(months ? Number(months) : 12);
+  }
+
+  @Get('billing/orgs-by-plan')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  async getOrgsByPlan() {
+    return this.service.getOrgsByPlan();
+  }
+
+  // ─── Assign plan ───────────────────────────────────────────
+
+  @Post('organizations/:id/assign-plan')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  async assignPlan(@Param('id') id: string, @Body() body: { planSlug: string }) {
+    return this.service.assignPlanToOrg(id, body.planSlug);
+  }
 }

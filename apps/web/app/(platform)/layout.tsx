@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, Building2, ShieldCheck, LogOut } from 'lucide-react';
+import { LayoutDashboard, Building2, ShieldCheck, LogOut, Package, CreditCard } from 'lucide-react';
 
 interface PlatformAdmin {
   id: string;
@@ -14,6 +14,8 @@ interface PlatformAdmin {
 const NAV = [
   { href: '/platform', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/platform/organizations', label: 'Organizations', icon: Building2 },
+  { href: '/platform/plans', label: 'Plans', icon: Package },
+  { href: '/platform/billing', label: 'Billing', icon: CreditCard },
   { href: '/platform/admins', label: 'Admins', icon: ShieldCheck },
 ];
 

@@ -270,4 +270,163 @@ export class PlatformService {
       },
     });
   }
+
+  // ─── Subscription Plans management ─────────────────────────
+
+  async listPlans() {
+    return this.prisma.platformPlan.findMany({
+      orderBy: { order: 'asc' },
+    });
+  }
+
+  async getPlan(id: string) {
+    const plan = await this.prisma.platformPlan.findUnique({ where: { id } });
+    if (!plan) throw new NotFoundException('Plan not found');
+    return plan;
+  }
+
+  async createPlan(dto: {
+    name: string;
+    slug: string;
+    description?: string;
+    monthlyPrice: number;
+    yearlyPrice?: number;
+    currency?: string;
+    maxStaff?: number;
+    maxClients?: number;
+    maxActiveProjects?: number;
+    maxStorageMB?: number;
+    features?: string[];
+    active?: boolean;
+    public?: boolean;
+    order?: number;
+  }) {
+    return this.prisma.platformPlan.create({
+      data: {
+        name: dto.name,
+        slug: dto.slug,
+        description: dto.description,
+        monthlyPrice: dto.monthlyPrice,
+        yearlyPrice: dto.yearlyPrice ?? dto.monthlyPrice * 10,
+        currency: dto.currency ?? 'USD',
+        maxStaff: dto.maxStaff ?? 5,
+        maxClients: dto.maxClients ?? 50,
+        maxActiveProjects: dto.maxActiveProjects ?? 10,
+        maxStorageMB: dto.maxStorageMB ?? 1000,
+        features: dto.features ?? [],
+        active: dto.active ?? true,
+        public: dto.public ?? true,
+        order: dto.order ?? 0,
+      },
+    });
+  }
+
+  async updatePlan(id: string, dto: any) {
+    await this.getPlan(id);
+    return this.prisma.platformPlan.update({
+      where: { id },
+      data: dto,
+    });
+  }
+
+  async deletePlan(id: string) {
+    const plan = await this.getPlan(id);
+    const orgsUsing = await this.prisma.organization.count({
+      where: { subscriptionPlan: { in: [plan.slug, plan.name] } },
+    });
+    if (orgsUsing > 0) {
+      throw new BadRequestException(
+        `Cannot delete plan: ${orgsUsing} organization(s) still subscribed`,
+      );
+    }
+    await this.prisma.platformPlan.delete({ where: { id } });
+  }
+
+  // ─── Platform billing / revenue ────────────────────────────
+
+  async getBillingStats() {
+    const [orgs, trialOrgs, activeOrgs, canceledOrgs, pastDueOrgs] = await Promise.all([
+      this.prisma.organization.findMany({
+        select: {
+          id: true,
+          subscriptionStatus: true,
+          subscriptionPlan: true,
+          currentPeriodEnd: true,
+        },
+      }),
+      this.prisma.organization.count({ where: { subscriptionStatus: 'trialing' } }),
+      this.prisma.organization.count({ where: { subscriptionStatus: 'active' } }),
+      this.prisma.organization.count({ where: { subscriptionStatus: 'canceled' } }),
+      this.prisma.organization.count({ where: { subscriptionStatus: 'past_due' } }),
+    ]);
+
+    const plans = await this.prisma.platformPlan.findMany();
+    const planMap = new Map(plans.map((p) => [p.slug, p]));
+
+    let mrr = 0;
+    for (const org of orgs) {
+      if (org.subscriptionStatus === 'active' && org.subscriptionPlan) {
+        const plan = planMap.get(org.subscriptionPlan);
+        if (plan) mrr += Number(plan.monthlyPrice);
+      }
+    }
+
+    return {
+      mrr,
+      arr: mrr * 12,
+      trialOrgs,
+      activeOrgs,
+      canceledOrgs,
+      pastDueOrgs,
+      totalPayingOrgs: activeOrgs,
+      churnRate: orgs.length > 0 ? (canceledOrgs / orgs.length) * 100 : 0,
+    };
+  }
+
+  async getRevenueByMonth(months = 12) {
+    const result: any[] = await this.prisma.$queryRawUnsafe(`
+      SELECT
+        TO_CHAR(DATE_TRUNC('month', "currentPeriodEnd"), 'YYYY-MM') as period,
+        COUNT(*)::int as org_count
+      FROM organizations
+      WHERE "subscriptionStatus" = 'active'
+        AND "currentPeriodEnd" IS NOT NULL
+        AND "currentPeriodEnd" >= NOW() - INTERVAL '${Number(months)} months'
+      GROUP BY period
+      ORDER BY period DESC
+    `);
+    return result;
+  }
+
+  async getOrgsByPlan() {
+    const plans = await this.prisma.platformPlan.findMany({ orderBy: { order: 'asc' } });
+    const counts = await Promise.all(
+      plans.map(async (plan) => ({
+        planId: plan.id,
+        planName: plan.name,
+        planSlug: plan.slug,
+        count: await this.prisma.organization.count({
+          where: { subscriptionPlan: plan.slug, subscriptionStatus: 'active' },
+        }),
+        monthlyPrice: Number(plan.monthlyPrice),
+        mrr: 0, // filled below
+      })),
+    );
+    for (const c of counts) {
+      c.mrr = c.count * c.monthlyPrice;
+    }
+    return counts;
+  }
+
+  // ─── Assign plan to org (admin override) ───────────────────
+
+  async assignPlanToOrg(orgId: string, planSlug: string) {
+    return this.prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        subscriptionPlan: planSlug,
+        subscriptionStatus: 'active',
+      },
+    });
+  }
 }

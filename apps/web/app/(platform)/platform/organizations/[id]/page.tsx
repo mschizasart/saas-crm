@@ -69,6 +69,8 @@ export default function OrgDetailPage() {
   const [busy, setBusy] = useState(false);
   const [trialDays, setTrialDays] = useState(14);
   const [deleteInput, setDeleteInput] = useState('');
+  const [plans, setPlans] = useState<{ id: string; name: string; slug: string }[]>([]);
+  const [selectedPlanSlug, setSelectedPlanSlug] = useState<string>('');
 
   const token = () => (typeof window === 'undefined' ? null : localStorage.getItem('platform_token'));
 
@@ -104,6 +106,26 @@ export default function OrgDetailPage() {
     if (id) fetchOrg();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    const t = token();
+    if (!t) return;
+    fetch(`${API_BASE}/api/v1/platform/plans`, {
+      headers: { Authorization: `Bearer ${t}` },
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setPlans(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
+  const onAssignPlan = async () => {
+    if (!selectedPlanSlug) return;
+    const res = await doAction('/assign-plan', 'POST', { planSlug: selectedPlanSlug });
+    if (res?.ok) {
+      setActionMessage(`Plan "${selectedPlanSlug}" assigned`);
+      fetchOrg();
+    }
+  };
 
   const doAction = async (
     path: string,
@@ -354,6 +376,37 @@ export default function OrgDetailPage() {
               {actionMessage}
             </div>
           )}
+
+          {/* Assign Plan */}
+          <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5">
+            <h3 className="font-semibold text-gray-900 mb-1">Assign Subscription Plan</h3>
+            <p className="text-sm text-gray-500 mb-3">
+              Override this organization's plan. Current plan:{' '}
+              <span className="font-medium text-gray-900">{org.plan ?? '—'}</span> (status:{' '}
+              <span className="font-medium text-gray-900">{org.status}</span>)
+            </p>
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedPlanSlug}
+                onChange={(e) => setSelectedPlanSlug(e.target.value)}
+                className="flex-1 max-w-xs px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">— Select a plan —</option>
+                {plans.map((p) => (
+                  <option key={p.id} value={p.slug}>
+                    {p.name} ({p.slug})
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={onAssignPlan}
+                disabled={busy || !selectedPlanSlug}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60"
+              >
+                Assign
+              </button>
+            </div>
+          </div>
 
           {/* Impersonate */}
           <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5">
