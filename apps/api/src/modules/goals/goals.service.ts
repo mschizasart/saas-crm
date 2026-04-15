@@ -9,7 +9,6 @@ export interface CreateGoalDto {
   target: number;
   startDate: string;
   endDate: string;
-  // Not persisted (no userId column on schema) — kept for API compat; TODO add column.
   userId?: string;
   notificationWhenReached?: boolean;
 }
@@ -39,11 +38,12 @@ export class GoalsService {
     orgId: string,
     query: { userId?: string; status?: string; page?: number; limit?: number },
   ) {
-    const { status, page = 1, limit = 20 } = query;
+    const { userId, status, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
     return this.prisma.withOrganization(orgId, async (tx) => {
       const where: any = { organizationId: orgId };
+      if (userId) where.userId = userId;
 
       const [rows, total] = await Promise.all([
         tx.goal.findMany({
@@ -77,6 +77,7 @@ export class GoalsService {
       return tx.goal.create({
         data: {
           organizationId: orgId,
+          userId: dto.userId ?? null,
           name: dto.title,
           description: dto.description ?? null,
           type: dto.type,
@@ -141,12 +142,10 @@ export class GoalsService {
     return decorate(updated);
   }
 
-  async getMyGoals(orgId: string, _userId: string) {
-    // Schema has no per-user goals column yet — return all org goals for now.
-    // TODO: add userId field to Goal model and filter here.
+  async getMyGoals(orgId: string, userId: string) {
     return this.prisma.withOrganization(orgId, async (tx) => {
       const rows = await tx.goal.findMany({
-        where: { organizationId: orgId },
+        where: { organizationId: orgId, userId },
         orderBy: { createdAt: 'desc' },
       });
       return rows.map(decorate);

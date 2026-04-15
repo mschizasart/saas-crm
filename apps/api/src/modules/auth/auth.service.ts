@@ -13,6 +13,7 @@ import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
 import { PrismaService } from '../../database/prisma.service';
 import { RegisterOrganizationDto } from './dto/auth.dto';
+import { seedOrganization } from '../../../prisma/seed-org';
 
 @Injectable()
 export class AuthService {
@@ -310,6 +311,24 @@ export class AuthService {
       },
       include: { users: true },
     });
+
+    // Seed default roles, currencies, taxes, statuses, etc. for the new org
+    try {
+      await seedOrganization(this.prisma as any, org.id);
+      // Assign the Admin role to the creating user
+      const adminRole = await this.prisma.role.findFirst({
+        where: { organizationId: org.id, name: 'Admin' },
+      });
+      if (adminRole) {
+        await this.prisma.user.update({
+          where: { id: org.users[0].id },
+          data: { roleId: adminRole.id },
+        });
+      }
+    } catch (err) {
+      // Don't block registration if seeding fails — just log
+      console.error('Seed defaults failed for new org', org.id, err);
+    }
 
     this.events.emit('organization.registered', { org });
 

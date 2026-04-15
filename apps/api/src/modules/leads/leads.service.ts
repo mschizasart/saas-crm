@@ -208,18 +208,52 @@ export class LeadsService {
         },
       });
 
+      // Create primary contact (User type=contact) from the lead so the
+      // new client immediately has a reachable contact.
+      if (lead.email) {
+        const [firstName, ...rest] = (lead.name || '').split(' ');
+        const lastName = rest.join(' ') || '-';
+        const bcrypt = await import('bcrypt');
+        const hash = await bcrypt.hash(
+          Math.random().toString(36).slice(-12),
+          12,
+        );
+        // Avoid collisions on unique (organizationId, email)
+        const existing = await tx.user.findFirst({
+          where: { organizationId: orgId, email: lead.email },
+        });
+        if (!existing) {
+          await tx.user.create({
+            data: {
+              organizationId: orgId,
+              clientId: client.id,
+              email: lead.email,
+              password: hash,
+              passwordFormat: 'bcrypt',
+              firstName: firstName || lead.name || 'Contact',
+              lastName,
+              phone: lead.phone ?? null,
+              type: 'contact',
+              isPrimary: true,
+              active: true,
+            },
+          });
+        }
+      }
+
       await tx.lead.update({
         where: { id },
         data: {
-          clientId: client.id,
+          convertedToClientId: client.id,
           convertedAt: new Date(),
-          status: 'won',
         },
       });
 
       this.events.emit('lead.converted', {
+        lead,
         leadId: id,
         clientId: client.id,
+        client,
         orgId,
         createdBy,
       });

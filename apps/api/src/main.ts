@@ -28,6 +28,18 @@ async function bootstrap() {
     }),
   );
 
+  // Multipart (file uploads) — registered lazily so the API still
+  // boots if @fastify/multipart isn't installed in a given environment.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const multipart = require('@fastify/multipart');
+    await (app as any).register(multipart, {
+      limits: { fileSize: 50 * 1024 * 1024 },
+    });
+  } catch (e: any) {
+    console.warn(`@fastify/multipart not registered: ${e.message}`);
+  }
+
   // CORS
   app.enableCors({
     origin: process.env.APP_URL || 'http://localhost:3000',

@@ -1433,6 +1433,7 @@ model SurveyAnswer {
 model Goal {
   id             String   @id @default(uuid())
   organizationId String
+  userId         String?  // optional per-user ownership
   name           String
   description    String?
   type           String?  // "revenue" | "clients" | "invoices" | "custom"
@@ -1450,6 +1451,7 @@ model Goal {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+  @@index([organizationId, userId])
   @@map("goals")
 }
 

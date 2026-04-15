@@ -13,7 +13,12 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
-    "db:seed": "ts-node prisma/seed.ts"
+    "db:seed": "ts-node prisma/seed.ts",
+    "seed": "prisma db seed",
+    "migrate:perfex": "ts-node ../../scripts/migrate-from-perfex.ts"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.17",
@@ -32,7 +37,11 @@
     "@aws-sdk/client-s3": "^3.797.0",
     "@aws-sdk/s3-request-presigner": "^3.797.0",
     "@mollie/api-client": "^4.2.0",
+    "@paypal/checkout-server-sdk": "^1.0.3",
+    "@fastify/multipart": "^8.3.0",
     "@prisma/client": "^6.6.0",
+    "minio": "^8.0.1",
+    "twilio": "^5.3.0",
     "archiver": "^7.0.1",
     "bcrypt": "^5.1.1",
     "bullmq": "^5.52.2",
@@ -43,6 +52,7 @@
     "imapflow": "^1.0.174",
     "ioredis": "^5.6.1",
     "mailparser": "^3.7.1",
+    "mysql2": "^3.11.0",
     "nodemailer": "^6.10.1",
     "openai": "^4.97.0",
     "otplib": "^12.0.1",

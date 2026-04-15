@@ -8,7 +8,8 @@ import {
   FileCheck, CreditCard, DollarSign, FolderKanban, CheckSquare,
   Headphones, BookOpen, FileSignature, Receipt, Target,
   BarChart3, Settings, Bell, Building2, Zap, ClipboardList,
-  ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight, ListTodo, Calendar, Megaphone,
+  Activity, Tag, Lock,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -165,8 +166,17 @@ const NAV_ITEMS: NavItem[] = [
     icon: FolderKanban,
     children: [
       { label: 'All Projects', href: '/projects', icon: FolderKanban },
-      { label: 'Tasks', href: '/tasks', icon: CheckSquare },
       { label: 'Timesheets', href: '/timesheets', icon: ClipboardList },
+    ],
+  },
+  {
+    label: 'Productivity',
+    icon: CheckSquare,
+    children: [
+      { label: 'Tasks', href: '/tasks', icon: CheckSquare },
+      { label: 'Todos', href: '/todos', icon: ListTodo },
+      { label: 'Calendar', href: '/calendar', icon: Calendar },
+      { label: 'Goals', href: '/goals', icon: Target },
     ],
   },
   {
@@ -178,10 +188,32 @@ const NAV_ITEMS: NavItem[] = [
     ],
   },
   { label: 'Contracts', href: '/contracts', icon: FileSignature },
-  { label: 'Surveys', href: '/surveys', icon: ClipboardList },
-  { label: 'Goals', href: '/goals', icon: Target },
-  { label: 'Reports', href: '/reports', icon: BarChart3 },
-  { label: 'Staff', href: '/staff', icon: Users },
+  { label: 'Vault', href: '/vault', icon: Lock },
+  {
+    label: 'Marketing',
+    icon: Megaphone,
+    children: [
+      { label: 'Surveys', href: '/surveys', icon: ClipboardList },
+      { label: 'Announcements', href: '/announcements', icon: Megaphone },
+      { label: 'Knowledge Base', href: '/knowledge-base', icon: BookOpen },
+    ],
+  },
+  {
+    label: 'Reports',
+    icon: BarChart3,
+    children: [
+      { label: 'Reports Hub', href: '/reports', icon: BarChart3 },
+      { label: 'Activity Log', href: '/activity', icon: Activity },
+    ],
+  },
+  {
+    label: 'Admin',
+    icon: Users,
+    children: [
+      { label: 'Staff', href: '/staff', icon: Users },
+      { label: 'Roles', href: '/staff/roles', icon: Users },
+    ],
+  },
   {
     label: 'Settings',
     icon: Settings,
@@ -190,6 +222,7 @@ const NAV_ITEMS: NavItem[] = [
       { label: 'Email', href: '/settings/email', icon: Bell },
       { label: 'Payment Gateways', href: '/settings/payments', icon: CreditCard },
       { label: 'Custom Fields', href: '/settings/custom-fields', icon: FileText },
+      { label: 'Tags', href: '/settings/tags', icon: Tag },
       { label: 'Roles', href: '/settings/roles', icon: Users },
       { label: 'Email Templates', href: '/settings/email-templates', icon: FileCheck },
     ],

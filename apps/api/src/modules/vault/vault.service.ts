@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -24,6 +25,7 @@ export class VaultService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private activityLog: ActivityLogService,
   ) {
     const keyHex =
       this.config.get<string>('VAULT_ENCRYPTION_KEY') ??
@@ -116,15 +118,30 @@ export class VaultService {
     });
   }
 
-  async reveal(orgId: string, id: string): Promise<{ password: string }> {
-    return this.prisma.withOrganization(orgId, async (tx) => {
-      const entry = await tx.vaultEntry.findFirst({
+  async reveal(
+    orgId: string,
+    id: string,
+    userId?: string,
+  ): Promise<{ password: string }> {
+    const entry = await this.prisma.withOrganization(orgId, async (tx) => {
+      const found = await tx.vaultEntry.findFirst({
         where: { id, organizationId: orgId },
       });
-      if (!entry) throw new NotFoundException('Vault entry not found');
-      const password = entry.password ? this.decrypt(entry.password) : '';
-      return { password };
+      if (!found) throw new NotFoundException('Vault entry not found');
+      return found;
     });
+
+    // Audit log this sensitive action
+    await this.activityLog.log(orgId, {
+      userId,
+      action: 'vault.revealed',
+      entityType: 'vault_entry',
+      entityId: id,
+      description: `Revealed vault entry: ${entry.name ?? ''}`.trim(),
+    });
+
+    const password = entry.password ? this.decrypt(entry.password) : '';
+    return { password };
   }
 
   async create(orgId: string, dto: CreateVaultDto) {

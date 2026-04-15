@@ -146,7 +146,7 @@ export class InvoicesService {
       const number = await this.generateInvoiceNumber(orgId, tx);
       const totals = this.calculateTotals(dto.items, dto.discount ?? 0);
 
-      return tx.invoice.create({
+      const created = await tx.invoice.create({
         data: {
           organizationId: orgId,
           clientId: dto.clientId,
@@ -178,8 +178,21 @@ export class InvoicesService {
             },
           },
         },
+      });
+
+      // Re-fetch with client.contacts populated so event listeners (email) can use them
+      return tx.invoice.findUnique({
+        where: { id: created.id },
         include: {
-          client: { select: { id: true, company: true } },
+          client: {
+            include: {
+              contacts: {
+                where: { type: 'contact', active: true },
+                take: 5,
+              },
+            },
+          },
+          organization: { select: { id: true, name: true } },
           items: { orderBy: { order: 'asc' } },
         },
       });
@@ -307,7 +320,22 @@ export class InvoicesService {
     }
 
     const updated = await this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.invoice.update({ where: { id }, data: { status: 'sent' } });
+      await tx.invoice.update({ where: { id }, data: { status: 'sent' } });
+      return tx.invoice.findUnique({
+        where: { id },
+        include: {
+          client: {
+            include: {
+              contacts: {
+                where: { type: 'contact', active: true },
+                take: 5,
+              },
+            },
+          },
+          organization: { select: { id: true, name: true } },
+          items: { orderBy: { order: 'asc' } },
+        },
+      });
     });
 
     this.events.emit('invoice.sent', { invoice: updated, orgId });

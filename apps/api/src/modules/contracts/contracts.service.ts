@@ -175,9 +175,23 @@ export class ContractsService {
     }
 
     const updated = await this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.contract.update({
+      await tx.contract.update({
         where: { id },
         data: { status: 'pending_signature' },
+      });
+      return tx.contract.findUnique({
+        where: { id },
+        include: {
+          client: {
+            include: {
+              contacts: {
+                where: { type: 'contact', active: true },
+                take: 5,
+              },
+            },
+          },
+          organization: { select: { id: true, name: true } },
+        },
       });
     });
 

@@ -22,6 +22,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PdfService } from '../pdf/pdf.service';
 import { renderInvoiceHtml } from '../pdf/templates/invoice.template';
+import { EinvoiceService } from '../einvoice/einvoice.service';
 
 @ApiTags('Invoices')
 @Controller({ version: '1', path: 'invoices' })
@@ -31,7 +32,28 @@ export class InvoicesController {
   constructor(
     private service: InvoicesService,
     private pdfService: PdfService,
+    private einvoiceService: EinvoiceService,
   ) {}
+
+  // ─── Download UBL 2.1 E-Invoice XML ────────────────────────────────────────
+
+  @Get(':id/xml')
+  @Permissions('invoices.view')
+  @ApiOperation({ summary: 'Download invoice as UBL 2.1 e-invoice XML' })
+  async downloadXml(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const invoice = await this.service.findOne(org.id, id);
+    const xml = this.einvoiceService.generateUblXml(invoice, org);
+    res.setHeader('Content-Type', 'application/xml');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="invoice-${invoice.number}.xml"`,
+    );
+    res.send(xml);
+  }
 
   // ─── Download PDF ──────────────────────────────────────────────────────────
 

@@ -40,6 +40,10 @@ import { TodosModule } from './modules/todos/todos.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
 import { TagsModule } from './modules/tags/tags.module';
 import { VaultModule } from './modules/vault/vault.module';
+import { SmsModule } from './modules/sms/sms.module';
+import { EinvoiceModule } from './modules/einvoice/einvoice.module';
+import { GdprModule } from './modules/gdpr/gdpr.module';
+import { BackupsModule } from './modules/backups/backups.module';
 
 @Module({
   imports: [
@@ -95,6 +99,10 @@ import { VaultModule } from './modules/vault/vault.module';
     AnnouncementsModule,
     TagsModule,
     VaultModule,
+    SmsModule,
+    EinvoiceModule,
+    GdprModule,
+    BackupsModule,
   ],
 })
 export class AppModule {}

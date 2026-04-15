@@ -20,6 +20,7 @@ import {
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @ApiTags('Vault')
@@ -58,8 +59,12 @@ export class VaultController {
   @Permissions('clients.view')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reveal decrypted password for a vault entry' })
-  reveal(@CurrentOrg() org: any, @Param('id') id: string) {
-    return this.service.reveal(org.id, id);
+  reveal(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.service.reveal(org.id, id, user?.id);
   }
 
   @Post()
