@@ -67,8 +67,8 @@ export default function RegisterPage() {
 
       const { accessToken, refreshToken } = await res.json();
       // Store tokens and redirect
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', refreshToken);
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('refresh_token', refreshToken);
 
       toast.success('Account created! Welcome aboard.');
       router.push('/dashboard');
