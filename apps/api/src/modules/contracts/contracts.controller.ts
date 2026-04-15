@@ -12,7 +12,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { Response } from 'express';
+import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ContractsService, CreateContractDto } from './contracts.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
