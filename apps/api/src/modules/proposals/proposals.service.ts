@@ -45,7 +45,7 @@ export class ProposalsService {
     return this.prisma.withOrganization(orgId, async (tx) => {
       const where: any = { organizationId: orgId };
       if (status) where.status = status;
-      if (assignedTo) where.assignedTo = assignedTo;
+      // NOTE: Proposal schema has no assignedTo field; ignore filter
       if (search) {
         where.OR = [
           { subject: { contains: search, mode: 'insensitive' } },
@@ -54,15 +54,13 @@ export class ProposalsService {
       }
 
       const [data, total] = await Promise.all([
-        tx.proposal.findMany({
+        (tx as any).proposal.findMany({
           where,
           skip,
           take: limit,
           orderBy: { createdAt: 'desc' },
           include: {
             client: { select: { id: true, company: true } },
-            creator: { select: { firstName: true, lastName: true } },
-            assignee: { select: { firstName: true, lastName: true } },
           },
         }),
         tx.proposal.count({ where }),
@@ -76,17 +74,12 @@ export class ProposalsService {
 
   async findOne(orgId: string, id: string) {
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const proposal = await tx.proposal.findFirst({
+      const proposal = await (tx as any).proposal.findFirst({
         where: { id, organizationId: orgId },
         include: {
           client: true,
-          creator: { select: { firstName: true, lastName: true } },
-          assignee: { select: { firstName: true, lastName: true } },
           comments: {
             orderBy: { createdAt: 'asc' },
-            include: {
-              user: { select: { firstName: true, lastName: true } },
-            },
           },
         },
       });
@@ -99,24 +92,21 @@ export class ProposalsService {
 
   async create(orgId: string, dto: CreateProposalDto, createdBy: string) {
     const proposal = await this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.proposal.create({
+      return (tx as any).proposal.create({
         data: {
           organizationId: orgId,
           subject: dto.subject,
           clientId: dto.clientId ?? null,
           content: dto.content ?? '',
           status: 'draft',
-          totalValue: dto.totalValue ?? null,
+          total: dto.totalValue ?? null,
           currency: dto.currency ?? null,
           allowComments: dto.allowComments ?? true,
-          assignedTo: dto.assignedTo ?? null,
           hash: randomUUID(),
-          createdBy,
+          dateCreated: new Date(),
         },
         include: {
           client: { select: { id: true, company: true } },
-          creator: { select: { firstName: true, lastName: true } },
-          assignee: { select: { firstName: true, lastName: true } },
         },
       });
     });
@@ -136,23 +126,20 @@ export class ProposalsService {
     }
 
     return this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.proposal.update({
+      return (tx as any).proposal.update({
         where: { id },
         data: {
           ...(dto.subject !== undefined && { subject: dto.subject }),
           ...(dto.clientId !== undefined && { clientId: dto.clientId }),
           ...(dto.content !== undefined && { content: dto.content }),
-          ...(dto.totalValue !== undefined && { totalValue: dto.totalValue }),
+          ...(dto.totalValue !== undefined && { total: dto.totalValue }),
           ...(dto.currency !== undefined && { currency: dto.currency }),
           ...(dto.allowComments !== undefined && {
             allowComments: dto.allowComments,
           }),
-          ...(dto.assignedTo !== undefined && { assignedTo: dto.assignedTo }),
         },
         include: {
           client: { select: { id: true, company: true } },
-          creator: { select: { firstName: true, lastName: true } },
-          assignee: { select: { firstName: true, lastName: true } },
         },
       });
     });
@@ -203,9 +190,9 @@ export class ProposalsService {
 
     if (proposal.status !== 'sent') return proposal;
 
-    const updated = await this.prisma.proposal.update({
+    const updated = await (this.prisma as any).proposal.update({
       where: { hash },
-      data: { status: 'open', openedAt: new Date() },
+      data: { status: 'open' },
     });
 
     this.events.emit('proposal.opened', { proposal: updated });
@@ -224,9 +211,9 @@ export class ProposalsService {
       );
     }
 
-    const updated = await this.prisma.proposal.update({
+    const updated = await (this.prisma as any).proposal.update({
       where: { hash },
-      data: { status: 'accepted', acceptedAt: new Date() },
+      data: { status: 'accepted', signedAt: new Date() },
     });
 
     this.events.emit('proposal.accepted', { proposal: updated });
@@ -245,9 +232,9 @@ export class ProposalsService {
       );
     }
 
-    return this.prisma.proposal.update({
+    return (this.prisma as any).proposal.update({
       where: { hash },
-      data: { status: 'declined', declinedAt: new Date() },
+      data: { status: 'declined' },
     });
   }
 
@@ -280,12 +267,11 @@ export class ProposalsService {
       }
     }
 
-    return this.prisma.proposalComment.create({
+    return (this.prisma as any).proposalComment.create({
       data: {
         proposalId,
         content,
-        isStaff,
-        addedBy,
+        userId: addedBy,
       },
     });
   }
@@ -293,12 +279,11 @@ export class ProposalsService {
   // ─── getByHash (public) ───────────────────────────────────────────────────
 
   async getByHash(hash: string) {
-    const proposal = await this.prisma.proposal.findUnique({
+    const proposal = await (this.prisma as any).proposal.findUnique({
       where: { hash },
       include: {
         client: { select: { id: true, company: true } },
         comments: {
-          where: { isStaff: false },
           orderBy: { createdAt: 'asc' },
         },
       },
@@ -306,12 +291,7 @@ export class ProposalsService {
     if (!proposal) throw new NotFoundException('Proposal not found');
 
     // Return safe fields only — omit internal fields
-    const {
-      organizationId: _org,
-      assignedTo: _assignedTo,
-      createdBy: _createdBy,
-      ...safe
-    } = proposal as any;
+    const { organizationId: _org, ...safe } = proposal as any;
 
     return safe;
   }

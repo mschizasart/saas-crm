@@ -14,17 +14,44 @@ RUN pnpm install --no-frozen-lockfile --fetch-retries=5 --fetch-retry-mintimeout
 COPY apps/api ./apps/api
 RUN cd apps/api && ./node_modules/.bin/prisma generate 2>/dev/null || npx --yes prisma@6 generate
 
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-# Install chromium from Alpine edge repos (main Alpine has broken dependencies for chromium)
-RUN echo "https://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories && \
-    echo "https://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories && \
-    apk update && \
-    apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont || \
-    echo "Chromium install failed - PDF generation will be disabled"
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+# Install Chromium for Puppeteer PDF generation (Debian-based for reliable chromium support)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        chromium \
+        fonts-liberation \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libatk1.0-0 \
+        libc6 \
+        libcairo2 \
+        libcups2 \
+        libdbus-1-3 \
+        libdrm2 \
+        libexpat1 \
+        libgbm1 \
+        libglib2.0-0 \
+        libnspr4 \
+        libnss3 \
+        libpango-1.0-0 \
+        libx11-6 \
+        libx11-xcb1 \
+        libxcb1 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxext6 \
+        libxfixes3 \
+        libxkbcommon0 \
+        libxrandr2 \
+        libxshmfence1 \
+        ca-certificates \
+        fonts-noto-color-emoji && \
+    rm -rf /var/lib/apt/lists/*
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PUPPETEER_SKIP_DOWNLOAD=true
+RUN npm install -g pnpm@9
 # Copy installed dependencies and source (no compile — use ts-node --transpile-only at runtime)
 COPY --from=builder /app/package.json /app/pnpm-workspace.yaml ./
 COPY --from=builder /app/node_modules ./node_modules

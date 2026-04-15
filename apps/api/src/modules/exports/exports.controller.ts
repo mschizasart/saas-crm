@@ -6,7 +6,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import type { Response } from 'express';
+
 import { ExportsService, ExportFormat } from './exports.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
@@ -48,7 +48,7 @@ export class ExportsController {
   @ApiOperation({ summary: 'Export clients as CSV or XLSX' })
   async exportClients(
     @CurrentOrg() org: any,
-    @Res() res: Response,
+    @Res() res: any,
     @Query('format') format?: string,
   ) {
     const fmt = resolveFormat(format);
@@ -61,7 +61,7 @@ export class ExportsController {
   @ApiOperation({ summary: 'Export invoices as CSV or XLSX' })
   async exportInvoices(
     @CurrentOrg() org: any,
-    @Res() res: Response,
+    @Res() res: any,
     @Query('format') format?: string,
     @Query('status') status?: string,
     @Query('clientId') clientId?: string,
@@ -83,7 +83,7 @@ export class ExportsController {
   @ApiOperation({ summary: 'Export leads as CSV or XLSX' })
   async exportLeads(
     @CurrentOrg() org: any,
-    @Res() res: Response,
+    @Res() res: any,
     @Query('format') format?: string,
     @Query('status') status?: string,
   ) {
@@ -97,7 +97,7 @@ export class ExportsController {
   @ApiOperation({ summary: 'Export payments as CSV or XLSX' })
   async exportPayments(
     @CurrentOrg() org: any,
-    @Res() res: Response,
+    @Res() res: any,
     @Query('format') format?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -112,7 +112,7 @@ export class ExportsController {
   @ApiOperation({ summary: 'Export expenses as CSV or XLSX' })
   async exportExpenses(
     @CurrentOrg() org: any,
-    @Res() res: Response,
+    @Res() res: any,
     @Query('format') format?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,

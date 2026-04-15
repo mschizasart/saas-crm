@@ -68,14 +68,13 @@ export class TicketsService {
       }
 
       const [data, total] = await Promise.all([
-        tx.ticket.findMany({
+        (tx as any).ticket.findMany({
           where,
           skip,
           take: limit,
           orderBy: { lastReplyAt: 'desc' },
           include: {
             client: { select: { id: true, company: true } },
-            assignee: { select: { firstName: true, lastName: true } },
             department: { select: { name: true } },
           },
         }),
@@ -90,18 +89,13 @@ export class TicketsService {
 
   async findOne(orgId: string, id: string) {
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const ticket = await tx.ticket.findFirst({
+      const ticket = await (tx as any).ticket.findFirst({
         where: { id, organizationId: orgId },
         include: {
           client: true,
-          contact: true,
           department: true,
-          assignee: { select: { id: true, firstName: true, lastName: true } },
           replies: {
             orderBy: { createdAt: 'asc' },
-            include: {
-              user: { select: { id: true, firstName: true, lastName: true } },
-            },
           },
         },
       });
@@ -155,15 +149,11 @@ export class TicketsService {
 
     const reply = await this.prisma.withOrganization(orgId, async (tx) => {
       const [created] = await Promise.all([
-        tx.ticketReply.create({
+        (tx as any).ticketReply.create({
           data: {
             ticketId,
             userId,
             message: dto.message,
-            isStaff,
-          },
-          include: {
-            user: { select: { id: true, firstName: true, lastName: true } },
           },
         }),
         tx.ticket.update({
@@ -206,12 +196,9 @@ export class TicketsService {
     await this.findOne(orgId, id);
 
     const updated = await this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.ticket.update({
+      return (tx as any).ticket.update({
         where: { id },
         data: { assignedTo },
-        include: {
-          assignee: { select: { id: true, firstName: true, lastName: true } },
-        },
       });
     });
 

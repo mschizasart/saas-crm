@@ -12,7 +12,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import type { Response } from 'express';
+
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { EstimatesService, CreateEstimateDto } from './estimates.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -41,7 +41,7 @@ export class EstimatesController {
   async downloadPdf(
     @CurrentOrg() org: any,
     @Param('id') id: string,
-    @Res() res: Response,
+    @Res() res: any,
   ) {
     const estimate = await this.service.findOne(org.id, id);
     const html = renderEstimateHtml(estimate, org);

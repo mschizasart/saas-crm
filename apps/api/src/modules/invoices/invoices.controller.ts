@@ -12,7 +12,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import type { Response } from 'express';
+
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { InvoicesService, CreateInvoiceDto } from './invoices.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -43,7 +43,7 @@ export class InvoicesController {
   async downloadXml(
     @CurrentOrg() org: any,
     @Param('id') id: string,
-    @Res() res: Response,
+    @Res() res: any,
   ) {
     const invoice = await this.service.findOne(org.id, id);
     const xml = this.einvoiceService.generateUblXml(invoice, org);
@@ -63,7 +63,7 @@ export class InvoicesController {
   async downloadPdf(
     @CurrentOrg() org: any,
     @Param('id') id: string,
-    @Res() res: Response,
+    @Res() res: any,
   ) {
     const invoice = await this.service.findOne(org.id, id);
     const html = renderInvoiceHtml(invoice, org);

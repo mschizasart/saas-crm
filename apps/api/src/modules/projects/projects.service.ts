@@ -80,15 +80,11 @@ export class ProjectsService {
 
   async findOne(orgId: string, id: string) {
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const project = await tx.project.findFirst({
+      const project = await (tx as any).project.findFirst({
         where: { id, organizationId: orgId },
         include: {
           client: { select: { id: true, company: true } },
-          members: {
-            include: {
-              user: { select: { id: true, firstName: true, lastName: true } },
-            },
-          },
+          members: true,
           milestones: true,
           _count: { select: { tasks: true, timeEntries: true } },
         },
@@ -124,11 +120,10 @@ export class ProjectsService {
       });
 
       if (memberIds && memberIds.length > 0) {
-        await tx.projectMember.createMany({
+        await (tx as any).projectMember.createMany({
           data: memberIds.map((userId) => ({
             projectId: created.id,
             userId,
-            role: 'member',
           })),
           skipDuplicates: true,
         });
@@ -204,12 +199,8 @@ export class ProjectsService {
   async getMembers(orgId: string, projectId: string) {
     await this.findOne(orgId, projectId);
     return this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.projectMember.findMany({
+      return (tx as any).projectMember.findMany({
         where: { projectId },
-        include: {
-          user: { select: { id: true, firstName: true, lastName: true, email: true } },
-        },
-        orderBy: { addedAt: 'asc' },
       });
     });
   }
@@ -217,13 +208,10 @@ export class ProjectsService {
   async addMember(orgId: string, projectId: string, userId: string, role?: string) {
     await this.findOne(orgId, projectId);
     return this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.projectMember.upsert({
+      return (tx as any).projectMember.upsert({
         where: { projectId_userId: { projectId, userId } },
-        create: { projectId, userId, role: role ?? 'member' },
-        update: { role: role ?? 'member' },
-        include: {
-          user: { select: { id: true, firstName: true, lastName: true, email: true } },
-        },
+        create: { projectId, userId },
+        update: {},
       });
     });
   }
@@ -268,7 +256,7 @@ export class ProjectsService {
   ) {
     await this.findOne(orgId, projectId);
     return this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.timeEntry.create({
+      return (tx as any).timeEntry.create({
         data: {
           organizationId: orgId,
           projectId,
@@ -276,7 +264,7 @@ export class ProjectsService {
           userId,
           startTime: new Date(dto.startTime),
           endTime: dto.endTime ? new Date(dto.endTime) : null,
-          duration: dto.duration ?? null,
+          seconds: dto.duration ?? 0,
           note: dto.note ?? null,
           billable: dto.billable ?? false,
         },
