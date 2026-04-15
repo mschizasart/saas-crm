@@ -11,6 +11,9 @@ RUN pnpm install --no-frozen-lockfile --fetch-retries=5 --fetch-retry-mintimeout
 
 FROM base AS builder
 WORKDIR /app
+# Accept NEXT_PUBLIC_* as build args so Next.js bakes them into client bundles
+ARG NEXT_PUBLIC_API_URL=http://localhost:3001
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY . .
