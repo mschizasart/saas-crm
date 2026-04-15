@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { QueueModule } from './modules/queue/queue.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { PlatformModule } from './modules/platform/platform.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
@@ -64,6 +65,7 @@ import { BackupsModule } from './modules/backups/backups.module';
 
     // ─── Feature modules ──────────────────────────────────────
     AuthModule,
+    PlatformModule,
     OrganizationsModule,
     UsersModule,
     RolesModule,
