@@ -3,10 +3,11 @@ RUN npm install -g pnpm@9
 
 FROM base AS deps
 WORKDIR /app
+ENV NODE_OPTIONS="--dns-result-order=ipv4first"
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/ ./packages/
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --no-frozen-lockfile --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
 FROM base AS builder
 WORKDIR /app

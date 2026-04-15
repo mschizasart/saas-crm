@@ -5,10 +5,11 @@ FROM base AS builder
 WORKDIR /app
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV NODE_OPTIONS="--dns-result-order=ipv4first"
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* turbo.json ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/ ./packages/
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --no-frozen-lockfile --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 COPY apps/api ./apps/api
 RUN cd apps/api && ./node_modules/.bin/prisma generate 2>/dev/null || npx --yes prisma@6 generate
 RUN cd apps/api && node_modules/.bin/tsc --noEmitOnError false 2>&1 | tail -5 || true
