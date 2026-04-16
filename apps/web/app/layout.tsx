@@ -6,8 +6,8 @@ import { Toaster } from '@/components/ui/sonner';
 const inter = { className: 'font-sans' };
 
 export const metadata: Metadata = {
-  title: 'SaaS CRM',
-  description: 'Modern multi-tenant CRM platform',
+  title: 'AppoinlyCRM',
+  description: 'Modern multi-tenant CRM platform by Appoinly',
 };
 
 export default function RootLayout({

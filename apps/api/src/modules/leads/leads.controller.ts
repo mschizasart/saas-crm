@@ -169,6 +169,37 @@ export class LeadsController {
     return this.service.addNote(org.id, id, body.note, user.id);
   }
 
+  // ─── Emails ──────────────────────────────────────────────────
+
+  @Get(':id/emails')
+  @Permissions('leads.view')
+  @ApiOperation({ summary: 'List email history for a lead' })
+  getEmails(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.getEmails(org.id, id);
+  }
+
+  @Post(':id/emails')
+  @Permissions('leads.edit')
+  @ApiOperation({ summary: 'Send an email to a lead and log it' })
+  sendEmail(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Body() body: { to: string; subject: string; body: string },
+  ) {
+    return this.service.sendEmail(org.id, id, body);
+  }
+
+  @Post(':id/emails/log')
+  @Permissions('leads.edit')
+  @ApiOperation({ summary: 'Manually log an email exchange for a lead' })
+  logEmail(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Body() body: { direction?: string; subject?: string; body?: string; fromEmail?: string; toEmail?: string },
+  ) {
+    return this.service.logEmail(org.id, id, body);
+  }
+
   // ─── Lead Statuses Admin CRUD ─────────────────────────────────
 
   @Get('admin/statuses')

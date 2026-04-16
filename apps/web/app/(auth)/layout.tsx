@@ -6,9 +6,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 text-white">
             <div className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">C</span>
+              <span className="text-white font-bold text-lg">A</span>
             </div>
-            <span className="text-xl font-semibold">SaaS CRM</span>
+            <span className="text-xl font-semibold">AppoinlyCRM</span>
           </div>
         </div>
         {children}

@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts';
+import { useI18n } from '@/lib/i18n/use-i18n';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -290,6 +291,8 @@ function EmptyRow({ cols, message }: { cols: number; message: string }) {
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
+  const { t } = useI18n();
+
   // -- Stats state --
   const [totalClients, setTotalClients] = useState<number | null>(null);
   const [invoiceStats, setInvoiceStats] = useState<InvoiceStats | null>(null);
@@ -426,37 +429,37 @@ export default function DashboardPage() {
     loading: boolean;
   }[] = [
     {
-      label: 'Total Clients',
+      label: t('dashboard.totalClients'),
       value: totalClients !== null ? String(totalClients) : '—',
       accentClass: 'text-blue-600',
       href: '/clients',
       loading: loadingStats,
     },
     {
-      label: 'Outstanding Invoices',
+      label: t('dashboard.outstandingInvoices'),
       value: invoiceStats ? formatCurrency(invoiceStats.totalOutstanding, statCurrency) : '—',
       accentClass: 'text-amber-600',
       href: '/invoices',
       loading: loadingStats,
     },
     {
-      label: 'Overdue Invoices',
+      label: t('dashboard.overdueInvoices'),
       value: invoiceStats ? formatCurrency(invoiceStats.totalOverdue, statCurrency) : '—',
       accentClass: 'text-red-600',
       href: '/invoices',
       loading: loadingStats,
     },
     {
-      label: 'Open Tickets',
+      label: t('dashboard.openTickets'),
       value: ticketStats !== null ? String(ticketStats.open) : '—',
       accentClass: 'text-orange-600',
       href: '/tickets',
       loading: loadingStats,
     },
     {
-      label: 'Active Projects',
+      label: t('dashboard.activeProjects'),
       value: projectStats !== null ? String(projectStats.byStatus.in_progress) : '—',
-      sub: 'in progress',
+      sub: t('dashboard.inProgress'),
       accentClass: 'text-green-600',
       href: '/projects',
       loading: loadingStats,
@@ -476,8 +479,8 @@ export default function DashboardPage() {
       {/* Page header                                                            */}
       {/* -------------------------------------------------------------------- */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">Welcome back. Here&apos;s what&apos;s happening today.</p>
+        <h1 className="text-2xl font-bold text-gray-900">{t('dashboard.title')}</h1>
+        <p className="text-sm text-gray-500 mt-1">{t('dashboard.subtitle')}</p>
       </div>
 
       {/* -------------------------------------------------------------------- */}
@@ -508,7 +511,7 @@ export default function DashboardPage() {
         {/* Recent Invoices */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 pt-5 pb-1">
-            <SectionHeader title="Recent Invoices" href="/invoices" linkLabel="View all" />
+            <SectionHeader title={t('dashboard.recentInvoices')} href="/invoices" linkLabel={t('dashboard.viewAll')} />
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -524,7 +527,7 @@ export default function DashboardPage() {
                 {loadingInvoices ? (
                   Array.from({ length: 5 }).map((_, i) => <MiniRowSkeleton key={i} cols={4} />)
                 ) : recentInvoices.length === 0 ? (
-                  <EmptyRow cols={4} message="No invoices yet" />
+                  <EmptyRow cols={4} message={t('dashboard.noInvoices')} />
                 ) : (
                   recentInvoices.map((inv) => (
                     <tr
@@ -559,7 +562,7 @@ export default function DashboardPage() {
         {/* Recent Tickets */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 pt-5 pb-1">
-            <SectionHeader title="Open Tickets" href="/tickets" linkLabel="View all" />
+            <SectionHeader title={t('dashboard.openTickets')} href="/tickets" linkLabel={t('dashboard.viewAll')} />
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -574,7 +577,7 @@ export default function DashboardPage() {
                 {loadingTickets ? (
                   Array.from({ length: 5 }).map((_, i) => <MiniRowSkeleton key={i} cols={3} />)
                 ) : recentTickets.length === 0 ? (
-                  <EmptyRow cols={3} message="No open tickets" />
+                  <EmptyRow cols={3} message={t('dashboard.noTickets')} />
                 ) : (
                   recentTickets.map((ticket) => (
                     <tr
@@ -609,12 +612,12 @@ export default function DashboardPage() {
       {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <SectionHeader title="Revenue (last 6 months)" href="/reports/sales" linkLabel="Full report" />
+          <SectionHeader title={t('dashboard.revenue')} href="/reports/sales" linkLabel={t('dashboard.fullReport')} />
           <div style={{ width: '100%', height: 220 }}>
             {loadingRevenue ? (
               <div className="h-full bg-gray-50 rounded animate-pulse" />
             ) : revenueSeries.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8">No paid invoices yet.</p>
+              <p className="text-sm text-gray-400 text-center py-8">{t('dashboard.noRevenue')}</p>
             ) : (
               <ResponsiveContainer>
                 <BarChart data={revenueSeries}>
@@ -630,7 +633,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <SectionHeader title="Recent Activity" href="/activity" linkLabel="View all" />
+          <SectionHeader title={t('dashboard.recentActivity')} href="/activity" linkLabel={t('dashboard.viewAll')} />
           {loadingActivity ? (
             <div className="space-y-2">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -638,7 +641,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : activityItems.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">No recent activity.</p>
+            <p className="text-sm text-gray-400 py-4 text-center">{t('dashboard.noActivity')}</p>
           ) : (
             <ul className="space-y-2">
               {activityItems.map((a) => (
@@ -660,7 +663,7 @@ export default function DashboardPage() {
       {/* Leads by Stage                                                         */}
       {/* -------------------------------------------------------------------- */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <SectionHeader title="Leads by Stage" href="/leads" linkLabel="Open board" />
+        <SectionHeader title={t('dashboard.leadsByStage')} href="/leads" linkLabel={t('dashboard.openBoard')} />
 
         {loadingLeads ? (
           <div className="space-y-3">
@@ -673,7 +676,7 @@ export default function DashboardPage() {
             ))}
           </div>
         ) : leadColumns.length === 0 ? (
-          <p className="text-sm text-gray-400 py-4 text-center">No lead stages configured.</p>
+          <p className="text-sm text-gray-400 py-4 text-center">{t('dashboard.noLeadStages')}</p>
         ) : (
           <div className="space-y-3">
             {leadColumns.map((col, idx) => {
@@ -706,8 +709,8 @@ export default function DashboardPage() {
 
             {/* Legend: total leads */}
             <p className="text-xs text-gray-400 pt-1">
-              {leadColumns.reduce((sum, col) => sum + col.cards.length, 0)} leads across{' '}
-              {leadColumns.length} stage{leadColumns.length !== 1 ? 's' : ''}
+              {leadColumns.reduce((sum, col) => sum + col.cards.length, 0)} {t('dashboard.leadsAcross')}{' '}
+              {leadColumns.length} {leadColumns.length !== 1 ? t('dashboard.stages') : t('dashboard.stage')}
             </p>
           </div>
         )}

@@ -21,7 +21,9 @@ import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PdfService } from '../pdf/pdf.service';
-import { renderInvoiceHtml } from '../pdf/templates/invoice.template';
+import { renderInvoiceHtml as renderDefault } from '../pdf/templates/invoice.template';
+import { renderInvoiceHtml as renderModern } from '../pdf/templates/invoice-modern.template';
+import { renderInvoiceHtml as renderClassic } from '../pdf/templates/invoice-classic.template';
 import { EinvoiceService } from '../einvoice/einvoice.service';
 import { CreditNotesService } from '../credit-notes/credit-notes.service';
 
@@ -65,10 +67,23 @@ export class InvoicesController {
   async downloadPdf(
     @CurrentOrg() org: any,
     @Param('id') id: string,
-    @Res() res: any,
+    @Query('template') templateParam?: string,
+    @Res() res?: any,
   ) {
     const invoice = await this.service.findOne(org.id, id);
-    const html = renderInvoiceHtml(invoice, org);
+
+    // Determine which template to use: query param > org setting > default
+    const orgSettings = (org.settings ?? {}) as Record<string, any>;
+    const templateKey = templateParam || orgSettings.invoiceTemplate || 'default';
+
+    const templateMap: Record<string, (inv: any, org: any) => string> = {
+      default: renderDefault,
+      modern: renderModern,
+      classic: renderClassic,
+    };
+    const renderFn = templateMap[templateKey] ?? renderDefault;
+
+    const html = renderFn(invoice, org);
     const pdf = await this.pdfService.generatePdf(html);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(

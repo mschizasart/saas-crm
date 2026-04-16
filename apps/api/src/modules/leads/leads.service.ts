@@ -2,9 +2,12 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Inject,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EmailsService } from '../emails/emails.service';
 
 export interface CreateLeadDto {
   name: string;
@@ -44,6 +47,7 @@ export class LeadsService {
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
+    @Optional() private emailsService?: EmailsService,
   ) {}
 
   // ─── List / Find ────────────────────────────────────────────
@@ -400,6 +404,84 @@ export class LeadsService {
       }
       await tx.leadSource.delete({ where: { id } });
     });
+  }
+
+  // ─── Emails ─────────────────────────────────────────────────
+
+  async getEmails(orgId: string, leadId: string) {
+    await this.findOne(orgId, leadId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return (tx as any).leadEmail.findMany({
+        where: { leadId },
+        orderBy: { sentAt: 'desc' },
+      });
+    });
+  }
+
+  async logEmail(
+    orgId: string,
+    leadId: string,
+    dto: {
+      direction?: string;
+      subject?: string;
+      body?: string;
+      fromEmail?: string;
+      toEmail?: string;
+    },
+  ) {
+    await this.findOne(orgId, leadId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return (tx as any).leadEmail.create({
+        data: {
+          leadId,
+          direction: dto.direction ?? 'outbound',
+          subject: dto.subject ?? null,
+          body: dto.body ?? null,
+          fromEmail: dto.fromEmail ?? null,
+          toEmail: dto.toEmail ?? null,
+        },
+      });
+    });
+  }
+
+  async sendEmail(
+    orgId: string,
+    leadId: string,
+    dto: { to: string; subject: string; body: string },
+  ) {
+    const lead = await this.findOne(orgId, leadId);
+
+    // Send via EmailsService
+    if (this.emailsService) {
+      await this.emailsService.queue({
+        to: dto.to,
+        subject: dto.subject,
+        html: dto.body,
+      });
+    }
+
+    // Log the email
+    const email = await this.prisma.withOrganization(orgId, async (tx) => {
+      return (tx as any).leadEmail.create({
+        data: {
+          leadId,
+          direction: 'outbound',
+          subject: dto.subject,
+          body: dto.body,
+          toEmail: dto.to,
+        },
+      });
+    });
+
+    // Update last contact
+    await this.prisma.withOrganization(orgId, async (tx) => {
+      await tx.lead.update({
+        where: { id: leadId },
+        data: { lastContact: new Date() },
+      });
+    });
+
+    return email;
   }
 
   // ─── Web Form ────────────────────────────────────────────────

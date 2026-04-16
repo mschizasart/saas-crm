@@ -18,6 +18,16 @@ interface LeadActivity {
   createdAt: string;
 }
 
+interface LeadEmailRecord {
+  id: string;
+  direction: string;
+  subject: string | null;
+  body: string | null;
+  fromEmail: string | null;
+  toEmail: string | null;
+  sentAt: string;
+}
+
 interface Lead {
   id: string;
   name: string;
@@ -49,7 +59,7 @@ function authHeaders(): HeadersInit {
   return { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' };
 }
 
-type Tab = 'overview' | 'notes' | 'activity';
+type Tab = 'overview' | 'notes' | 'emails' | 'activity';
 
 export default function LeadDetailPage() {
   const params = useParams();
@@ -65,6 +75,15 @@ export default function LeadDetailPage() {
   const [newNote, setNewNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [converting, setConverting] = useState(false);
+
+  // Emails state
+  const [emails, setEmails] = useState<LeadEmailRecord[]>([]);
+  const [emailsLoading, setEmailsLoading] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [showLogModal, setShowLogModal] = useState(false);
+  const [emailForm, setEmailForm] = useState({ to: '', subject: '', body: '' });
+  const [logForm, setLogForm] = useState({ direction: 'outbound', subject: '', body: '', fromEmail: '', toEmail: '' });
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const fetchLead = useCallback(async () => {
     setLoading(true);
@@ -144,6 +163,58 @@ export default function LeadDetailPage() {
     }
   }
 
+  const fetchEmails = useCallback(async () => {
+    setEmailsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/leads/${id}/emails`, { headers: authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setEmails(Array.isArray(data) ? data : data.data ?? []);
+      }
+    } catch { /* ignore */ } finally { setEmailsLoading(false); }
+  }, [id]);
+
+  useEffect(() => {
+    if (tab === 'emails' && id) fetchEmails();
+  }, [tab, id, fetchEmails]);
+
+  async function handleSendEmail(e: FormEvent) {
+    e.preventDefault();
+    if (!emailForm.to || !emailForm.subject) return;
+    setSendingEmail(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/leads/${id}/emails`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(emailForm),
+      });
+      if (!res.ok) throw new Error('Send failed');
+      setShowSendModal(false);
+      setEmailForm({ to: '', subject: '', body: '' });
+      await fetchEmails();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Send failed');
+    } finally { setSendingEmail(false); }
+  }
+
+  async function handleLogEmail(e: FormEvent) {
+    e.preventDefault();
+    setSendingEmail(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/leads/${id}/emails/log`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(logForm),
+      });
+      if (!res.ok) throw new Error('Log failed');
+      setShowLogModal(false);
+      setLogForm({ direction: 'outbound', subject: '', body: '', fromEmail: '', toEmail: '' });
+      await fetchEmails();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Log failed');
+    } finally { setSendingEmail(false); }
+  }
+
   if (loading) {
     return (
       <div className="max-w-4xl animate-pulse">
@@ -201,7 +272,7 @@ export default function LeadDetailPage() {
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="flex gap-6">
-          {(['overview', 'notes', 'activity'] as Tab[]).map((t) => (
+          {(['overview', 'notes', 'emails', 'activity'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -310,6 +381,104 @@ export default function LeadDetailPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {tab === 'emails' && (
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <button onClick={() => { setEmailForm({ to: lead.email ?? '', subject: '', body: '' }); setShowSendModal(true); }} className="px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90">Send Email</button>
+            <button onClick={() => setShowLogModal(true)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Log Email</button>
+          </div>
+
+          {emailsLoading ? (
+            <div className="text-sm text-gray-400 text-center py-8">Loading...</div>
+          ) : emails.length === 0 ? (
+            <div className="text-sm text-gray-400 text-center py-8 bg-white rounded-xl border border-gray-100">No emails yet</div>
+          ) : (
+            <div className="space-y-2">
+              {emails.map((em) => (
+                <div key={em.id} className="bg-white rounded-xl border border-gray-100 p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${em.direction === 'inbound' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {em.direction === 'inbound' ? 'Received' : 'Sent'}
+                    </span>
+                    <span className="text-sm font-medium text-gray-800">{em.subject ?? '(no subject)'}</span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {em.direction === 'inbound' ? `From: ${em.fromEmail ?? '—'}` : `To: ${em.toEmail ?? '—'}`}
+                    {' '}· {new Date(em.sentAt).toLocaleString()}
+                  </div>
+                  {em.body && <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap line-clamp-3">{em.body}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Send Email Modal */}
+          {showSendModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowSendModal(false)}>
+              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Send Email</h3>
+                <form onSubmit={handleSendEmail} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
+                    <input type="email" value={emailForm.to} onChange={(e) => setEmailForm({ ...emailForm, to: e.target.value })} className={inputClass} required />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Subject</label>
+                    <input value={emailForm.subject} onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })} className={inputClass} required />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Body</label>
+                    <textarea rows={5} value={emailForm.body} onChange={(e) => setEmailForm({ ...emailForm, body: e.target.value })} className={inputClass} />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button type="button" onClick={() => setShowSendModal(false)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button type="submit" disabled={sendingEmail} className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50">{sendingEmail ? 'Sending...' : 'Send'}</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Log Email Modal */}
+          {showLogModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowLogModal(false)}>
+              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Log Email</h3>
+                <form onSubmit={handleLogEmail} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Direction</label>
+                    <select value={logForm.direction} onChange={(e) => setLogForm({ ...logForm, direction: e.target.value })} className={inputClass}>
+                      <option value="outbound">Sent (Outbound)</option>
+                      <option value="inbound">Received (Inbound)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
+                    <input value={logForm.fromEmail} onChange={(e) => setLogForm({ ...logForm, fromEmail: e.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
+                    <input value={logForm.toEmail} onChange={(e) => setLogForm({ ...logForm, toEmail: e.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Subject</label>
+                    <input value={logForm.subject} onChange={(e) => setLogForm({ ...logForm, subject: e.target.value })} className={inputClass} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Body</label>
+                    <textarea rows={4} value={logForm.body} onChange={(e) => setLogForm({ ...logForm, body: e.target.value })} className={inputClass} />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button type="button" onClick={() => setShowLogModal(false)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button type="submit" disabled={sendingEmail} className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50">{sendingEmail ? 'Saving...' : 'Log Email'}</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

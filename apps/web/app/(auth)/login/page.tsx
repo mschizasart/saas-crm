@@ -8,6 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { useI18n } from '@/lib/i18n/use-i18n';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -20,6 +21,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useI18n();
   const [showPassword, setShowPassword] = useState(false);
   const [requires2fa, setRequires2fa] = useState(false);
   const [tempToken, setTempToken] = useState('');
@@ -98,8 +100,8 @@ export default function LoginPage() {
   if (requires2fa) {
     return (
       <div className="bg-white rounded-2xl shadow-xl p-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Two-Factor Authentication</h2>
-        <p className="text-gray-500 mb-6">Enter the 6-digit code from your authenticator app.</p>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('auth.twoFactor')}</h2>
+        <p className="text-gray-500 mb-6">{t('auth.twoFactorPrompt')}</p>
         <input
           type="text"
           inputMode="numeric"
@@ -115,13 +117,13 @@ export default function LoginPage() {
           className="w-full py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
         >
           {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-          Verify
+          {t('auth.verify')}
         </button>
         <button
           onClick={() => setRequires2fa(false)}
           className="w-full mt-3 py-3 text-gray-600 hover:text-gray-900 text-sm"
         >
-          Back to login
+          {t('auth.backToLogin')}
         </button>
       </div>
     );
@@ -129,12 +131,12 @@ export default function LoginPage() {
 
   return (
     <div className="bg-white rounded-2xl shadow-xl p-8">
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome back</h2>
-      <p className="text-gray-500 mb-6">Sign in to your account</p>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('auth.welcomeBack')}</h2>
+      <p className="text-gray-500 mb-6">{t('auth.signInToAccount')}</p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('auth.email')}</label>
           <input
             {...register('email')}
             type="email"
@@ -149,9 +151,9 @@ export default function LoginPage() {
 
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="block text-sm font-medium text-gray-700">Password</label>
+            <label className="block text-sm font-medium text-gray-700">{t('auth.password')}</label>
             <Link href="/forgot-password" className="text-xs text-primary hover:underline">
-              Forgot password?
+              {t('auth.forgotPassword')}
             </Link>
           </div>
           <div className="relative">
@@ -181,14 +183,14 @@ export default function LoginPage() {
           className="w-full py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
         >
           {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-          Sign in
+          {t('auth.login')}
         </button>
       </form>
 
       <p className="mt-8 text-center text-sm text-gray-500">
-        New to SaaS CRM?{' '}
+        {t('auth.newUser')}{' '}
         <Link href="/register" className="text-primary font-medium hover:underline">
-          Start your free trial
+          {t('auth.startTrial')}
         </Link>
       </p>
     </div>

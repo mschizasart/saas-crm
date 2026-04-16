@@ -55,7 +55,7 @@ async function bootstrap() {
   // Swagger (dev only)
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()
-      .setTitle('SaaS CRM API')
+      .setTitle('AppoinlyCRM API')
       .setDescription('Multi-tenant CRM REST API')
       .setVersion('1.0')
       .addBearerAuth()

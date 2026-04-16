@@ -93,6 +93,7 @@ model Organization {
   savedItems         SavedItem[]
   predefinedReplies  PredefinedReply[]
   clockEntries       ClockEntry[]
+  newsfeedPosts      NewsfeedPost[]
 
   @@map("organizations")
 }
@@ -153,6 +154,7 @@ model User {
   timeEntries    TimeEntry[]
   activityLogs   ActivityLog[]
   clockEntries   ClockEntry[]
+  newsfeedPosts  NewsfeedPost[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -403,6 +405,7 @@ model Lead {
   status         LeadStatus?  @relation(fields: [statusId], references: [id])
   source         LeadSource?  @relation(fields: [sourceId], references: [id])
   notes          LeadNote[]
+  emails         LeadEmail[]
   customFieldValues CustomFieldValue[]
 
   @@index([organizationId])
@@ -420,6 +423,22 @@ model LeadNote {
   lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@map("lead_notes")
+}
+
+model LeadEmail {
+  id        String   @id @default(uuid())
+  leadId    String
+  direction String   @default("outbound") // "outbound" | "inbound"
+  subject   String?
+  body      String?
+  fromEmail String?
+  toEmail   String?
+  sentAt    DateTime @default(now())
+
+  lead      Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_emails")
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1700,4 +1719,23 @@ model PredefinedReply {
 
   @@index([organizationId])
   @@map("predefined_replies")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  NEWSFEED (Internal Activity Wall)
+// ═══════════════════════════════════════════════════════════════
+
+model NewsfeedPost {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  content        String
+  likes          Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("newsfeed_posts")
 }

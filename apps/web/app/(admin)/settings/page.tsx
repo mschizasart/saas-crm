@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useI18n } from '@/lib/i18n/use-i18n';
+import { SUPPORTED_LANGUAGES } from '@/lib/i18n/index';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -212,6 +214,7 @@ export default function SettingsPage() {
 
         {tab === 'appearance' && (
           <div className="space-y-4">
+            <LanguageSelector />
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Primary color</label>
               <input
@@ -243,6 +246,32 @@ export default function SettingsPage() {
                 <option value="24h">24-hour</option>
                 <option value="12h">12-hour</option>
               </select>
+            </div>
+
+            {/* Invoice PDF Template */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-2">Invoice PDF Template</label>
+              <div className="grid grid-cols-3 gap-3">
+                {([
+                  { value: 'default', label: 'Default', desc: 'Blue header with modern layout, colored table headers, clean design.' },
+                  { value: 'modern', label: 'Modern', desc: 'Minimal style with accent color bar on the left, large invoice number, alternating rows.' },
+                  { value: 'classic', label: 'Classic', desc: 'Traditional business style with bordered tables, formal layout, bank details area.' },
+                ] as const).map((tmpl) => (
+                  <button
+                    key={tmpl.value}
+                    type="button"
+                    onClick={() => setSetting('invoiceTemplate', tmpl.value)}
+                    className={`text-left p-3 rounded-lg border-2 transition-colors ${
+                      (settings.invoiceTemplate ?? 'default') === tmpl.value
+                        ? 'border-primary bg-primary/5'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="text-sm font-semibold text-gray-800 mb-1">{tmpl.label}</div>
+                    <p className="text-xs text-gray-500 leading-relaxed">{tmpl.desc}</p>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -297,6 +326,27 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function LanguageSelector() {
+  const { t, lang, setLang } = useI18n();
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-1">{t('settings.language')}</label>
+      <p className="text-xs text-gray-400 mb-2">{t('settings.languageDescription')}</p>
+      <select
+        value={lang}
+        onChange={(e) => setLang(e.target.value)}
+        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+      >
+        {SUPPORTED_LANGUAGES.map((l) => (
+          <option key={l.code} value={l.code}>
+            {l.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

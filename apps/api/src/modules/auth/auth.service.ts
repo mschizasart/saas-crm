@@ -200,7 +200,7 @@ export class AuthService {
     if (!user) throw new NotFoundException();
 
     const secret = authenticator.generateSecret();
-    const otpauth = authenticator.keyuri(user.email, 'SaaS CRM', secret);
+    const otpauth = authenticator.keyuri(user.email, 'AppoinlyCRM', secret);
     const qrCodeDataUrl = await QRCode.toDataURL(otpauth);
 
     // Store secret temporarily — only activate after verification
