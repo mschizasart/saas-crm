@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 
 export interface CreateClientDto {
   company: string;
@@ -40,6 +41,7 @@ export class ClientsService {
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
+    private activityLog: ActivityLogService,
   ) {}
 
   // ─── Clients CRUD ──────────────────────────────────────────
@@ -117,11 +119,25 @@ export class ClientsService {
     return client;
   }
 
-  async update(orgId: string, id: string, dto: Partial<CreateClientDto>) {
-    await this.findOne(orgId, id);
-    return this.prisma.withOrganization(orgId, async (tx) => {
+  async update(orgId: string, id: string, dto: Partial<CreateClientDto>, userId?: string) {
+    const existing = await this.findOne(orgId, id);
+    const updated = await this.prisma.withOrganization(orgId, async (tx) => {
       return tx.client.update({ where: { id }, data: dto });
     });
+
+    // Log field-level changes
+    if (userId) {
+      await this.activityLog.logEntityUpdate(
+        orgId,
+        userId,
+        'client',
+        id,
+        existing,
+        dto,
+      );
+    }
+
+    return updated;
   }
 
   async delete(orgId: string, id: string) {

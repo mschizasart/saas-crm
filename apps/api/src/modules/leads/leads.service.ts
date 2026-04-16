@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EmailsService } from '../emails/emails.service';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 
 export interface CreateLeadDto {
   name: string;
@@ -47,6 +48,7 @@ export class LeadsService {
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
+    private activityLog: ActivityLogService,
     @Optional() private emailsService?: EmailsService,
   ) {}
 
@@ -139,12 +141,24 @@ export class LeadsService {
     return lead;
   }
 
-  async update(orgId: string, id: string, dto: Partial<CreateLeadDto>) {
+  async update(orgId: string, id: string, dto: Partial<CreateLeadDto>, userId?: string) {
     const existing = await this.findOne(orgId, id);
 
     const updated = await this.prisma.withOrganization(orgId, async (tx) => {
       return tx.lead.update({ where: { id }, data: dto });
     });
+
+    // Log field-level changes
+    if (userId) {
+      await this.activityLog.logEntityUpdate(
+        orgId,
+        userId,
+        'lead',
+        id,
+        existing,
+        dto,
+      );
+    }
 
     if (dto.status && dto.status !== existing.status) {
       if (dto.status === 'won' || dto.status === 'lost') {

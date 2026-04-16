@@ -115,10 +115,11 @@ export class LeadsController {
   @ApiOperation({ summary: 'Update lead details' })
   update(
     @CurrentOrg() org: any,
+    @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() dto: Partial<CreateLeadDto>,
   ) {
-    return this.service.update(org.id, id, dto);
+    return this.service.update(org.id, id, dto, user.id);
   }
 
   @Delete(':id')

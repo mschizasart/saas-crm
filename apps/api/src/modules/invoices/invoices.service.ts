@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 
 export interface CreateInvoiceDto {
   clientId: string;
@@ -42,6 +43,7 @@ export class InvoicesService {
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
+    private activityLog: ActivityLogService,
   ) {}
 
   // ─── Private helpers ───────────────────────────────────────────────────────
@@ -204,7 +206,7 @@ export class InvoicesService {
 
   // ─── update ────────────────────────────────────────────────────────────────
 
-  async update(orgId: string, id: string, dto: Partial<CreateInvoiceDto>) {
+  async update(orgId: string, id: string, dto: Partial<CreateInvoiceDto>, userId?: string) {
     const existing = await this.findOne(orgId, id);
     if (existing.status !== 'draft') {
       throw new BadRequestException(
@@ -241,7 +243,7 @@ export class InvoicesService {
         });
       }
 
-      return tx.invoice.update({
+      const updated = await tx.invoice.update({
         where: { id },
         data: {
           ...(dto.clientId && { clientId: dto.clientId }),
@@ -267,6 +269,28 @@ export class InvoicesService {
           items: { orderBy: { order: 'asc' } },
         },
       });
+
+      // Log field-level changes
+      if (userId) {
+        const trackableFields: Record<string, any> = {};
+        if (dto.clientId) trackableFields.clientId = dto.clientId;
+        if (dto.date) trackableFields.date = dto.date;
+        if (dto.dueDate !== undefined) trackableFields.dueDate = dto.dueDate;
+        if (dto.notes !== undefined) trackableFields.notes = dto.notes;
+        if (dto.currency) trackableFields.currency = dto.currency;
+        if (dto.discount !== undefined) trackableFields.discount = dto.discount;
+
+        await this.activityLog.logEntityUpdate(
+          orgId,
+          userId,
+          'invoice',
+          id,
+          existing,
+          trackableFields,
+        );
+      }
+
+      return updated;
     });
   }
 

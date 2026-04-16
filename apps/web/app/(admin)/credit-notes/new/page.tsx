@@ -112,13 +112,32 @@ export default function NewCreditNotePage() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/api/v1/saved-items?search=${encodeURIComponent(query)}`, {
-        headers: authHeaders(),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSuggestions(Array.isArray(data) ? data : (data.data ?? []));
+      const [savedRes, productRes] = await Promise.all([
+        fetch(`${API_BASE}/api/v1/saved-items?search=${encodeURIComponent(query)}`, {
+          headers: authHeaders(),
+        }),
+        fetch(`${API_BASE}/api/v1/products/search?q=${encodeURIComponent(query)}`, {
+          headers: authHeaders(),
+        }),
+      ]);
+      let allItems: SavedItem[] = [];
+      if (savedRes.ok) {
+        const data = await savedRes.json();
+        allItems = Array.isArray(data) ? data : (data.data ?? []);
       }
+      if (productRes.ok) {
+        const products = await productRes.json();
+        const productItems = (Array.isArray(products) ? products : []).map((p: any) => ({
+          id: `product_${p.id}`,
+          description: p.name,
+          rate: Number(p.unitPrice),
+          taxRate: Number(p.taxRate ?? 0),
+          unit: p.unit,
+          longDescription: p.description,
+        }));
+        allItems = [...allItems, ...productItems];
+      }
+      setSuggestions(allItems);
     } catch { setSuggestions([]); }
   }, []);
 

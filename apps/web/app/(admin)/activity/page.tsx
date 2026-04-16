@@ -12,6 +12,12 @@ interface ActivityItem {
   relType: string | null;
   relId: string | null;
   description: string | null;
+  additionalData?: {
+    field?: string;
+    oldValue?: string | null;
+    newValue?: string | null;
+    [key: string]: any;
+  } | null;
   createdAt: string;
   user?: { id: string; firstName: string; lastName: string; avatar: string | null } | null;
 }
@@ -32,6 +38,77 @@ function initials(first = '', last = '') {
   return ((first[0] ?? '') + (last[0] ?? '')).toUpperCase() || '?';
 }
 
+function isFieldChange(action: string): boolean {
+  return action.endsWith('.field_changed');
+}
+
+interface GroupedActivity {
+  items: ActivityItem[];
+  isGroup: boolean;
+}
+
+function groupActivities(items: ActivityItem[]): GroupedActivity[] {
+  const result: GroupedActivity[] = [];
+  let i = 0;
+
+  while (i < items.length) {
+    const current = items[i];
+    if (isFieldChange(current.action)) {
+      // Collect consecutive field_changed entries for the same entity + user within 2 seconds
+      const group: ActivityItem[] = [current];
+      let j = i + 1;
+      while (j < items.length) {
+        const next = items[j];
+        if (
+          isFieldChange(next.action) &&
+          next.relType === current.relType &&
+          next.relId === current.relId &&
+          next.user?.id === current.user?.id &&
+          Math.abs(new Date(next.createdAt).getTime() - new Date(current.createdAt).getTime()) < 5000
+        ) {
+          group.push(next);
+          j++;
+        } else {
+          break;
+        }
+      }
+      result.push({ items: group, isGroup: group.length > 1 });
+      i = j;
+    } else {
+      result.push({ items: [current], isGroup: false });
+      i++;
+    }
+  }
+
+  return result;
+}
+
+function FieldChangeDiff({ item }: { item: ActivityItem }) {
+  const data = item.additionalData;
+  if (!data?.field) return <span>{item.description ?? item.action}</span>;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 text-sm">
+      <span className="text-gray-600 font-medium">{data.field}:</span>
+      {data.oldValue && data.oldValue !== 'null' ? (
+        <span className="line-through text-red-500 bg-red-50 px-1 rounded text-xs">
+          {data.oldValue === '(empty)' ? '(empty)' : data.oldValue}
+        </span>
+      ) : (
+        <span className="text-gray-400 text-xs">(empty)</span>
+      )}
+      <span className="text-gray-400">-&gt;</span>
+      {data.newValue && data.newValue !== 'null' ? (
+        <span className="text-green-700 bg-green-50 px-1 rounded text-xs">
+          {data.newValue === '(empty)' ? '(empty)' : data.newValue}
+        </span>
+      ) : (
+        <span className="text-gray-400 text-xs">(empty)</span>
+      )}
+    </div>
+  );
+}
+
 export default function ActivityPage() {
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [page, setPage] = useState(1);
@@ -41,6 +118,7 @@ export default function ActivityPage() {
   const [actionFilter, setActionFilter] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,42 +182,125 @@ export default function ActivityPage() {
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
         {loading ? (
-          <p className="p-6 text-sm text-gray-400">Loading…</p>
+          <p className="p-6 text-sm text-gray-400">Loading...</p>
         ) : items.length === 0 ? (
           <p className="p-6 text-sm text-gray-400">No activity yet.</p>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {items.map((a) => (
-              <li key={a.id} className="p-4 flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold flex-shrink-0">
-                  {a.user ? initials(a.user.firstName, a.user.lastName) : '•'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-800">
-                    {a.user && (
-                      <span className="font-medium">
-                        {a.user.firstName} {a.user.lastName}{' '}
-                      </span>
-                    )}
-                    {a.description ?? a.action}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {relativeTime(a.createdAt)}
-                    {a.relType && a.relId && (
-                      <>
-                        {' · '}
-                        <a
-                          href={`/${a.relType}s/${a.relId}`}
-                          className="text-primary hover:underline"
+            {groupActivities(items).map((group, gIdx) => {
+              const first = group.items[0];
+              const isExpanded = expandedGroups.has(gIdx);
+
+              if (group.isGroup) {
+                // Grouped field changes
+                const entityType = first.relType ?? 'entity';
+                return (
+                  <li key={`g-${gIdx}`} className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                        {first.user ? initials(first.user.firstName, first.user.lastName) : '.'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-800">
+                          {first.user && (
+                            <span className="font-medium">
+                              {first.user.firstName} {first.user.lastName}{' '}
+                            </span>
+                          )}
+                          updated {group.items.length} fields on {entityType}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {relativeTime(first.createdAt)}
+                          {first.relType && first.relId && (
+                            <>
+                              {' . '}
+                              <a
+                                href={`/${first.relType}s/${first.relId}`}
+                                className="text-primary hover:underline"
+                              >
+                                View {first.relType}
+                              </a>
+                            </>
+                          )}
+                        </p>
+                        <button
+                          onClick={() => {
+                            setExpandedGroups((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(gIdx)) next.delete(gIdx);
+                              else next.add(gIdx);
+                              return next;
+                            });
+                          }}
+                          className="text-xs text-primary hover:underline mt-1"
                         >
-                          View {a.relType}
-                        </a>
+                          {isExpanded ? 'Hide changes' : `Show ${group.items.length} changes`}
+                        </button>
+                        {isExpanded && (
+                          <div className="mt-2 space-y-1 pl-1 border-l-2 border-gray-100">
+                            {group.items.map((item) => (
+                              <div key={item.id} className="pl-2">
+                                <FieldChangeDiff item={item} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              }
+
+              // Single entry (may or may not be a field change)
+              const a = first;
+              return (
+                <li key={a.id} className="p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                    {a.user ? initials(a.user.firstName, a.user.lastName) : '.'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {isFieldChange(a.action) ? (
+                      <>
+                        <p className="text-sm text-gray-800">
+                          {a.user && (
+                            <span className="font-medium">
+                              {a.user.firstName} {a.user.lastName}{' '}
+                            </span>
+                          )}
+                          updated {a.relType ?? 'entity'}
+                        </p>
+                        <div className="mt-1">
+                          <FieldChangeDiff item={a} />
+                        </div>
                       </>
+                    ) : (
+                      <p className="text-sm text-gray-800">
+                        {a.user && (
+                          <span className="font-medium">
+                            {a.user.firstName} {a.user.lastName}{' '}
+                          </span>
+                        )}
+                        {a.description ?? a.action}
+                      </p>
                     )}
-                  </p>
-                </div>
-              </li>
-            ))}
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {relativeTime(a.createdAt)}
+                      {a.relType && a.relId && (
+                        <>
+                          {' . '}
+                          <a
+                            href={`/${a.relType}s/${a.relId}`}
+                            className="text-primary hover:underline"
+                          >
+                            View {a.relType}
+                          </a>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
         <div className="flex items-center justify-between p-4 border-t border-gray-100">

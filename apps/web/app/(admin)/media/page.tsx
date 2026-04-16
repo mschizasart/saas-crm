@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { FilePreviewModal } from '../../../components/file-preview-modal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -141,10 +142,6 @@ export default function MediaPage() {
   };
 
   const openFile = (f: MediaFile) => {
-    if (f.type === 'application/pdf') {
-      window.open(f.url, '_blank');
-      return;
-    }
     setPreview(f);
   };
 
@@ -287,44 +284,12 @@ export default function MediaPage() {
 
       {/* Preview modal */}
       {preview && (
-        <div
-          onClick={() => setPreview(null)}
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-auto p-4"
-          >
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="font-semibold">{preview.name}</h3>
-              <button
-                onClick={() => setPreview(null)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
-              </button>
-            </div>
-            {preview.type.startsWith('image/') ? (
-              <img
-                src={preview.url}
-                alt={preview.name}
-                className="max-w-full max-h-[70vh] mx-auto"
-              />
-            ) : (
-              <div className="text-center py-12">
-                <div className="text-6xl mb-4">{fileIcon(preview.type)}</div>
-                <a
-                  href={preview.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
-                >
-                  Open in new tab
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
+        <FilePreviewModal
+          url={preview.url}
+          fileName={preview.name}
+          mimeType={preview.type}
+          onClose={() => setPreview(null)}
+        />
       )}
     </div>
   );

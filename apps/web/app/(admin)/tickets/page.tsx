@@ -207,6 +207,8 @@ export default function TicketsPage() {
   const [stats, setStats]             = useState<TicketStats | null>(null);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState<string | null>(null);
+  const [selected, setSelected]       = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   const debouncedSearch = useDebounce(search, 350);
 
@@ -259,6 +261,54 @@ export default function TicketsPage() {
 
   const totalPages = meta?.total_pages ?? 1;
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === tickets.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(tickets.map((t) => t.id)));
+    }
+  };
+
+  const bulkClose = async () => {
+    if (!confirm(`Close ${selected.size} ticket(s)?`)) return;
+    setBulkLoading(true);
+    const token = getToken();
+    for (const id of selected) {
+      await fetch(`${API_BASE}/api/v1/tickets/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: 'closed' }),
+      }).catch(() => {});
+    }
+    setSelected(new Set());
+    setBulkLoading(false);
+    fetchTickets();
+  };
+
+  const bulkDelete = async () => {
+    if (!confirm(`Delete ${selected.size} ticket(s)?`)) return;
+    setBulkLoading(true);
+    const token = getToken();
+    for (const id of selected) {
+      await fetch(`${API_BASE}/api/v1/tickets/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
+    setSelected(new Set());
+    setBulkLoading(false);
+    fetchTickets();
+  };
+
   return (
     <div>
       {/* ------------------------------------------------------------------ */}
@@ -266,13 +316,21 @@ export default function TicketsPage() {
       {/* ------------------------------------------------------------------ */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Support Tickets</h1>
-        <Link
-          href="/tickets/new"
-          className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          <span className="text-lg leading-none">+</span>
-          New Ticket
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/tickets/kanban"
+            className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Kanban
+          </Link>
+          <Link
+            href="/tickets/new"
+            className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            <span className="text-lg leading-none">+</span>
+            New Ticket
+          </Link>
+        </div>
       </div>
 
       {/* ------------------------------------------------------------------ */}
@@ -375,6 +433,14 @@ export default function TicketsPage() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={tickets.length > 0 && selected.size === tickets.length}
+                    onChange={toggleAll}
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+                  />
+                </th>
                 <th className="px-4 py-3">#</th>
                 <th className="px-4 py-3">Subject</th>
                 <th className="px-4 py-3">Client</th>
@@ -390,7 +456,7 @@ export default function TicketsPage() {
                 Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
               ) : tickets.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-16 text-center">
+                  <td colSpan={9} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-2 text-gray-400">
                       <svg
                         className="w-10 h-10 opacity-40"
@@ -430,6 +496,14 @@ export default function TicketsPage() {
                     key={ticket.id}
                     className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
                   >
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(ticket.id)}
+                        onChange={() => toggleSelect(ticket.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+                      />
+                    </td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">
                       #{ticket.id.slice(0, 6).toUpperCase()}
                     </td>
@@ -510,6 +584,34 @@ export default function TicketsPage() {
           </div>
         )}
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 text-sm">
+          <span className="font-medium">{selected.size} selected</span>
+          <div className="w-px h-5 bg-gray-600" />
+          <button
+            onClick={bulkClose}
+            disabled={bulkLoading}
+            className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            Close Selected
+          </button>
+          <button
+            onClick={bulkDelete}
+            disabled={bulkLoading}
+            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            Delete
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="ml-2 text-gray-400 hover:text-white text-xs transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }

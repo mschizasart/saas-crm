@@ -114,6 +114,8 @@ export default function ClientsPage() {
   const [meta, setMeta] = useState<ClientsResponse['meta'] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   const debouncedSearch = useDebounce(search, 350);
 
@@ -153,6 +155,61 @@ export default function ClientsPage() {
   }, [fetchClients]);
 
   const totalPages = meta?.total_pages ?? 1;
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === clients.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(clients.map((c) => c.id)));
+    }
+  };
+
+  const bulkDelete = async () => {
+    if (!confirm(`Delete ${selected.size} client(s)?`)) return;
+    setBulkLoading(true);
+    const token = getToken();
+    for (const id of selected) {
+      await fetch(`${API_BASE}/api/v1/clients/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
+    setSelected(new Set());
+    setBulkLoading(false);
+    fetchClients();
+  };
+
+  const bulkToggleActive = async () => {
+    setBulkLoading(true);
+    const token = getToken();
+    for (const id of selected) {
+      const client = clients.find((c) => c.id === id);
+      if (!client) continue;
+      await fetch(`${API_BASE}/api/v1/clients/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ is_active: !client.is_active }),
+      }).catch(() => {});
+    }
+    setSelected(new Set());
+    setBulkLoading(false);
+    fetchClients();
+  };
+
+  const bulkExport = () => {
+    const token = getToken();
+    const ids = Array.from(selected).join(',');
+    window.open(`${API_BASE}/api/v1/exports/clients?format=xlsx&ids=${ids}&token=${token}`, '_blank');
+  };
 
   return (
     <div>
@@ -204,9 +261,47 @@ export default function ClientsPage() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Table card                                                           */}
+      {/* Mobile card view                                                     */}
       {/* ------------------------------------------------------------------ */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="md:hidden space-y-3">
+        {error && (
+          <div className="px-4 py-3 bg-red-50 border border-red-100 text-sm text-red-600 rounded-lg">
+            {error} — <button className="underline" onClick={fetchClients}>retry</button>
+          </div>
+        )}
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 animate-pulse">
+              <div className="h-4 bg-gray-100 rounded w-3/4 mb-2" />
+              <div className="h-3 bg-gray-100 rounded w-1/2" />
+            </div>
+          ))
+        ) : clients.length === 0 ? (
+          <div className="text-center py-12 text-gray-400 text-sm">
+            {search ? `No clients match "${search}"` : 'No clients found'}
+          </div>
+        ) : (
+          clients.map((client) => (
+            <Link key={client.id} href={`/clients/${client.id}`} className="block bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-gray-200 transition-colors">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900 truncate">{client.company_name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{client.phone ?? 'No phone'}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {[client.city, client.country].filter(Boolean).join(', ') || 'No location'}
+                  </p>
+                </div>
+                <ActiveBadge active={client.is_active} />
+              </div>
+            </Link>
+          ))
+        )}
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Table card (desktop)                                                 */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="hidden md:block bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         {error && (
           <div className="px-4 py-3 bg-red-50 border-b border-red-100 text-sm text-red-600">
             {error} —{' '}
@@ -220,6 +315,14 @@ export default function ClientsPage() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={clients.length > 0 && selected.size === clients.length}
+                    onChange={toggleAll}
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+                  />
+                </th>
                 <th className="px-4 py-3">Company</th>
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Website</th>
@@ -233,7 +336,7 @@ export default function ClientsPage() {
                 Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
               ) : clients.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-16 text-center">
+                  <td colSpan={7} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-2 text-gray-400">
                       <svg className="w-10 h-10 opacity-40" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 21h16.5M4.5 3h15l-.75 12H5.25L4.5 3zm3.75 12V9m3.75 6V9m3.75 6V9" />
@@ -255,6 +358,14 @@ export default function ClientsPage() {
                     key={client.id}
                     className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
                   >
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(client.id)}
+                        onChange={() => toggleSelect(client.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+                      />
+                    </td>
                     <td className="px-4 py-3 font-medium text-gray-900">
                       {client.company_name}
                     </td>
@@ -336,6 +447,41 @@ export default function ClientsPage() {
           </div>
         )}
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 text-sm">
+          <span className="font-medium">{selected.size} selected</span>
+          <div className="w-px h-5 bg-gray-600" />
+          <button
+            onClick={bulkDelete}
+            disabled={bulkLoading}
+            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            Delete
+          </button>
+          <button
+            onClick={bulkToggleActive}
+            disabled={bulkLoading}
+            className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            Toggle Active
+          </button>
+          <button
+            onClick={bulkExport}
+            disabled={bulkLoading}
+            className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            Export
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="ml-2 text-gray-400 hover:text-white text-xs transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }

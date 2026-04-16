@@ -82,4 +82,20 @@ export class ReportsController {
   ) {
     return this.service.getTicketsReport(org.id, { from, to });
   }
+
+  @Get('profit-loss')
+  @Permissions('reports.view')
+  @ApiOperation({ summary: 'Profit & Loss report (revenue, expenses, net profit, tax estimate)' })
+  profitLoss(
+    @CurrentOrg() org: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('taxPercent') taxPercent?: string,
+  ) {
+    return this.service.getProfitLossReport(org.id, {
+      from,
+      to,
+      taxPercent: taxPercent ? Number(taxPercent) : undefined,
+    });
+  }
 }

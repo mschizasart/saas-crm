@@ -195,6 +195,8 @@ export default function InvoicesPage() {
   const [loadingStats, setLoadingStats] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null); // invoice id
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   // Reset page when filter changes
   useEffect(() => {
@@ -292,6 +294,60 @@ export default function InvoicesPage() {
   const totalPages = meta?.total_pages ?? 1;
   const statCurrency = stats?.currency ?? 'USD';
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === invoices.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(invoices.map((inv) => inv.id)));
+    }
+  };
+
+  const bulkDeleteDraft = async () => {
+    const drafts = invoices.filter((i) => selected.has(i.id) && i.status === 'draft');
+    if (drafts.length === 0) { alert('Only draft invoices can be bulk deleted.'); return; }
+    if (!confirm(`Delete ${drafts.length} draft invoice(s)?`)) return;
+    setBulkLoading(true);
+    const token = getToken();
+    for (const inv of drafts) {
+      await fetch(`${API_BASE}/api/v1/invoices/${inv.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
+    setSelected(new Set());
+    setBulkLoading(false);
+    fetchInvoices();
+  };
+
+  const bulkMarkSent = async () => {
+    setBulkLoading(true);
+    const token = getToken();
+    for (const id of selected) {
+      await fetch(`${API_BASE}/api/v1/invoices/${id}/send`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
+    setSelected(new Set());
+    setBulkLoading(false);
+    fetchInvoices();
+  };
+
+  const bulkExport = () => {
+    const token = getToken();
+    const ids = Array.from(selected).join(',');
+    window.open(`${API_BASE}/api/v1/exports/invoices?format=xlsx&ids=${ids}&token=${token}`, '_blank');
+  };
+
   return (
     <div>
       {/* ------------------------------------------------------------------ */}
@@ -360,9 +416,51 @@ export default function InvoicesPage() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Table card                                                           */}
+      {/* Mobile card view                                                     */}
       {/* ------------------------------------------------------------------ */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="md:hidden space-y-3">
+        {error && (
+          <div className="px-4 py-3 bg-red-50 border border-red-100 text-sm text-red-600 rounded-lg">
+            {error} — <button className="underline" onClick={fetchInvoices}>retry</button>
+          </div>
+        )}
+        {loadingList ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 animate-pulse">
+              <div className="h-4 bg-gray-100 rounded w-1/2 mb-2" />
+              <div className="h-3 bg-gray-100 rounded w-3/4" />
+            </div>
+          ))
+        ) : invoices.length === 0 ? (
+          <div className="text-center py-12 text-gray-400 text-sm">
+            No {activeTab !== 'all' ? `${activeTab} ` : ''}invoices found
+          </div>
+        ) : (
+          invoices.map((invoice) => {
+            const isOverdue = invoice.status !== 'paid' && invoice.status !== 'cancelled' && new Date(invoice.due_date) < new Date();
+            return (
+              <Link key={invoice.id} href={`/invoices/${invoice.id}`} className="block bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-gray-200 transition-colors">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900">{invoice.invoice_number}</p>
+                    <p className="text-xs text-gray-500 truncate">{invoice.client_name}</p>
+                  </div>
+                  <StatusBadge status={invoice.status} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-400">Due: {formatDate(invoice.due_date)}{isOverdue && <span className="ml-1 text-red-500 font-semibold">OVERDUE</span>}</span>
+                  <span className="font-semibold text-gray-900 text-sm">{formatCurrency(invoice.total, invoice.currency)}</span>
+                </div>
+              </Link>
+            );
+          })
+        )}
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Table card (desktop)                                                 */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="hidden md:block bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         {error && (
           <div className="px-4 py-3 bg-red-50 border-b border-red-100 text-sm text-red-600">
             {error} —{' '}
@@ -376,6 +474,14 @@ export default function InvoicesPage() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={invoices.length > 0 && selected.size === invoices.length}
+                    onChange={toggleAll}
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+                  />
+                </th>
                 <th className="px-4 py-3">Invoice #</th>
                 <th className="px-4 py-3">Client</th>
                 <th className="px-4 py-3">Date</th>
@@ -390,7 +496,7 @@ export default function InvoicesPage() {
                 Array.from({ length: 8 }).map((_, i) => <TableRowSkeleton key={i} />)
               ) : invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center">
+                  <td colSpan={8} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-2 text-gray-400">
                       <svg
                         className="w-10 h-10 opacity-40"
@@ -427,6 +533,14 @@ export default function InvoicesPage() {
                       key={invoice.id}
                       className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
                     >
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(invoice.id)}
+                          onChange={() => toggleSelect(invoice.id)}
+                          className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+                        />
+                      </td>
                       <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
                         <Link
                           href={`/invoices/${invoice.id}`}
@@ -524,6 +638,41 @@ export default function InvoicesPage() {
           </div>
         )}
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 text-sm">
+          <span className="font-medium">{selected.size} selected</span>
+          <div className="w-px h-5 bg-gray-600" />
+          <button
+            onClick={bulkDeleteDraft}
+            disabled={bulkLoading}
+            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            Delete Draft
+          </button>
+          <button
+            onClick={bulkMarkSent}
+            disabled={bulkLoading}
+            className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            Mark as Sent
+          </button>
+          <button
+            onClick={bulkExport}
+            disabled={bulkLoading}
+            className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            Export
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="ml-2 text-gray-400 hover:text-white text-xs transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }

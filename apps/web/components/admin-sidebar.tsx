@@ -9,11 +9,13 @@ import {
   Headphones, BookOpen, FileSignature, Receipt, Target,
   BarChart3, Settings, Bell, Building2, Zap, ClipboardList,
   ChevronDown, ChevronRight, ListTodo, Calendar, Megaphone,
-  Activity, Tag, Lock, MessageCircle,
+  Activity, Tag, Lock, MessageCircle, Workflow, Webhook, Key, CalendarCheck, Package, X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
 import { useI18n } from '@/lib/i18n/use-i18n';
+import { useTheme } from '@/lib/theme';
+import { Moon, Sun, Search } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -192,6 +194,8 @@ function useNavItems(): NavItem[] {
         { label: t('nav.knowledgeBase'), href: '/knowledge-base', icon: BookOpen },
       ],
     },
+    { label: 'Appointments', href: '/appointments', icon: CalendarCheck },
+    { label: 'Products', href: '/products', icon: Package },
     { label: t('nav.contracts'), href: '/contracts', icon: FileSignature },
     { label: t('nav.vault'), href: '/vault', icon: Lock },
     {
@@ -235,6 +239,9 @@ function useNavItems(): NavItem[] {
         { label: t('nav.leadSources'), href: '/settings/lead-sources', icon: UserCircle },
         { label: t('nav.emailTemplates'), href: '/settings/email-templates', icon: FileCheck },
         { label: t('nav.paymentModes'), href: '/settings/payment-modes', icon: CreditCard },
+        { label: 'Automations', href: '/settings/automations', icon: Workflow },
+        { label: 'Webhooks', href: '/settings/webhooks', icon: Webhook },
+        { label: 'API Keys', href: '/settings/api-keys', icon: Key },
       ],
     },
   ];
@@ -301,9 +308,10 @@ function NavItemRow({ item, depth = 0 }: { item: NavItem; depth?: number }) {
   );
 }
 
-export function AdminSidebar() {
+export function AdminSidebar({ onClose }: { onClose?: () => void } = {}) {
   const { t } = useI18n();
   const navItems = useNavItems();
+  const { dark, toggle } = useTheme();
 
   return (
     <aside className="w-60 flex-shrink-0 bg-sidebar text-sidebar-foreground flex flex-col h-screen overflow-y-auto">
@@ -314,6 +322,31 @@ export function AdminSidebar() {
         </div>
         <span className="font-semibold text-sidebar-foreground flex-1">AppoinlyCRM</span>
         <NotificationBell />
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="p-1 rounded-md hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground md:hidden"
+            aria-label="Close menu"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Search hint */}
+      <div className="px-3 pt-3 pb-1">
+        <button
+          onClick={() => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
+          }}
+          className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors border border-sidebar-border"
+        >
+          <Search className="w-3.5 h-3.5" />
+          <span className="flex-1 text-left">Search...</span>
+          <kbd className="text-[10px] px-1 py-0.5 rounded bg-sidebar-accent text-sidebar-foreground/40">
+            {typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent) ? '\u2318' : 'Ctrl+'}K
+          </kbd>
+        </button>
       </div>
 
       {/* Nav */}
@@ -323,8 +356,19 @@ export function AdminSidebar() {
         ))}
       </nav>
 
-      {/* Trial banner */}
-      <div className="px-3 pb-4">
+      {/* Bottom bar: dark mode toggle + trial */}
+      <div className="px-3 pb-4 space-y-3">
+        {/* Dark mode toggle */}
+        <button
+          onClick={toggle}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          <span>{dark ? 'Light Mode' : 'Dark Mode'}</span>
+        </button>
+
+        {/* Trial banner */}
         <div className="bg-sidebar-accent rounded-lg p-3">
           <p className="text-xs font-medium text-sidebar-foreground">{t('trial.daysLeft')}</p>
           <p className="text-xs text-sidebar-foreground/60 mt-0.5">{t('trial.upgradeMessage')}</p>

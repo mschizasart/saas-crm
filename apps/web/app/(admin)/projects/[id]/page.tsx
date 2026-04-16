@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { FilePreviewModal } from '../../../../components/file-preview-modal';
 
 // ────────────────────────────────────────────────────────────────
 //  Types
@@ -161,6 +162,7 @@ export default function ProjectDetailPage() {
   const [filesLoading, setFilesLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewFile, setPreviewFile] = useState<{ url: string; fileName: string; mimeType: string } | null>(null);
 
   // Discussions state
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
@@ -340,6 +342,23 @@ export default function ProjectDetailPage() {
       }
     } catch {
       window.open(file.fileUrl, '_blank');
+    }
+  }
+
+  async function handlePreviewFile(file: ProjectFile) {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/storage/url?path=${encodeURIComponent(file.fileUrl)}`, {
+        headers: authHeaders(),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const url = json.url ?? json.data?.url ?? file.fileUrl;
+        setPreviewFile({ url, fileName: file.fileName, mimeType: file.mimeType ?? 'application/octet-stream' });
+      } else {
+        setPreviewFile({ url: file.fileUrl, fileName: file.fileName, mimeType: file.mimeType ?? 'application/octet-stream' });
+      }
+    } catch {
+      setPreviewFile({ url: file.fileUrl, fileName: file.fileName, mimeType: file.mimeType ?? 'application/octet-stream' });
     }
   }
 
@@ -758,11 +777,28 @@ export default function ProjectDetailPage() {
                 <tbody>
                   {files.map((f) => (
                     <tr key={f.id} className="border-t border-gray-100">
-                      <td className="px-4 py-3 text-gray-900 font-medium">{f.fileName}</td>
+                      <td className="px-4 py-3 text-gray-900 font-medium">
+                        <button
+                          onClick={() => handlePreviewFile(f)}
+                          className="text-left hover:text-primary transition-colors"
+                        >
+                          {f.fileName}
+                        </button>
+                      </td>
                       <td className="px-4 py-3 text-gray-600">{formatBytes(f.fileSize)}</td>
                       <td className="px-4 py-3 text-gray-600">{new Date(f.createdAt).toLocaleDateString()}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handlePreviewFile(f)}
+                            className="p-1 text-gray-400 hover:text-primary"
+                            title="Preview"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </button>
                           <button
                             onClick={() => handleDownloadFile(f)}
                             className="p-1 text-gray-400 hover:text-primary"
@@ -922,6 +958,16 @@ export default function ProjectDetailPage() {
             </ul>
           )}
         </div>
+      )}
+
+      {/* ─── File Preview Modal ──────────────────────────────────── */}
+      {previewFile && (
+        <FilePreviewModal
+          url={previewFile.url}
+          fileName={previewFile.fileName}
+          mimeType={previewFile.mimeType}
+          onClose={() => setPreviewFile(null)}
+        />
       )}
 
       {/* ─── Time Entries ───────────────────────────────────────── */}

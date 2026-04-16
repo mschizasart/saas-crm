@@ -123,6 +123,9 @@ export default function InvoiceDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showActivity, setShowActivity] = useState(false);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -146,6 +149,18 @@ export default function InvoiceDetailPage() {
   useEffect(() => {
     fetchInvoice();
   }, [fetchInvoice]);
+
+  useEffect(() => {
+    if (!showActivity) return;
+    setActivitiesLoading(true);
+    fetch(`${API_BASE}/api/v1/activity-log/entity/invoice/${invoiceId}`, {
+      headers: authHeaders(),
+    })
+      .then((r) => r.json())
+      .then((json) => setActivities(Array.isArray(json) ? json : json.data ?? []))
+      .catch(() => setActivities([]))
+      .finally(() => setActivitiesLoading(false));
+  }, [showActivity, invoiceId]);
 
   // ── Action helpers ─────────────────────────────────────────────────────────
 
@@ -381,6 +396,70 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
       )}
+
+      {/* ── Activity ───────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+        <button
+          onClick={() => setShowActivity((v) => !v)}
+          className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+        >
+          <h2 className="text-sm font-semibold text-gray-700">Activity Log</h2>
+          <svg
+            className={`w-4 h-4 text-gray-400 transition-transform ${showActivity ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
+        {showActivity && (
+          <div className="border-t border-gray-100">
+            {activitiesLoading ? (
+              <p className="p-4 text-sm text-gray-400">Loading...</p>
+            ) : activities.length === 0 ? (
+              <p className="p-4 text-sm text-gray-400 text-center">No activity recorded.</p>
+            ) : (
+              <ul className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+                {activities.map((a: any) => (
+                  <li key={a.id} className="px-4 py-3 flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-semibold flex-shrink-0">
+                      {a.user
+                        ? ((a.user.firstName?.[0] ?? '') + (a.user.lastName?.[0] ?? '')).toUpperCase() || '?'
+                        : '.'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      {a.action?.endsWith('.field_changed') && a.additionalData?.field ? (
+                        <>
+                          <p className="text-xs text-gray-700">
+                            {a.user && <span className="font-medium">{a.user.firstName} {a.user.lastName} </span>}
+                            changed <span className="font-medium">{a.additionalData.field}</span>
+                          </p>
+                          <div className="flex items-center gap-1 mt-0.5 text-xs">
+                            <span className="line-through text-red-500 bg-red-50 px-1 rounded">
+                              {a.additionalData.oldValue ?? '(empty)'}
+                            </span>
+                            <span className="text-gray-400">-&gt;</span>
+                            <span className="text-green-700 bg-green-50 px-1 rounded">
+                              {a.additionalData.newValue ?? '(empty)'}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-xs text-gray-700">
+                          {a.user && <span className="font-medium">{a.user.firstName} {a.user.lastName} </span>}
+                          {a.description ?? a.action}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {new Date(a.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ── Notes ────────────────────────────────────────────────────────── */}
       {invoice.notes && (

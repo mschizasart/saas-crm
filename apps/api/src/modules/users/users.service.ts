@@ -267,4 +267,25 @@ export class UsersService {
   async revokeAllSessions(userId: string) {
     await this.prisma.userSession.deleteMany({ where: { userId } });
   }
+
+  // ─── Dashboard Layout ───────────────────────────────────────
+
+  async getDashboardLayout(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { dashboardLayout: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return user.dashboardLayout ?? null;
+  }
+
+  async updateDashboardLayout(userId: string, layout: any) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { dashboardLayout: layout },
+      select: { id: true, dashboardLayout: true },
+    });
+  }
 }

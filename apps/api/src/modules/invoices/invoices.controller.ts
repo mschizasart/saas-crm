@@ -153,10 +153,11 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Update a draft invoice' })
   update(
     @CurrentOrg() org: any,
+    @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() dto: Partial<CreateInvoiceDto>,
   ) {
-    return this.service.update(org.id, id, dto);
+    return this.service.update(org.id, id, dto, user.id);
   }
 
   // ─── Delete ────────────────────────────────────────────────────────────────

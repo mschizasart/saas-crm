@@ -75,10 +75,11 @@ export class ClientsController {
   @ApiOperation({ summary: 'Update client details' })
   update(
     @CurrentOrg() org: any,
+    @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() dto: Partial<CreateClientDto>,
   ) {
-    return this.service.update(org.id, id, dto);
+    return this.service.update(org.id, id, dto, user.id);
   }
 
   @Delete(':id')

@@ -15,6 +15,10 @@ export interface CreateExpenseDto {
   currency?: string;
   note?: string;
   billable?: boolean;
+  recurring?: boolean;
+  recurringType?: string;
+  recurringNextDate?: string;
+  recurringEndDate?: string;
 }
 
 @Injectable()
@@ -143,6 +147,14 @@ export class ExpensesService {
           billable: dto.billable ?? false,
           invoiced: false,
           createdBy,
+          recurring: dto.recurring ?? false,
+          recurringType: dto.recurringType ?? null,
+          recurringNextDate: dto.recurringNextDate
+            ? new Date(dto.recurringNextDate)
+            : null,
+          recurringEndDate: dto.recurringEndDate
+            ? new Date(dto.recurringEndDate)
+            : null,
         },
         include: {
           category: { select: { id: true, name: true, color: true } },
@@ -174,6 +186,14 @@ export class ExpensesService {
           ...(dto.currency !== undefined && { currency: dto.currency }),
           ...(dto.note !== undefined && { note: dto.note }),
           ...(dto.billable !== undefined && { billable: dto.billable }),
+          ...(dto.recurring !== undefined && { recurring: dto.recurring }),
+          ...(dto.recurringType !== undefined && { recurringType: dto.recurringType }),
+          ...(dto.recurringNextDate !== undefined && {
+            recurringNextDate: dto.recurringNextDate ? new Date(dto.recurringNextDate) : null,
+          }),
+          ...(dto.recurringEndDate !== undefined && {
+            recurringEndDate: dto.recurringEndDate ? new Date(dto.recurringEndDate) : null,
+          }),
         },
         include: {
           category: { select: { id: true, name: true, color: true } },

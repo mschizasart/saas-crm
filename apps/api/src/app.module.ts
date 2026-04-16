@@ -50,6 +50,13 @@ import { PredefinedRepliesModule } from './modules/predefined-replies/predefined
 import { ImportsModule } from './modules/imports/imports.module';
 import { ClockModule } from './modules/clock/clock.module';
 import { NewsfeedModule } from './modules/newsfeed/newsfeed.module';
+import { SearchModule } from './modules/search/search.module';
+import { CurrenciesModule } from './modules/currencies/currencies.module';
+import { AutomationsModule } from './modules/automations/automations.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { ApiKeysModule } from './modules/api-keys/api-keys.module';
+import { AppointmentsModule } from './modules/appointments/appointments.module';
+import { ProductsModule } from './modules/products/products.module';
 
 @Module({
   imports: [
@@ -115,6 +122,13 @@ import { NewsfeedModule } from './modules/newsfeed/newsfeed.module';
     ImportsModule,
     ClockModule,
     NewsfeedModule,
+    SearchModule,
+    CurrenciesModule,
+    AutomationsModule,
+    WebhooksModule,
+    ApiKeysModule,
+    AppointmentsModule,
+    ProductsModule,
   ],
 })
 export class AppModule {}

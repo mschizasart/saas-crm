@@ -51,6 +51,19 @@ export class UsersController {
     return user;
   }
 
+  @Get('me/dashboard-layout')
+  getDashboardLayout(@CurrentUser() user: any) {
+    return this.service.getDashboardLayout(user.id);
+  }
+
+  @Patch('me/dashboard-layout')
+  updateDashboardLayout(
+    @CurrentUser() user: any,
+    @Body() body: { widgets: any[] },
+  ) {
+    return this.service.updateDashboardLayout(user.id, body.widgets);
+  }
+
   @Patch('me')
   updateProfile(
     @CurrentOrg() org: any,

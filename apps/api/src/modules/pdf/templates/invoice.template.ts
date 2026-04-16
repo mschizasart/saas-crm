@@ -26,7 +26,11 @@ const fmtMoney = (v: any, currency = 'USD'): string => {
   return `${currency} ${n.toFixed(2)}`;
 };
 
-export function renderInvoiceHtml(invoice: any, organization: any): string {
+export function renderInvoiceHtml(
+  invoice: any,
+  organization: any,
+  options?: { exchangeRate?: number; baseCurrency?: string },
+): string {
   const currency = invoice.currency ?? 'USD';
   const items = (invoice.items ?? []) as any[];
 
@@ -216,6 +220,11 @@ export function renderInvoiceHtml(invoice: any, organization: any): string {
       <tr><td class="label">Tax</td><td class="val">${fmtMoney(invoice.tax, currency)}</td></tr>
       <tr><td class="label">Discount</td><td class="val">- ${fmtMoney(invoice.discount, currency)}</td></tr>
       <tr class="grand"><td class="label">Total</td><td class="val">${fmtMoney(invoice.total, currency)}</td></tr>
+      ${
+        options?.exchangeRate && options?.baseCurrency && currency !== options.baseCurrency
+          ? `<tr><td class="label" colspan="2" style="font-size:10px;color:#6B7280;text-align:right;padding-top:4px;">1 ${esc(currency)} = ${Number(options.exchangeRate).toFixed(4)} ${esc(options.baseCurrency)} (approximate)</td></tr>`
+          : ''
+      }
     </table>
   </div>
 

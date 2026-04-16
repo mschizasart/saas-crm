@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
   BarChart,
@@ -12,6 +12,42 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useI18n } from '@/lib/i18n/use-i18n';
+
+// ---------------------------------------------------------------------------
+// Widget system types & constants
+// ---------------------------------------------------------------------------
+
+interface WidgetConfig {
+  id: string;
+  label: string;
+  enabled: boolean;
+}
+
+const ALL_WIDGETS: WidgetConfig[] = [
+  { id: 'revenue-chart', label: 'Revenue Chart', enabled: true },
+  { id: 'recent-invoices', label: 'Recent Invoices', enabled: true },
+  { id: 'recent-tickets', label: 'Recent Tickets', enabled: true },
+  { id: 'leads-by-stage', label: 'Leads by Stage', enabled: true },
+  { id: 'active-projects', label: 'Active Projects', enabled: true },
+  { id: 'goals-progress', label: 'Goals Progress', enabled: true },
+  { id: 'calendar-preview', label: 'Calendar Preview', enabled: true },
+  { id: 'tasks-due-today', label: 'Tasks Due Today', enabled: true },
+  { id: 'activity-feed', label: 'Recent Activity', enabled: true },
+];
+
+function DashboardWidget({
+  id,
+  widgets,
+  children,
+}: {
+  id: string;
+  widgets: WidgetConfig[];
+  children: React.ReactNode;
+}) {
+  const widget = widgets.find((w) => w.id === id);
+  if (widget && !widget.enabled) return null;
+  return <>{children}</>;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -324,6 +360,66 @@ export default function DashboardPage() {
   >([]);
   const [loadingActivity, setLoadingActivity] = useState(true);
 
+  // -- Widget customization --
+  const [widgets, setWidgets] = useState<WidgetConfig[]>(ALL_WIDGETS.map((w) => ({ ...w })));
+  const [showCustomize, setShowCustomize] = useState(false);
+  const [savingLayout, setSavingLayout] = useState(false);
+
+  // Load saved widget layout
+  useEffect(() => {
+    const headers = authHeaders();
+    fetch(`${API_BASE}/api/v1/users/me/dashboard-layout`, { headers })
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            // Merge saved config with defaults (in case new widgets were added)
+            const savedMap = new Map(data.map((w: WidgetConfig) => [w.id, w]));
+            setWidgets(
+              ALL_WIDGETS.map((def) => {
+                const saved = savedMap.get(def.id);
+                return saved ? { ...def, enabled: saved.enabled } : { ...def };
+              }),
+            );
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveLayout = useCallback(async (newWidgets: WidgetConfig[]) => {
+    setSavingLayout(true);
+    try {
+      await fetch(`${API_BASE}/api/v1/users/me/dashboard-layout`, {
+        method: 'PATCH',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ widgets: newWidgets }),
+      });
+    } catch { /* silent */ }
+    finally { setSavingLayout(false); }
+  }, []);
+
+  function toggleWidget(id: string) {
+    setWidgets((prev) =>
+      prev.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w)),
+    );
+  }
+
+  function moveWidget(idx: number, direction: 'up' | 'down') {
+    setWidgets((prev) => {
+      const arr = [...prev];
+      const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (newIdx < 0 || newIdx >= arr.length) return arr;
+      [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+      return arr;
+    });
+  }
+
+  function handleSaveLayout() {
+    saveLayout(widgets);
+    setShowCustomize(false);
+  }
+
   // ---------------------------------------------------------------------------
   // Fetch everything in parallel on mount
   // ---------------------------------------------------------------------------
@@ -478,10 +574,91 @@ export default function DashboardPage() {
       {/* -------------------------------------------------------------------- */}
       {/* Page header                                                            */}
       {/* -------------------------------------------------------------------- */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{t('dashboard.title')}</h1>
-        <p className="text-sm text-gray-500 mt-1">{t('dashboard.subtitle')}</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{t('dashboard.title')}</h1>
+          <p className="text-sm text-gray-500 mt-1">{t('dashboard.subtitle')}</p>
+        </div>
+        <button
+          onClick={() => setShowCustomize(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+          </svg>
+          Customize
+        </button>
       </div>
+
+      {/* Widget Customization Modal */}
+      {showCustomize && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowCustomize(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Customize Dashboard</h2>
+              <p className="text-xs text-gray-500 mt-1">Toggle widgets on/off and reorder with arrows</p>
+            </div>
+            <div className="px-5 py-3 max-h-[50vh] overflow-y-auto">
+              {widgets.map((w, idx) => (
+                <div key={w.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                  <button
+                    onClick={() => toggleWidget(w.id)}
+                    className={`w-9 h-5 rounded-full flex-shrink-0 transition-colors relative ${
+                      w.enabled ? 'bg-primary' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                        w.enabled ? 'left-[18px]' : 'left-0.5'
+                      }`}
+                    />
+                  </button>
+                  <span className={`flex-1 text-sm ${w.enabled ? 'text-gray-900' : 'text-gray-400'}`}>
+                    {w.label}
+                  </span>
+                  <div className="flex gap-0.5">
+                    <button
+                      onClick={() => moveWidget(idx, 'up')}
+                      disabled={idx === 0}
+                      className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                      title="Move up"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => moveWidget(idx, 'down')}
+                      disabled={idx === widgets.length - 1}
+                      className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                      title="Move down"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setShowCustomize(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveLayout}
+                disabled={savingLayout}
+                className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+              >
+                {savingLayout ? 'Saving...' : 'Save Layout'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* -------------------------------------------------------------------- */}
       {/* Stats row                                                              */}
@@ -509,6 +686,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
 
         {/* Recent Invoices */}
+        <DashboardWidget id="recent-invoices" widgets={widgets}>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 pt-5 pb-1">
             <SectionHeader title={t('dashboard.recentInvoices')} href="/invoices" linkLabel={t('dashboard.viewAll')} />
@@ -559,7 +737,10 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        </DashboardWidget>
+
         {/* Recent Tickets */}
+        <DashboardWidget id="recent-tickets" widgets={widgets}>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 pt-5 pb-1">
             <SectionHeader title={t('dashboard.openTickets')} href="/tickets" linkLabel={t('dashboard.viewAll')} />
@@ -605,12 +786,14 @@ export default function DashboardPage() {
             </table>
           </div>
         </div>
+        </DashboardWidget>
       </div>
 
       {/* -------------------------------------------------------------------- */}
       {/* Revenue chart + Activity feed                                          */}
       {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <DashboardWidget id="revenue-chart" widgets={widgets}>
         <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <SectionHeader title={t('dashboard.revenue')} href="/reports/sales" linkLabel={t('dashboard.fullReport')} />
           <div style={{ width: '100%', height: 220 }}>
@@ -631,7 +814,9 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+        </DashboardWidget>
 
+        <DashboardWidget id="activity-feed" widgets={widgets}>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <SectionHeader title={t('dashboard.recentActivity')} href="/activity" linkLabel={t('dashboard.viewAll')} />
           {loadingActivity ? (
@@ -657,11 +842,13 @@ export default function DashboardPage() {
             </ul>
           )}
         </div>
+        </DashboardWidget>
       </div>
 
       {/* -------------------------------------------------------------------- */}
       {/* Leads by Stage                                                         */}
       {/* -------------------------------------------------------------------- */}
+      <DashboardWidget id="leads-by-stage" widgets={widgets}>
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
         <SectionHeader title={t('dashboard.leadsByStage')} href="/leads" linkLabel={t('dashboard.openBoard')} />
 
@@ -715,6 +902,7 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+      </DashboardWidget>
     </div>
   );
 }

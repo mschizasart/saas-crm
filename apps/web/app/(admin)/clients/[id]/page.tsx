@@ -121,7 +121,18 @@ function InvoiceStatusBadge({ status }: { status: string }) {
 // Page
 // ---------------------------------------------------------------------------
 
-type Tab = 'overview' | 'contacts' | 'invoices';
+type Tab = 'overview' | 'contacts' | 'invoices' | 'activity';
+
+interface ActivityItem {
+  id: string;
+  action: string;
+  relType: string | null;
+  relId: string | null;
+  description: string | null;
+  additionalData?: { field?: string; oldValue?: string | null; newValue?: string | null } | null;
+  createdAt: string;
+  user?: { id: string; firstName: string; lastName: string; avatar: string | null } | null;
+}
 
 export default function ClientDetailPage() {
   const params = useParams();
@@ -156,6 +167,10 @@ export default function ClientDetailPage() {
   // Invoices tab
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
+
+  // Activity tab
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
 
   // ── Fetch client ──────────────────────────────────────────────────────────
 
@@ -192,6 +207,20 @@ export default function ClientDetailPage() {
       .then((json: InvoicesResponse) => setInvoices(json.data ?? []))
       .catch(() => setInvoices([]))
       .finally(() => setInvoicesLoading(false));
+  }, [activeTab, clientId]);
+
+  // ── Fetch activity when tab changes ──────────────────────────────────────
+
+  useEffect(() => {
+    if (activeTab !== 'activity') return;
+    setActivitiesLoading(true);
+    fetch(`${API_BASE}/api/v1/activity-log/entity/client/${clientId}`, {
+      headers: authHeaders(),
+    })
+      .then((r) => r.json())
+      .then((json) => setActivities(Array.isArray(json) ? json : json.data ?? []))
+      .catch(() => setActivities([]))
+      .finally(() => setActivitiesLoading(false));
   }, [activeTab, clientId]);
 
   // ── Download statement ─────────────────────────────────────────────────────
@@ -304,6 +333,7 @@ export default function ClientDetailPage() {
     { key: 'overview', label: 'Overview' },
     { key: 'contacts', label: `Contacts (${client.contacts?.length ?? 0})` },
     { key: 'invoices', label: 'Invoices' },
+    { key: 'activity', label: 'Activity' },
   ];
 
   return (
@@ -610,6 +640,67 @@ export default function ClientDetailPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ── Activity tab ──────────────────────────────────────────────────── */}
+      {activeTab === 'activity' && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h2 className="text-sm font-semibold text-gray-700">Activity Log</h2>
+          </div>
+          {activitiesLoading ? (
+            <p className="p-6 text-sm text-gray-400">Loading...</p>
+          ) : activities.length === 0 ? (
+            <p className="p-6 text-sm text-gray-400 text-center">No activity recorded for this client.</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {activities.map((a) => (
+                <li key={a.id} className="p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                    {a.user
+                      ? ((a.user.firstName?.[0] ?? '') + (a.user.lastName?.[0] ?? '')).toUpperCase() || '?'
+                      : '.'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {a.action.endsWith('.field_changed') && a.additionalData?.field ? (
+                      <>
+                        <p className="text-sm text-gray-800">
+                          {a.user && (
+                            <span className="font-medium">
+                              {a.user.firstName} {a.user.lastName}{' '}
+                            </span>
+                          )}
+                          changed <span className="font-medium">{a.additionalData.field}</span>
+                        </p>
+                        <div className="flex items-center gap-1 mt-0.5 text-xs">
+                          <span className="line-through text-red-500 bg-red-50 px-1 rounded">
+                            {a.additionalData.oldValue ?? '(empty)'}
+                          </span>
+                          <span className="text-gray-400">-&gt;</span>
+                          <span className="text-green-700 bg-green-50 px-1 rounded">
+                            {a.additionalData.newValue ?? '(empty)'}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-800">
+                        {a.user && (
+                          <span className="font-medium">
+                            {a.user.firstName} {a.user.lastName}{' '}
+                          </span>
+                        )}
+                        {a.description ?? a.action}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(a.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>

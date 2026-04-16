@@ -709,4 +709,131 @@ export class ReportsService {
       };
     });
   }
+
+  // ──────────────────────────────────────────────────────────────
+  // 7. Profit & Loss report
+  // ──────────────────────────────────────────────────────────────
+
+  async getProfitLossReport(
+    orgId: string,
+    query: DateRangeQuery & { taxPercent?: number },
+  ) {
+    const { from, to } = parseRange(query);
+    const taxPercent = query.taxPercent ?? 20;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      // Revenue: sum of paid invoice totals in date range
+      const revenueAgg = await tx.invoice.aggregate({
+        where: {
+          organizationId: orgId,
+          status: 'paid',
+          date: { gte: from, lte: to },
+        },
+        _sum: { total: true },
+      });
+      const revenue = Number(revenueAgg._sum.total ?? 0);
+
+      // Expenses: sum of expense amounts in date range
+      const expenseAgg = await tx.expense.aggregate({
+        where: {
+          organizationId: orgId,
+          date: { gte: from, lte: to },
+        },
+        _sum: { amount: true },
+      });
+      const expenses = Number(expenseAgg._sum.amount ?? 0);
+
+      const netProfit = revenue - expenses;
+      const taxEstimate = Math.max(0, netProfit * (taxPercent / 100));
+
+      // Revenue by month
+      const revenueMonthly = await tx.$queryRaw<
+        Array<{ period: Date; amount: any }>
+      >`
+        SELECT DATE_TRUNC('month', "date") AS period,
+               COALESCE(SUM("total"), 0) AS amount
+        FROM "invoices"
+        WHERE "organizationId" = ${orgId}
+          AND "status" = 'paid'
+          AND "date" >= ${from} AND "date" <= ${to}
+        GROUP BY period
+        ORDER BY period ASC
+      `;
+
+      // Expenses by month
+      const expenseMonthly = await tx.$queryRaw<
+        Array<{ period: Date; amount: any }>
+      >`
+        SELECT DATE_TRUNC('month', "date") AS period,
+               COALESCE(SUM("amount"), 0) AS amount
+        FROM "expenses"
+        WHERE "organizationId" = ${orgId}
+          AND "date" >= ${from} AND "date" <= ${to}
+        GROUP BY period
+        ORDER BY period ASC
+      `;
+
+      // Merge by month
+      const monthMap = new Map<
+        string,
+        { period: string; revenue: number; expenses: number; profit: number }
+      >();
+      for (const r of revenueMonthly) {
+        const key = r.period.toISOString().slice(0, 7);
+        monthMap.set(key, {
+          period: key,
+          revenue: Number(r.amount ?? 0),
+          expenses: 0,
+          profit: Number(r.amount ?? 0),
+        });
+      }
+      for (const r of expenseMonthly) {
+        const key = r.period.toISOString().slice(0, 7);
+        const existing =
+          monthMap.get(key) ?? { period: key, revenue: 0, expenses: 0, profit: 0 };
+        existing.expenses = Number(r.amount ?? 0);
+        existing.profit = existing.revenue - existing.expenses;
+        monthMap.set(key, existing);
+      }
+      const byMonth = Array.from(monthMap.values()).sort((a, b) =>
+        a.period.localeCompare(b.period),
+      );
+
+      // Expenses by category
+      const catGrouped = await tx.expense.groupBy({
+        by: ['categoryId'],
+        where: {
+          organizationId: orgId,
+          date: { gte: from, lte: to },
+        },
+        _sum: { amount: true },
+      });
+      const catIds = (catGrouped as any[])
+        .map((g) => g.categoryId)
+        .filter(Boolean);
+      const categories = catIds.length
+        ? await tx.expenseCategory.findMany({
+            where: { id: { in: catIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const catMap = new Map(categories.map((c: any) => [c.id, c.name]));
+      const expensesByCategory = (catGrouped as any[]).map((g) => ({
+        category: g.categoryId
+          ? (catMap.get(g.categoryId) ?? 'Uncategorized')
+          : 'Uncategorized',
+        amount: Number(g._sum.amount ?? 0),
+      }));
+
+      return {
+        revenue,
+        expenses,
+        netProfit,
+        taxEstimate,
+        taxPercent,
+        byMonth,
+        expensesByCategory,
+      };
+    });
+  }
 }

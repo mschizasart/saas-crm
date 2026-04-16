@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n/use-i18n';
 import { SUPPORTED_LANGUAGES } from '@/lib/i18n/index';
+import { useTheme } from '@/lib/theme';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -214,6 +215,7 @@ export default function SettingsPage() {
 
         {tab === 'appearance' && (
           <div className="space-y-4">
+            <ThemeSelector />
             <LanguageSelector />
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Primary color</label>
@@ -325,6 +327,44 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ThemeSelector() {
+  const { dark, setMode } = useTheme();
+  const current = (() => {
+    if (typeof window === 'undefined') return 'system';
+    const saved = localStorage.getItem('theme');
+    if (!saved) return 'system';
+    return saved;
+  })();
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-1">Theme</label>
+      <p className="text-xs text-gray-400 mb-2">Choose your preferred color scheme.</p>
+      <div className="grid grid-cols-3 gap-3">
+        {([
+          { value: 'light', label: 'Light', desc: 'Clean, bright interface' },
+          { value: 'dark', label: 'Dark', desc: 'Easy on the eyes' },
+          { value: 'system', label: 'System', desc: 'Follow OS preference' },
+        ] as const).map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => setMode(opt.value)}
+            className={`text-left p-3 rounded-lg border-2 transition-colors ${
+              current === opt.value
+                ? 'border-primary bg-primary/5'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <div className="text-sm font-semibold text-gray-800 mb-1">{opt.label}</div>
+            <p className="text-xs text-gray-500 leading-relaxed">{opt.desc}</p>
+          </button>
+        ))}
       </div>
     </div>
   );

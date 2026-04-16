@@ -5,6 +5,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 
+interface ConvertedTotal {
+  amount: number;
+  currency: string;
+  rate: number;
+}
+
 interface ClientOption {
   id: string;
   company?: string;
@@ -71,6 +77,10 @@ export default function NewInvoicePage() {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
+  // Currency conversion state
+  const [baseCurrency, setBaseCurrency] = useState<string | null>(null);
+  const [convertedTotal, setConvertedTotal] = useState<ConvertedTotal | null>(null);
+
   // Saved items autocomplete state
   const [activeAutocomplete, setActiveAutocomplete] = useState<number | null>(null);
   const [suggestions, setSuggestions] = useState<SavedItem[]>([]);
@@ -108,6 +118,50 @@ export default function NewInvoicePage() {
     return { subtotal, taxTotal, discount, total };
   }, [form.items, form.discount]);
 
+  // Fetch base currency on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/currencies/base`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setBaseCurrency(json.code ?? null);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
+  // Convert total when currency or total changes
+  useEffect(() => {
+    if (!baseCurrency || !form.currency || form.currency === baseCurrency) {
+      setConvertedTotal(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/v1/currencies/convert?amount=${totals.total}&from=${form.currency}&to=${baseCurrency}`,
+          { headers: { Authorization: `Bearer ${getToken()}` } },
+        );
+        if (res.ok) {
+          const json = await res.json();
+          if (json.converted !== json.amount) {
+            setConvertedTotal({
+              amount: json.converted,
+              currency: baseCurrency,
+              rate: json.rate,
+            });
+          } else {
+            setConvertedTotal(null);
+          }
+        }
+      } catch { setConvertedTotal(null); }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [form.currency, baseCurrency, totals.total]);
+
   function updateItem(idx: number, key: keyof LineItem, value: string) {
     setForm((prev) => ({
       ...prev,
@@ -132,13 +186,35 @@ export default function NewInvoicePage() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/api/v1/saved-items?search=${encodeURIComponent(query)}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSuggestions(Array.isArray(data) ? data : (data.data ?? []));
+      const [savedRes, productRes] = await Promise.all([
+        fetch(`${API_BASE}/api/v1/saved-items?search=${encodeURIComponent(query)}`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        }),
+        fetch(`${API_BASE}/api/v1/products/search?q=${encodeURIComponent(query)}`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        }),
+      ]);
+      let items: SavedItem[] = [];
+      if (savedRes.ok) {
+        const data = await savedRes.json();
+        items = Array.isArray(data) ? data : (data.data ?? []);
       }
+      // Merge products as SavedItem-like objects
+      if (productRes.ok) {
+        const products = await productRes.json();
+        const productItems = (Array.isArray(products) ? products : []).map((p: any) => ({
+          id: `product_${p.id}`,
+          description: p.name,
+          rate: Number(p.unitPrice),
+          taxRate: Number(p.taxRate ?? 0),
+          unit: p.unit,
+          longDescription: p.description,
+          _productId: p.id,
+          _trackInventory: p.trackInventory,
+        }));
+        items = [...items, ...productItems];
+      }
+      setSuggestions(items);
     } catch { setSuggestions([]); }
   }, []);
 
@@ -149,7 +225,7 @@ export default function NewInvoicePage() {
     debounceRef.current = setTimeout(() => searchSavedItems(value), 300);
   }
 
-  function applySavedItem(idx: number, saved: SavedItem) {
+  function applySavedItem(idx: number, saved: any) {
     setForm((prev) => ({
       ...prev,
       items: prev.items.map((it, i) =>
@@ -161,6 +237,14 @@ export default function NewInvoicePage() {
         } : it
       ),
     }));
+    // If it's a product with inventory tracking, decrement stock by 1
+    if (saved._productId && saved._trackInventory) {
+      fetch(`${API_BASE}/api/v1/products/${saved._productId}/stock`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantity: -1, reason: 'Added to invoice' }),
+      }).catch(() => { /* ignore stock errors */ });
+    }
     setSuggestions([]);
     setActiveAutocomplete(null);
   }
@@ -322,7 +406,7 @@ export default function NewInvoicePage() {
                         />
                         {activeAutocomplete === idx && suggestions.length > 0 && (
                           <div className="absolute z-20 left-0 right-2 top-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                            {suggestions.map((s) => (
+                            {suggestions.map((s: any) => (
                               <button
                                 key={s.id}
                                 type="button"
@@ -331,6 +415,7 @@ export default function NewInvoicePage() {
                               >
                                 <span className="font-medium text-gray-900">{s.description}</span>
                                 <span className="ml-2 text-gray-500">{Number(s.rate).toFixed(2)} | Tax: {Number(s.taxRate)}%</span>
+                                {s._productId && <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">Product</span>}
                               </button>
                             ))}
                           </div>
@@ -373,6 +458,14 @@ export default function NewInvoicePage() {
               <Row label="Discount" value={`-${totals.discount.toFixed(2)}`} />
               <div className="border-t border-gray-200 mt-2 pt-2">
                 <Row label="Total" value={`${totals.total.toFixed(2)} ${form.currency}`} bold />
+                {convertedTotal && (
+                  <div className="mt-1 text-xs text-gray-500 text-right">
+                    Approx. {convertedTotal.amount.toFixed(2)} {convertedTotal.currency}
+                    <span className="ml-1 text-gray-400">
+                      (1 {form.currency} = {convertedTotal.rate.toFixed(4)} {convertedTotal.currency})
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

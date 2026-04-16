@@ -25,6 +25,9 @@ export default function NewExpensePage() {
   const [projectId, setProjectId] = useState('');
   const [note, setNote] = useState('');
   const [billable, setBillable] = useState(false);
+  const [recurring, setRecurring] = useState(false);
+  const [recurringType, setRecurringType] = useState('monthly');
+  const [recurringEndDate, setRecurringEndDate] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -54,7 +57,7 @@ export default function NewExpensePage() {
     setSaving(true);
     setError(null);
     try {
-      const payload = {
+      const payload: any = {
         name,
         amount: Number(amount) || 0,
         date,
@@ -63,6 +66,10 @@ export default function NewExpensePage() {
         projectId: projectId || undefined,
         note,
         billable,
+        recurring,
+        recurringType: recurring ? recurringType : undefined,
+        recurringNextDate: recurring ? date : undefined,
+        recurringEndDate: recurring && recurringEndDate ? recurringEndDate : undefined,
       };
       const res = await fetch(`${API_BASE}/api/v1/expenses`, {
         method: 'POST',
@@ -120,10 +127,31 @@ export default function NewExpensePage() {
           <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} className={inputClass} />
         </Field>
 
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} />
-          Billable
-        </label>
+        <div className="flex items-center gap-6">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} />
+            Billable
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
+            Recurring
+          </label>
+        </div>
+
+        {recurring && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-blue-50 rounded-lg border border-blue-100">
+            <Field label="Frequency">
+              <select value={recurringType} onChange={(e) => setRecurringType(e.target.value)} className={inputClass}>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </Field>
+            <Field label="End Date (optional)">
+              <input type="date" value={recurringEndDate} onChange={(e) => setRecurringEndDate(e.target.value)} className={inputClass} />
+            </Field>
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
           <Link href="/expenses" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Cancel</Link>

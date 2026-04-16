@@ -248,6 +248,7 @@ function SkeletonColumn({ label }: { label: string }) {
 // ---------------------------------------------------------------------------
 
 export default function LeadsPage() {
+  const [view, setView] = useState<'kanban' | 'list'>('kanban');
   const [board, setBoard] = useState<KanbanBoard>({
     new: [], contacted: [], qualified: [], proposal: [],
     negotiation: [], won: [], lost: [],
@@ -255,6 +256,8 @@ export default function LeadsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<LeadStatus | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   // Store dragged lead info in a ref to avoid stale closures
   const dragRef = useRef<{ leadId: string; fromStatus: LeadStatus } | null>(null);
@@ -368,6 +371,55 @@ export default function LeadsPage() {
   }
 
   const totalLeads = Object.values(board).reduce((acc, col) => acc + col.length, 0);
+  const allLeads = Object.values(board).flat();
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === allLeads.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(allLeads.map((l) => l.id)));
+    }
+  };
+
+  const bulkDeleteLeads = async () => {
+    if (!confirm(`Delete ${selected.size} lead(s)?`)) return;
+    setBulkLoading(true);
+    const token = getToken();
+    for (const id of selected) {
+      await fetch(`${API_BASE}/api/v1/leads/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
+    setSelected(new Set());
+    setBulkLoading(false);
+    // re-fetch
+    window.location.reload();
+  };
+
+  const bulkChangeStatus = async (newStatus: LeadStatus) => {
+    setBulkLoading(true);
+    const token = getToken();
+    for (const id of selected) {
+      await fetch(`${API_BASE}/api/v1/leads/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: newStatus }),
+      }).catch(() => {});
+    }
+    setSelected(new Set());
+    setBulkLoading(false);
+    window.location.reload();
+  };
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -384,6 +436,24 @@ export default function LeadsPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+            <button
+              onClick={() => setView('kanban')}
+              className={`px-3 py-2 text-xs font-medium transition-colors ${
+                view === 'kanban' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Kanban
+            </button>
+            <button
+              onClick={() => setView('list')}
+              className={`px-3 py-2 text-xs font-medium transition-colors ${
+                view === 'list' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              List
+            </button>
+          </div>
           <Link
             href="/leads/import"
             className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
@@ -410,27 +480,155 @@ export default function LeadsPage() {
       )}
 
       {/* ------------------------------------------------------------------ */}
-      {/* Board                                                                */}
+      {/* Board (Kanban view)                                                  */}
       {/* ------------------------------------------------------------------ */}
-      <div className="flex-1 overflow-x-auto pb-4">
-        <div className="flex gap-3 h-full min-w-max">
-          {loading
-            ? COLUMNS.map((col) => <SkeletonColumn key={col.status} label={col.label} />)
-            : COLUMNS.map((col) => (
-                <KanbanColumn
-                  key={col.status}
-                  status={col.status}
-                  label={col.label}
-                  leads={board[col.status]}
-                  isDragOver={dragOverStatus === col.status}
-                  onDragStart={handleDragStart}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                />
-              ))}
+      {view === 'kanban' && (
+        <div className="flex-1 overflow-x-auto pb-4">
+          <div className="flex gap-3 h-full min-w-max">
+            {loading
+              ? COLUMNS.map((col) => <SkeletonColumn key={col.status} label={col.label} />)
+              : COLUMNS.map((col) => (
+                  <KanbanColumn
+                    key={col.status}
+                    status={col.status}
+                    label={col.label}
+                    leads={board[col.status]}
+                    isDragOver={dragOverStatus === col.status}
+                    onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                  />
+                ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* List view                                                            */}
+      {/* ------------------------------------------------------------------ */}
+      {view === 'list' && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <th className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={allLeads.length > 0 && selected.size === allLeads.length}
+                      onChange={toggleAll}
+                      className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+                    />
+                  </th>
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3">Company</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Budget</th>
+                  <th className="px-4 py-3">Assigned To</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : allLeads.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
+                      No leads found
+                    </td>
+                  </tr>
+                ) : (
+                  allLeads.map((lead) => {
+                    const style = STATUS_STYLES[lead.status];
+                    return (
+                      <tr
+                        key={lead.id}
+                        className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
+                      >
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(lead.id)}
+                            onChange={() => toggleSelect(lead.id)}
+                            className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+                          />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-900">
+                          <Link href={`/leads/${lead.id}`} className="hover:text-primary">
+                            {lead.name}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">{lead.company ?? '—'}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${style.badge}`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full mr-1 ${style.dot}`} />
+                            {COLUMNS.find((c) => c.status === lead.status)?.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {lead.budget != null
+                            ? formatBudget(lead.budget, lead.currency)
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">{lead.assigned_to ?? '—'}</td>
+                        <td className="px-4 py-3 text-right">
+                          <Link
+                            href={`/leads/${lead.id}`}
+                            className="text-xs text-gray-500 hover:text-primary font-medium"
+                          >
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && view === 'list' && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 text-sm">
+          <span className="font-medium">{selected.size} selected</span>
+          <div className="w-px h-5 bg-gray-600" />
+          <button
+            onClick={bulkDeleteLeads}
+            disabled={bulkLoading}
+            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            Delete
+          </button>
+          <select
+            onChange={(e) => {
+              if (e.target.value) bulkChangeStatus(e.target.value as LeadStatus);
+            }}
+            disabled={bulkLoading}
+            defaultValue=""
+            className="px-3 py-1.5 rounded-lg bg-gray-700 text-white text-xs font-medium border-none cursor-pointer disabled:opacity-50"
+          >
+            <option value="" disabled>Change Status</option>
+            {COLUMNS.map((c) => (
+              <option key={c.status} value={c.status}>{c.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="ml-2 text-gray-400 hover:text-white text-xs transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }

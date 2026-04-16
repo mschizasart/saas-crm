@@ -92,6 +92,57 @@ export class ActivityLogService {
     });
   }
 
+  // ─── Field-level change tracking ────────────────────────────────────────
+
+  async logFieldChange(
+    orgId: string,
+    data: {
+      userId: string;
+      entityType: string;
+      entityId: string;
+      field: string;
+      oldValue: string | null;
+      newValue: string | null;
+    },
+  ) {
+    await this.log(orgId, {
+      userId: data.userId,
+      action: `${data.entityType}.field_changed`,
+      entityType: data.entityType,
+      entityId: data.entityId,
+      description: `Changed ${data.field} from "${data.oldValue ?? '(empty)'}" to "${data.newValue ?? '(empty)'}"`,
+      metadata: {
+        field: data.field,
+        oldValue: data.oldValue,
+        newValue: data.newValue,
+      },
+    });
+  }
+
+  async logEntityUpdate(
+    orgId: string,
+    userId: string,
+    entityType: string,
+    entityId: string,
+    oldData: any,
+    newData: any,
+  ) {
+    for (const key of Object.keys(newData)) {
+      const oldVal = oldData[key];
+      const newVal = newData[key];
+      if (oldVal !== newVal) {
+        await this.logFieldChange(orgId, {
+          userId,
+          entityType,
+          entityId,
+          field: key,
+          oldValue: oldVal != null ? String(oldVal) : null,
+          newValue: newVal != null ? String(newVal) : null,
+        });
+      }
+    }
+  }
+
   // ─── Event listeners ───────────────────────────────────────────────────
 
   @OnEvent('client.created')
