@@ -39,6 +39,15 @@ export class TicketsController {
     return this.service.getStats(org.id);
   }
 
+  // ─── SLA Report ────────────────────────────────────────────────────────────
+
+  @Get('sla-report')
+  @Permissions('tickets.view')
+  @ApiOperation({ summary: 'Get SLA compliance report' })
+  getSlaReport(@CurrentOrg() org: any) {
+    return this.service.getSlaReport(org.id);
+  }
+
   // ─── Departments ───────────────────────────────────────────────────────────
 
   @Get('departments')
@@ -53,9 +62,9 @@ export class TicketsController {
   @ApiOperation({ summary: 'Create a new ticket department' })
   createDepartment(
     @CurrentOrg() org: any,
-    @Body() body: { name: string; email?: string },
+    @Body() body: { name: string; email?: string; slaResponseHours?: number | null; slaResolutionHours?: number | null },
   ) {
-    return this.service.createDepartment(org.id, body.name, body.email);
+    return this.service.createDepartment(org.id, body.name, body.email, body.slaResponseHours, body.slaResolutionHours);
   }
 
   @Patch('departments/:id')
@@ -64,7 +73,7 @@ export class TicketsController {
   updateDepartment(
     @CurrentOrg() org: any,
     @Param('id') id: string,
-    @Body() body: { name?: string; email?: string },
+    @Body() body: { name?: string; email?: string; slaResponseHours?: number | null; slaResolutionHours?: number | null },
   ) {
     return this.service.updateDepartment(org.id, id, body);
   }

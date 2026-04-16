@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,6 +65,7 @@ export default function NewClientPage() {
   const [groups, setGroups] = useState<ClientGroup[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     (async () => {
@@ -102,7 +104,15 @@ export default function NewClientPage() {
       });
       if (!res.ok) throw new Error(`Failed to create client (${res.status})`);
       const created = await res.json();
-      router.push(`/clients/${created.id ?? created.data?.id}`);
+      const createdId = created.id ?? created.data?.id;
+      if (Object.keys(customFieldValues).length > 0 && createdId) {
+        await fetch(`${API_BASE}/api/v1/custom-fields/values/client/${createdId}`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(customFieldValues),
+        });
+      }
+      router.push(`/clients/${createdId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create client');
     } finally {
@@ -222,6 +232,8 @@ export default function NewClientPage() {
             </Field>
           </div>
         </div>
+
+        <CustomFieldsForm fieldTo="client" values={customFieldValues} onChange={setCustomFieldValues} />
 
         <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
           <Link

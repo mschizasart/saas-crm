@@ -19,6 +19,10 @@ interface Ticket {
   status: TicketStatus;
   assigned_to_name: string | null;
   last_reply_at: string | null;
+  slaResponseStatus?: 'ok' | 'warning' | 'breached' | null;
+  slaResolutionStatus?: 'ok' | 'warning' | 'breached' | null;
+  slaResponseRemaining?: number | null;
+  slaResolutionRemaining?: number | null;
 }
 
 interface TicketsResponse {
@@ -152,10 +156,33 @@ function StatsCard({
   );
 }
 
+function SlaDot({ status, remaining }: { status?: 'ok' | 'warning' | 'breached' | null; remaining?: number | null }) {
+  if (!status) return <span className="text-gray-300">--</span>;
+  const colors = {
+    ok: 'bg-green-500',
+    warning: 'bg-yellow-400',
+    breached: 'bg-red-500',
+  };
+  const labels = { ok: 'Within SLA', warning: 'SLA Warning (>80%)', breached: 'SLA Breached' };
+  const timeText = remaining != null
+    ? remaining > 0
+      ? `${Math.floor(Math.abs(remaining) / 60)}h ${Math.abs(remaining) % 60}m remaining`
+      : `${Math.floor(Math.abs(remaining) / 60)}h ${Math.abs(remaining) % 60}m exceeded`
+    : '';
+  return (
+    <span className="relative group cursor-default inline-flex items-center">
+      <span className={`inline-block w-2.5 h-2.5 rounded-full ${colors[status]}`} />
+      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10">
+        {labels[status]}{timeText ? ` — ${timeText}` : ''}
+      </span>
+    </span>
+  );
+}
+
 function SkeletonRow() {
   return (
     <tr className="border-b border-gray-100 last:border-0">
-      {Array.from({ length: 7 }).map((_, i) => (
+      {Array.from({ length: 8 }).map((_, i) => (
         <td key={i} className="px-4 py-3">
           <div
             className="h-4 bg-gray-100 rounded animate-pulse"
@@ -354,6 +381,7 @@ export default function TicketsPage() {
                 <th className="px-4 py-3">Priority</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Assigned To</th>
+                <th className="px-4 py-3">SLA</th>
                 <th className="px-4 py-3">Last Reply</th>
               </tr>
             </thead>
@@ -362,7 +390,7 @@ export default function TicketsPage() {
                 Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
               ) : tickets.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center">
+                  <td colSpan={8} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-2 text-gray-400">
                       <svg
                         className="w-10 h-10 opacity-40"
@@ -435,6 +463,12 @@ export default function TicketsPage() {
                       {ticket.assigned_to_name ?? (
                         <span className="text-gray-300">Unassigned</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <SlaDot status={ticket.slaResponseStatus} remaining={ticket.slaResponseRemaining} />
+                        <SlaDot status={ticket.slaResolutionStatus} remaining={ticket.slaResolutionRemaining} />
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
                       {formatDate(ticket.last_reply_at)}

@@ -18,6 +18,8 @@ interface Department {
   id: string;
   name: string;
   email?: string | null;
+  slaResponseHours?: number | null;
+  slaResolutionHours?: number | null;
   _count?: { tickets: number };
 }
 
@@ -26,7 +28,7 @@ export default function DepartmentsPage() {
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '' });
+  const [form, setForm] = useState({ name: '', email: '', slaResponseHours: '', slaResolutionHours: '' });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -45,13 +47,18 @@ export default function DepartmentsPage() {
 
   function startEdit(item: Department) {
     setEditId(item.id);
-    setForm({ name: item.name, email: item.email ?? '' });
+    setForm({
+      name: item.name,
+      email: item.email ?? '',
+      slaResponseHours: item.slaResponseHours != null ? String(item.slaResponseHours) : '',
+      slaResolutionHours: item.slaResolutionHours != null ? String(item.slaResolutionHours) : '',
+    });
     setShowNew(false);
   }
 
   function startNew() {
     setEditId(null);
-    setForm({ name: '', email: '' });
+    setForm({ name: '', email: '', slaResponseHours: '', slaResolutionHours: '' });
     setShowNew(true);
   }
 
@@ -62,6 +69,8 @@ export default function DepartmentsPage() {
       const payload: Record<string, any> = {
         name: form.name,
         email: form.email || undefined,
+        slaResponseHours: form.slaResponseHours ? Number(form.slaResponseHours) : null,
+        slaResolutionHours: form.slaResolutionHours ? Number(form.slaResolutionHours) : null,
       };
 
       const url = editId
@@ -134,6 +143,28 @@ export default function DepartmentsPage() {
                 placeholder="e.g. support@company.com"
               />
             </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Response SLA (hours)</label>
+              <input
+                type="number"
+                min="0"
+                value={form.slaResponseHours}
+                onChange={(e) => setForm({ ...form, slaResponseHours: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
+                placeholder="e.g. 4"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Resolution SLA (hours)</label>
+              <input
+                type="number"
+                min="0"
+                value={form.slaResolutionHours}
+                onChange={(e) => setForm({ ...form, slaResolutionHours: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
+                placeholder="e.g. 24"
+              />
+            </div>
           </div>
           <div className="flex gap-2 mt-4">
             <button
@@ -164,6 +195,8 @@ export default function DepartmentsPage() {
               <tr className="text-left text-xs text-gray-500 uppercase border-b border-gray-100">
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3 w-28">Response SLA</th>
+                <th className="px-4 py-3 w-28">Resolution SLA</th>
                 <th className="px-4 py-3 w-24">Tickets</th>
                 <th className="px-4 py-3 w-24" />
               </tr>
@@ -173,6 +206,8 @@ export default function DepartmentsPage() {
                 <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                   <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
                   <td className="px-4 py-3 text-gray-500">{item.email || '-'}</td>
+                  <td className="px-4 py-3 text-gray-500">{item.slaResponseHours ? `${item.slaResponseHours}h` : '-'}</td>
+                  <td className="px-4 py-3 text-gray-500">{item.slaResolutionHours ? `${item.slaResolutionHours}h` : '-'}</td>
                   <td className="px-4 py-3 text-gray-500">{item._count?.tickets ?? 0}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">

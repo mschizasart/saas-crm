@@ -402,6 +402,57 @@ export class LeadsService {
     });
   }
 
+  // ─── Web Form ────────────────────────────────────────────────
+
+  async createFromWebForm(
+    orgSlug: string,
+    dto: {
+      name: string;
+      email?: string;
+      phone?: string;
+      company?: string;
+      source?: string;
+      message?: string;
+    },
+  ) {
+    if (!orgSlug) {
+      throw new BadRequestException('orgSlug query parameter is required');
+    }
+    if (!dto.name) {
+      throw new BadRequestException('name is required');
+    }
+
+    const org = await this.prisma.client.organization.findUnique({
+      where: { slug: orgSlug },
+    });
+    if (!org) {
+      throw new NotFoundException(`Organization not found for slug: ${orgSlug}`);
+    }
+
+    // Find the first (default) lead status for this org
+    const defaultStatus = await this.prisma.client.leadStatus.findFirst({
+      where: { organizationId: org.id },
+      orderBy: { position: 'asc' },
+    });
+
+    const lead = await this.prisma.client.lead.create({
+      data: {
+        organizationId: org.id,
+        name: dto.name,
+        email: dto.email ?? null,
+        phone: dto.phone ?? null,
+        company: dto.company ?? null,
+        description: dto.message ?? null,
+        statusId: defaultStatus?.id ?? null,
+        status: 'new',
+      },
+    });
+
+    this.events.emit('lead.created', { lead, orgId: org.id, createdBy: 'web_form' });
+
+    return { success: true, leadId: lead.id };
+  }
+
   // ─── Kanban Board ────────────────────────────────────────────
 
   async getKanbanBoard(orgId: string) {

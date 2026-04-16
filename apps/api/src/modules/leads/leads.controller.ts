@@ -7,17 +7,19 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { LeadsService, CreateLeadDto } from './leads.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Permissions } from '../../common/decorators/permissions.decorator';
+import { Permissions, Public } from '../../common/decorators/permissions.decorator';
 
 @ApiTags('Leads')
 @Controller({ version: '1', path: 'leads' })
@@ -25,6 +27,39 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 @ApiBearerAuth()
 export class LeadsController {
   constructor(private service: LeadsService) {}
+
+  // ─── Web Form (Public) ───────────────────────────────────────
+
+  @Post('web-form')
+  @Public()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Public web-to-lead form submission' })
+  async webFormSubmit(
+    @Body() dto: any,
+    @Query('orgSlug') orgSlug: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.service.createFromWebForm(orgSlug, {
+      name: dto.name,
+      email: dto.email,
+      phone: dto.phone,
+      company: dto.company,
+      source: dto.source,
+      message: dto.message,
+    });
+
+    // If the request came from a regular HTML form (not AJAX), redirect to thank-you
+    const accept = (res.req?.headers?.accept ?? '');
+    if (accept.includes('text/html') && !accept.includes('application/json')) {
+      res.setHeader('Content-Type', 'text/html');
+      res.status(201).send(
+        `<!DOCTYPE html><html><head><title>Thank You</title><style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f9fafb}div{text-align:center;padding:2rem;background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.1)}</style></head><body><div><h1>Thank You!</h1><p>Your submission has been received. We will be in touch soon.</p></div></body></html>`,
+      );
+      return;
+    }
+
+    return result;
+  }
 
   // ─── Kanban ─────────────────────────────────────────────────
 

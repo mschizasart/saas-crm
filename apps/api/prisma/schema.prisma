@@ -92,6 +92,7 @@ model Organization {
   events             Event[]
   savedItems         SavedItem[]
   predefinedReplies  PredefinedReply[]
+  clockEntries       ClockEntry[]
 
   @@map("organizations")
 }
@@ -151,6 +152,7 @@ model User {
   assignedTasks  TaskAssignment[]
   timeEntries    TimeEntry[]
   activityLogs   ActivityLog[]
+  clockEntries   ClockEntry[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -898,11 +900,25 @@ model Task {
   attachments    TaskAttachment[]
   timeEntries    TimeEntry[]
   customFieldValues CustomFieldValue[]
+  dependencies   TaskDependency[] @relation("TaskDependencies")
+  dependedOnBy   TaskDependency[] @relation("TaskDependedOnBy")
 
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([organizationId, projectId])
   @@map("tasks")
+}
+
+model TaskDependency {
+  id           String @id @default(uuid())
+  taskId       String
+  dependsOnId  String
+
+  task         Task @relation("TaskDependencies", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn    Task @relation("TaskDependedOnBy", fields: [dependsOnId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnId])
+  @@map("task_dependencies")
 }
 
 model TaskAssignment {
@@ -1046,12 +1062,14 @@ model ProjectNote {
 // ═══════════════════════════════════════════════════════════════
 
 model Department {
-  id             String   @id @default(uuid())
-  organizationId String
-  name           String
-  email          String?
-  hideFromClient Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  id                 String   @id @default(uuid())
+  organizationId     String
+  name               String
+  email              String?
+  hideFromClient     Boolean  @default(false)
+  slaResponseHours   Int?     // max hours to first response
+  slaResolutionHours Int?     // max hours to resolution
+  createdAt          DateTime @default(now())
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   tickets        Ticket[]
@@ -1591,6 +1609,27 @@ model Todo {
 
   @@index([organizationId, userId])
   @@map("todos")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CLOCK IN/OUT (Staff time tracking)
+// ═══════════════════════════════════════════════════════════════
+
+model ClockEntry {
+  id             String    @id @default(uuid())
+  organizationId String
+  userId         String
+  clockIn        DateTime
+  clockOut       DateTime?
+  note           String?
+  totalMinutes   Int?
+  createdAt      DateTime  @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId])
+  @@map("clock_entries")
 }
 
 // ═══════════════════════════════════════════════════════════════

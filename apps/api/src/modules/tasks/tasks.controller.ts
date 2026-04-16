@@ -126,6 +126,47 @@ export class TasksController {
     return this.service.addComment(org.id, id, body.content, user.id);
   }
 
+  // ─── Task Dependencies ──────────────────────────────────────────────────────
+
+  @Get(':id/dependencies')
+  @ApiOperation({ summary: 'List dependencies for a task' })
+  getDependencies(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+  ) {
+    return this.service.getDependencies(org.id, id);
+  }
+
+  @Post(':id/dependencies')
+  @ApiOperation({ summary: 'Add a dependency to a task' })
+  addDependency(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Body() body: { dependsOnId: string },
+  ) {
+    return this.service.addDependency(org.id, id, body.dependsOnId);
+  }
+
+  @Delete(':id/dependencies/:dependsOnId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove a dependency from a task' })
+  removeDependency(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Param('dependsOnId') dependsOnId: string,
+  ) {
+    return this.service.removeDependency(org.id, id, dependsOnId);
+  }
+
+  @Get(':id/can-start')
+  @ApiOperation({ summary: 'Check if a task can start (all dependencies completed)' })
+  checkCanStart(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+  ) {
+    return this.service.checkCanStart(org.id, id);
+  }
+
   // ─── Task Timers ──────────────────────────────────────────────────────────
 
   @Post(':id/timer/start')

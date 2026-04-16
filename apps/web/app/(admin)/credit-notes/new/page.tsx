@@ -57,6 +57,7 @@ export default function NewCreditNotePage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveItemMsg, setSaveItemMsg] = useState<string | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   // Saved items autocomplete state
   const [activeAutocomplete, setActiveAutocomplete] = useState<number | null>(null);
@@ -279,8 +280,27 @@ export default function NewCreditNotePage() {
           </div>
           <div className="space-y-3">
             {items.map((it, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-5 relative">
+              <div
+                key={idx}
+                className={`grid grid-cols-12 gap-2 items-end ${dragIdx === idx ? 'opacity-50' : ''}`}
+                draggable
+                onDragStart={() => setDragIdx(idx)}
+                onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-t-2', 'border-primary'); }}
+                onDragLeave={(e) => { e.currentTarget.classList.remove('border-t-2', 'border-primary'); }}
+                onDrop={(e) => {
+                  e.currentTarget.classList.remove('border-t-2', 'border-primary');
+                  if (dragIdx === null || dragIdx === idx) return;
+                  const reordered = [...items];
+                  const [moved] = reordered.splice(dragIdx, 1);
+                  reordered.splice(idx, 0, moved);
+                  setItems(reordered);
+                  setDragIdx(null);
+                }}
+                onDragEnd={() => setDragIdx(null)}
+              >
+                <div className="col-span-5 relative flex items-end gap-1">
+                  <span className="cursor-grab text-gray-400 select-none pb-2" title="Drag to reorder">&#8942;&#8942;</span>
+                  <div className="flex-1 relative">
                   <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
                   <input
                     type="text"
@@ -306,6 +326,7 @@ export default function NewCreditNotePage() {
                       ))}
                     </div>
                   )}
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-gray-500 mb-1">Qty</label>

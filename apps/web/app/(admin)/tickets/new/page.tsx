@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 
 interface ClientOption { id: string; company?: string; company_name?: string; name?: string; }
 interface Department { id: string; name: string; }
@@ -25,6 +26,7 @@ export default function NewTicketPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     (async () => {
@@ -61,7 +63,15 @@ export default function NewTicketPage() {
       });
       if (!res.ok) throw new Error(`Failed (${res.status})`);
       const created = await res.json();
-      router.push(`/tickets/${created.id ?? created.data?.id}`);
+      const createdId = created.id ?? created.data?.id;
+      if (Object.keys(customFieldValues).length > 0 && createdId) {
+        await fetch(`${API_BASE}/api/v1/custom-fields/values/ticket/${createdId}`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(customFieldValues),
+        });
+      }
+      router.push(`/tickets/${createdId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     } finally {
@@ -111,6 +121,8 @@ export default function NewTicketPage() {
         <Field label="Message" required>
           <textarea required rows={8} value={message} onChange={(e) => setMessage(e.target.value)} className={inputClass} />
         </Field>
+
+        <CustomFieldsForm fieldTo="ticket" values={customFieldValues} onChange={setCustomFieldValues} />
 
         <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
           <Link href="/tickets" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Cancel</Link>

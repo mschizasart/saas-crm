@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 
 interface ClientOption {
   id: string;
@@ -67,6 +68,8 @@ export default function NewInvoicePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveItemMsg, setSaveItemMsg] = useState<string | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
   // Saved items autocomplete state
   const [activeAutocomplete, setActiveAutocomplete] = useState<number | null>(null);
@@ -209,7 +212,15 @@ export default function NewInvoicePage() {
       });
       if (!res.ok) throw new Error(`Failed (${res.status})`);
       const created = await res.json();
-      router.push(`/invoices/${created.id ?? created.data?.id}`);
+      const createdId = created.id ?? created.data?.id;
+      if (Object.keys(customFieldValues).length > 0 && createdId) {
+        await fetch(`${API_BASE}/api/v1/custom-fields/values/invoice/${createdId}`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(customFieldValues),
+        });
+      }
+      router.push(`/invoices/${createdId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create invoice');
     } finally {
@@ -264,6 +275,7 @@ export default function NewInvoicePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-gray-500 uppercase">
+                  <th className="pb-2 pr-2 w-8" />
                   <th className="pb-2 pr-2">Description</th>
                   <th className="pb-2 pr-2 w-24">Qty</th>
                   <th className="pb-2 pr-2 w-32">Unit Price</th>
@@ -276,7 +288,29 @@ export default function NewInvoicePage() {
                 {form.items.map((item, idx) => {
                   const amount = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
                   return (
-                    <tr key={idx} className="border-t border-gray-100">
+                    <tr
+                      key={idx}
+                      className={`border-t border-gray-100 ${dragIdx === idx ? 'opacity-50' : ''}`}
+                      draggable
+                      onDragStart={() => setDragIdx(idx)}
+                      onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-t-2', 'border-primary'); }}
+                      onDragLeave={(e) => { e.currentTarget.classList.remove('border-t-2', 'border-primary'); }}
+                      onDrop={(e) => {
+                        e.currentTarget.classList.remove('border-t-2', 'border-primary');
+                        if (dragIdx === null || dragIdx === idx) return;
+                        setForm((prev) => {
+                          const reordered = [...prev.items];
+                          const [moved] = reordered.splice(dragIdx, 1);
+                          reordered.splice(idx, 0, moved);
+                          return { ...prev, items: reordered };
+                        });
+                        setDragIdx(null);
+                      }}
+                      onDragEnd={() => setDragIdx(null)}
+                    >
+                      <td className="py-2 pr-1 cursor-grab text-gray-400 select-none" title="Drag to reorder">
+                        <span className="text-sm leading-none">&#8942;&#8942;</span>
+                      </td>
                       <td className="py-2 pr-2 relative">
                         <input
                           value={item.description}
@@ -352,6 +386,8 @@ export default function NewInvoicePage() {
             <textarea rows={4} value={form.terms} onChange={(e) => setForm({ ...form, terms: e.target.value })} className={inputClass} />
           </Field>
         </div>
+
+        <CustomFieldsForm fieldTo="invoice" values={customFieldValues} onChange={setCustomFieldValues} />
 
         <div className="flex justify-end gap-2">
           <Link href="/invoices" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Cancel</Link>

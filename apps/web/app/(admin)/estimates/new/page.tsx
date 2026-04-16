@@ -31,6 +31,7 @@ export default function NewEstimatePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveItemMsg, setSaveItemMsg] = useState<string | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   // Saved items autocomplete state
   const [activeAutocomplete, setActiveAutocomplete] = useState<number | null>(null);
@@ -185,6 +186,7 @@ export default function NewEstimatePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-gray-500 uppercase">
+                  <th className="pb-2 pr-2 w-8" />
                   <th className="pb-2 pr-2">Description</th>
                   <th className="pb-2 pr-2 w-24">Qty</th>
                   <th className="pb-2 pr-2 w-32">Unit Price</th>
@@ -197,7 +199,27 @@ export default function NewEstimatePage() {
                 {items.map((item, idx) => {
                   const amount = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0);
                   return (
-                    <tr key={idx} className="border-t border-gray-100">
+                    <tr
+                      key={idx}
+                      className={`border-t border-gray-100 ${dragIdx === idx ? 'opacity-50' : ''}`}
+                      draggable
+                      onDragStart={() => setDragIdx(idx)}
+                      onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-t-2', 'border-primary'); }}
+                      onDragLeave={(e) => { e.currentTarget.classList.remove('border-t-2', 'border-primary'); }}
+                      onDrop={(e) => {
+                        e.currentTarget.classList.remove('border-t-2', 'border-primary');
+                        if (dragIdx === null || dragIdx === idx) return;
+                        const reordered = [...items];
+                        const [moved] = reordered.splice(dragIdx, 1);
+                        reordered.splice(idx, 0, moved);
+                        setItems(reordered);
+                        setDragIdx(null);
+                      }}
+                      onDragEnd={() => setDragIdx(null)}
+                    >
+                      <td className="py-2 pr-1 cursor-grab text-gray-400 select-none" title="Drag to reorder">
+                        <span className="text-sm leading-none">&#8942;&#8942;</span>
+                      </td>
                       <td className="py-2 pr-2 relative">
                         <input
                           value={item.description}

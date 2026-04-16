@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 
 interface LeadForm {
   name: string;
@@ -51,6 +52,7 @@ export default function NewLeadPage() {
   const [form, setForm] = useState<LeadForm>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
   function update<K extends keyof LeadForm>(key: K, value: LeadForm[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -75,7 +77,15 @@ export default function NewLeadPage() {
       });
       if (!res.ok) throw new Error(`Failed to create lead (${res.status})`);
       const created = await res.json();
-      router.push(`/leads/${created.id ?? created.data?.id}`);
+      const createdId = created.id ?? created.data?.id;
+      if (Object.keys(customFieldValues).length > 0 && createdId) {
+        await fetch(`${API_BASE}/api/v1/custom-fields/values/lead/${createdId}`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(customFieldValues),
+        });
+      }
+      router.push(`/leads/${createdId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create lead');
     } finally {
@@ -148,6 +158,8 @@ export default function NewLeadPage() {
             <textarea rows={4} value={form.description} onChange={(e) => update('description', e.target.value)} className={inputClass} />
           </Field>
         </div>
+
+        <CustomFieldsForm fieldTo="lead" values={customFieldValues} onChange={setCustomFieldValues} />
 
         <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
           <Link href="/leads" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Cancel</Link>

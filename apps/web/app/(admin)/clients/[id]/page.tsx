@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -147,6 +148,10 @@ export default function ClientDetailPage() {
   const [contactForm, setContactForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
   const [addingContact, setAddingContact] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
+
+  // Custom fields
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
+  const [savingCf, setSavingCf] = useState(false);
 
   // Invoices tab
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -416,17 +421,42 @@ export default function ClientDetailPage() {
 
       {/* ── Overview tab ───────────────────────────────────────────────────── */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[
-            { label: 'Invoices', count: client._count.invoices },
-            { label: 'Projects', count: client._count.projects },
-            { label: 'Tickets', count: client._count.tickets },
-          ].map(({ label, count }) => (
-            <div key={label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{label}</p>
-              <p className="text-3xl font-bold text-gray-900">{count}</p>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[
+              { label: 'Invoices', count: client._count.invoices },
+              { label: 'Projects', count: client._count.projects },
+              { label: 'Tickets', count: client._count.tickets },
+            ].map(({ label, count }) => (
+              <div key={label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{label}</p>
+                <p className="text-3xl font-bold text-gray-900">{count}</p>
+              </div>
+            ))}
+          </div>
+
+          <CustomFieldsForm fieldTo="client" entityId={clientId} values={customFieldValues} onChange={setCustomFieldValues} />
+          {Object.keys(customFieldValues).length > 0 && (
+            <div className="flex justify-end">
+              <button
+                onClick={async () => {
+                  setSavingCf(true);
+                  try {
+                    await fetch(`${API_BASE}/api/v1/custom-fields/values/client/${clientId}`, {
+                      method: 'PUT',
+                      headers: authHeaders(),
+                      body: JSON.stringify(customFieldValues),
+                    });
+                  } catch { /* ignore */ }
+                  setSavingCf(false);
+                }}
+                disabled={savingCf}
+                className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {savingCf ? 'Saving...' : 'Save Custom Fields'}
+              </button>
             </div>
-          ))}
+          )}
         </div>
       )}
 

@@ -22,6 +22,19 @@ interface Comment {
   createdAt: string;
 }
 
+interface TaskSummary {
+  id: string;
+  name: string;
+  status: string;
+  priority?: string;
+}
+
+interface Dependency {
+  id: string;
+  dependsOnId: string;
+  dependsOn: TaskSummary;
+}
+
 interface Task {
   id: string;
   name: string;
@@ -29,6 +42,7 @@ interface Task {
   status: string;
   priority: string;
   dueDate: string | null;
+  projectId?: string | null;
   project?: { id: string; name: string } | null;
   assignments?: Array<{
     user: { id: string; firstName: string; lastName: string } | null;
@@ -45,6 +59,10 @@ export default function TaskDetailPage() {
   const [newChecklist, setNewChecklist] = useState('');
   const [newComment, setNewComment] = useState('');
   const [assignUserId, setAssignUserId] = useState('');
+  const [dependencies, setDependencies] = useState<Dependency[]>([]);
+  const [availableTasks, setAvailableTasks] = useState<TaskSummary[]>([]);
+  const [selectedDepId, setSelectedDepId] = useState('');
+  const [blockedBy, setBlockedBy] = useState<TaskSummary[]>([]);
 
   const fetchTask = useCallback(async () => {
     setLoading(true);
@@ -56,9 +74,47 @@ export default function TaskDetailPage() {
     setLoading(false);
   }, [id]);
 
+  const fetchDependencies = useCallback(async () => {
+    const token = getToken();
+    try {
+      const [depsRes, canStartRes] = await Promise.all([
+        fetch(`${API_BASE}/api/v1/tasks/${id}/dependencies`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_BASE}/api/v1/tasks/${id}/can-start`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      if (depsRes.ok) {
+        const data = await depsRes.json();
+        setDependencies(Array.isArray(data) ? data : data.data ?? []);
+      }
+      if (canStartRes.ok) {
+        const data = await canStartRes.json();
+        setBlockedBy(data.blockedBy ?? []);
+      }
+    } catch { /* ignore */ }
+  }, [id]);
+
+  const fetchAvailableTasks = useCallback(async () => {
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/tasks?limit=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const tasks = (data.data ?? []).filter((t: any) => t.id !== id);
+        setAvailableTasks(tasks);
+      }
+    } catch { /* ignore */ }
+  }, [id]);
+
   useEffect(() => {
     fetchTask();
-  }, [fetchTask]);
+    fetchDependencies();
+    fetchAvailableTasks();
+  }, [fetchTask, fetchDependencies, fetchAvailableTasks]);
 
   async function updateStatus(status: string) {
     const token = getToken();
@@ -125,6 +181,30 @@ export default function TaskDetailPage() {
     });
     setAssignUserId('');
     fetchTask();
+  }
+
+  async function addDependency() {
+    if (!selectedDepId) return;
+    const token = getToken();
+    await fetch(`${API_BASE}/api/v1/tasks/${id}/dependencies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ dependsOnId: selectedDepId }),
+    });
+    setSelectedDepId('');
+    fetchDependencies();
+  }
+
+  async function removeDependency(dependsOnId: string) {
+    const token = getToken();
+    await fetch(`${API_BASE}/api/v1/tasks/${id}/dependencies/${dependsOnId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    fetchDependencies();
   }
 
   async function remove() {
@@ -253,6 +333,84 @@ export default function TaskDetailPage() {
           <button
             onClick={addChecklist}
             className="px-3 py-1.5 text-sm bg-primary text-white rounded-md hover:bg-primary/90"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+
+      {/* Dependencies */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <h2 className="text-sm font-semibold text-gray-900 mb-3">Dependencies</h2>
+
+        {blockedBy.length > 0 && (
+          <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-sm text-amber-800 font-medium">
+              Blocked by:{' '}
+              {blockedBy.map((b, i) => (
+                <span key={b.id}>
+                  {i > 0 && ', '}
+                  {b.name}
+                  <span className="text-amber-600 text-xs ml-1">({b.status})</span>
+                </span>
+              ))}
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-2 mb-3">
+          {dependencies.length === 0 && (
+            <p className="text-sm text-gray-400">No dependencies</p>
+          )}
+          {dependencies.map((dep) => (
+            <div
+              key={dep.id}
+              className="flex items-center justify-between text-sm border border-gray-100 rounded-lg px-3 py-2"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-gray-900">{dep.dependsOn.name}</span>
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                    dep.dependsOn.status === 'complete'
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {dep.dependsOn.status}
+                </span>
+              </div>
+              <button
+                onClick={() => removeDependency(dep.dependsOn.id)}
+                className="text-gray-400 hover:text-red-500 text-sm px-1"
+                title="Remove dependency"
+              >
+                x
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <select
+            value={selectedDepId}
+            onChange={(e) => setSelectedDepId(e.target.value)}
+            className="flex-1 border border-gray-200 rounded-md px-3 py-1.5 text-sm bg-white"
+          >
+            <option value="">-- Add dependency --</option>
+            {availableTasks
+              .filter(
+                (t) => !dependencies.some((d) => d.dependsOn.id === t.id),
+              )
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.status})
+                </option>
+              ))}
+          </select>
+          <button
+            onClick={addDependency}
+            disabled={!selectedDepId}
+            className="px-3 py-1.5 text-sm bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50"
           >
             Add
           </button>

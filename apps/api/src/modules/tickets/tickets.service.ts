@@ -76,13 +76,63 @@ export class TicketsService {
           orderBy: { lastReplyAt: 'desc' },
           include: {
             client: { select: { id: true, company: true } },
-            department: { select: { name: true } },
+            department: { select: { id: true, name: true, slaResponseHours: true, slaResolutionHours: true } },
+            replies: { select: { createdAt: true }, orderBy: { createdAt: 'asc' as const }, take: 1 },
           },
         }),
         tx.ticket.count({ where }),
       ]);
 
-      return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+      // Compute SLA status for each ticket
+      const now = new Date();
+      const enriched = data.map((ticket: any) => {
+        const dept = ticket.department;
+        const createdAt = new Date(ticket.createdAt);
+        const firstReplyAt = ticket.replies?.[0]?.createdAt ? new Date(ticket.replies[0].createdAt) : null;
+        const closedAt = ticket.closedAt ? new Date(ticket.closedAt) : null;
+
+        let slaResponseStatus: 'ok' | 'warning' | 'breached' | null = null;
+        let slaResolutionStatus: 'ok' | 'warning' | 'breached' | null = null;
+        let slaResponseRemaining: number | null = null;
+        let slaResolutionRemaining: number | null = null;
+
+        if (dept?.slaResponseHours) {
+          const slaMs = dept.slaResponseHours * 3600000;
+          if (firstReplyAt) {
+            const elapsed = firstReplyAt.getTime() - createdAt.getTime();
+            slaResponseStatus = elapsed > slaMs ? 'breached' : elapsed > slaMs * 0.8 ? 'warning' : 'ok';
+            slaResponseRemaining = Math.round((slaMs - elapsed) / 60000);
+          } else if (ticket.status !== 'closed') {
+            const elapsed = now.getTime() - createdAt.getTime();
+            slaResponseStatus = elapsed > slaMs ? 'breached' : elapsed > slaMs * 0.8 ? 'warning' : 'ok';
+            slaResponseRemaining = Math.round((slaMs - elapsed) / 60000);
+          }
+        }
+
+        if (dept?.slaResolutionHours) {
+          const slaMs = dept.slaResolutionHours * 3600000;
+          if (closedAt) {
+            const elapsed = closedAt.getTime() - createdAt.getTime();
+            slaResolutionStatus = elapsed > slaMs ? 'breached' : elapsed > slaMs * 0.8 ? 'warning' : 'ok';
+            slaResolutionRemaining = Math.round((slaMs - elapsed) / 60000);
+          } else if (ticket.status !== 'closed') {
+            const elapsed = now.getTime() - createdAt.getTime();
+            slaResolutionStatus = elapsed > slaMs ? 'breached' : elapsed > slaMs * 0.8 ? 'warning' : 'ok';
+            slaResolutionRemaining = Math.round((slaMs - elapsed) / 60000);
+          }
+        }
+
+        const { replies: _replies, ...ticketData } = ticket;
+        return {
+          ...ticketData,
+          slaResponseStatus,
+          slaResolutionStatus,
+          slaResponseRemaining,
+          slaResolutionRemaining,
+        };
+      });
+
+      return { data: enriched, total, page, limit, totalPages: Math.ceil(total / limit) };
     });
   }
 
@@ -181,16 +231,47 @@ export class TicketsService {
     await this.findOne(orgId, id);
 
     const updated = await this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.ticket.update({
+      return (tx as any).ticket.update({
         where: { id },
         data: {
           status,
           ...(status === 'closed' && { closedAt: new Date() }),
         },
+        include: {
+          client: {
+            select: {
+              id: true,
+              company: true,
+              contacts: { select: { email: true }, where: { isPrimary: true }, take: 1 },
+            },
+          },
+        },
       });
     });
 
     this.events.emit('ticket.status_changed', { ticket: updated, orgId, status });
+
+    // Feature 5: Trigger satisfaction survey when ticket is closed
+    if (status === 'closed') {
+      try {
+        const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+        const settings = (org?.settings as any) ?? {};
+        if (settings.ticketSatisfactionSurvey) {
+          const contactEmail = updated.client?.contacts?.[0]?.email;
+          if (contactEmail) {
+            this.events.emit('ticket.satisfaction_survey', {
+              ticket: updated,
+              orgId,
+              contactEmail,
+              orgName: org?.name ?? 'Our Team',
+            });
+          }
+        }
+      } catch {
+        // Non-critical — don't fail ticket status update
+      }
+    }
+
     return updated;
   }
 
@@ -235,19 +316,21 @@ export class TicketsService {
 
   // ─── createDepartment ─────────────────────────────────────────────────────
 
-  async createDepartment(orgId: string, name: string, email?: string) {
+  async createDepartment(orgId: string, name: string, email?: string, slaResponseHours?: number | null, slaResolutionHours?: number | null) {
     return this.prisma.withOrganization(orgId, async (tx) => {
       return tx.department.create({
         data: {
           organizationId: orgId,
           name,
           email: email ?? null,
+          slaResponseHours: slaResponseHours ?? null,
+          slaResolutionHours: slaResolutionHours ?? null,
         },
       });
     });
   }
 
-  async updateDepartment(orgId: string, id: string, data: { name?: string; email?: string }) {
+  async updateDepartment(orgId: string, id: string, data: { name?: string; email?: string; slaResponseHours?: number | null; slaResolutionHours?: number | null }) {
     return this.prisma.withOrganization(orgId, async (tx) => {
       const existing = await tx.department.findFirst({ where: { id, organizationId: orgId } });
       if (!existing) throw new NotFoundException('Department not found');
@@ -256,6 +339,8 @@ export class TicketsService {
         data: {
           ...(data.name !== undefined && { name: data.name }),
           ...(data.email !== undefined && { email: data.email || null }),
+          ...(data.slaResponseHours !== undefined && { slaResponseHours: data.slaResponseHours }),
+          ...(data.slaResolutionHours !== undefined && { slaResolutionHours: data.slaResolutionHours }),
         },
         include: { _count: { select: { tickets: true } } },
       });
@@ -269,6 +354,81 @@ export class TicketsService {
       // Unlink tickets from this department
       await tx.ticket.updateMany({ where: { departmentId: id, organizationId: orgId }, data: { departmentId: null } });
       await tx.department.delete({ where: { id } });
+    });
+  }
+
+  // ─── getSlaReport ──────────────────────────────────────────────────────────
+
+  async getSlaReport(orgId: string) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      // Get all tickets with department SLA info
+      const tickets = await (tx as any).ticket.findMany({
+        where: { organizationId: orgId },
+        include: {
+          department: { select: { slaResponseHours: true, slaResolutionHours: true } },
+          replies: { select: { createdAt: true }, orderBy: { createdAt: 'asc' as const }, take: 1 },
+        },
+      });
+
+      let totalWithResponseSla = 0;
+      let respondedWithinSla = 0;
+      let totalWithResolutionSla = 0;
+      let resolvedWithinSla = 0;
+      let totalResponseTimeMs = 0;
+      let responseCount = 0;
+      let totalResolutionTimeMs = 0;
+      let resolutionCount = 0;
+
+      for (const ticket of tickets) {
+        const dept = ticket.department;
+        const createdAt = new Date(ticket.createdAt);
+        const firstReplyAt = ticket.replies?.[0]?.createdAt ? new Date(ticket.replies[0].createdAt) : null;
+        const closedAt = ticket.closedAt ? new Date(ticket.closedAt) : null;
+
+        if (firstReplyAt) {
+          const responseMs = firstReplyAt.getTime() - createdAt.getTime();
+          totalResponseTimeMs += responseMs;
+          responseCount++;
+
+          if (dept?.slaResponseHours) {
+            totalWithResponseSla++;
+            if (responseMs <= dept.slaResponseHours * 3600000) {
+              respondedWithinSla++;
+            }
+          }
+        }
+
+        if (closedAt) {
+          const resolutionMs = closedAt.getTime() - createdAt.getTime();
+          totalResolutionTimeMs += resolutionMs;
+          resolutionCount++;
+
+          if (dept?.slaResolutionHours) {
+            totalWithResolutionSla++;
+            if (resolutionMs <= dept.slaResolutionHours * 3600000) {
+              resolvedWithinSla++;
+            }
+          }
+        }
+      }
+
+      return {
+        responseCompliance: totalWithResponseSla > 0
+          ? Math.round((respondedWithinSla / totalWithResponseSla) * 100)
+          : null,
+        resolutionCompliance: totalWithResolutionSla > 0
+          ? Math.round((resolvedWithinSla / totalWithResolutionSla) * 100)
+          : null,
+        avgResponseTimeHours: responseCount > 0
+          ? +(totalResponseTimeMs / responseCount / 3600000).toFixed(2)
+          : null,
+        avgResolutionTimeHours: resolutionCount > 0
+          ? +(totalResolutionTimeMs / resolutionCount / 3600000).toFixed(2)
+          : null,
+        totalTickets: tickets.length,
+        ticketsWithResponseSla: totalWithResponseSla,
+        ticketsWithResolutionSla: totalWithResolutionSla,
+      };
     });
   }
 

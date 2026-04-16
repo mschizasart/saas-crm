@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../database/prisma.service';
 
@@ -252,6 +252,95 @@ export class TasksService {
         },
       });
     });
+  }
+
+  // ─── Task Dependencies ────────────────────────────────────────────────────
+
+  async addDependency(orgId: string, taskId: string, dependsOnId: string) {
+    if (taskId === dependsOnId) {
+      throw new BadRequestException('A task cannot depend on itself');
+    }
+
+    // Verify both tasks exist and belong to the org
+    await this.findOne(orgId, taskId);
+    await this.findOne(orgId, dependsOnId);
+
+    // Check for circular dependency: walk the chain from dependsOnId
+    await this.checkCircular(orgId, dependsOnId, taskId);
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.taskDependency.upsert({
+        where: { taskId_dependsOnId: { taskId, dependsOnId } },
+        create: { taskId, dependsOnId },
+        update: {},
+        include: {
+          dependsOn: {
+            select: { id: true, name: true, status: true },
+          },
+        },
+      });
+    });
+  }
+
+  private async checkCircular(orgId: string, fromTaskId: string, targetId: string, visited = new Set<string>()) {
+    if (fromTaskId === targetId) {
+      throw new BadRequestException('Adding this dependency would create a circular dependency');
+    }
+    if (visited.has(fromTaskId)) return;
+    visited.add(fromTaskId);
+
+    const deps = await this.prisma.client.taskDependency.findMany({
+      where: { taskId: fromTaskId },
+      select: { dependsOnId: true },
+    });
+
+    for (const dep of deps) {
+      await this.checkCircular(orgId, dep.dependsOnId, targetId, visited);
+    }
+  }
+
+  async removeDependency(orgId: string, taskId: string, dependsOnId: string) {
+    await this.findOne(orgId, taskId);
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.taskDependency.findUnique({
+        where: { taskId_dependsOnId: { taskId, dependsOnId } },
+      });
+      if (!existing) throw new NotFoundException('Dependency not found');
+      await tx.taskDependency.delete({
+        where: { taskId_dependsOnId: { taskId, dependsOnId } },
+      });
+    });
+  }
+
+  async getDependencies(orgId: string, taskId: string) {
+    await this.findOne(orgId, taskId);
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.taskDependency.findMany({
+        where: { taskId },
+        include: {
+          dependsOn: {
+            select: { id: true, name: true, status: true, priority: true },
+          },
+        },
+      });
+    });
+  }
+
+  async checkCanStart(orgId: string, taskId: string) {
+    const deps = await this.getDependencies(orgId, taskId);
+    const blocking = deps.filter(
+      (d: any) => d.dependsOn.status !== 'complete',
+    );
+    return {
+      canStart: blocking.length === 0,
+      blockedBy: blocking.map((d: any) => ({
+        id: d.dependsOn.id,
+        name: d.dependsOn.name,
+        status: d.dependsOn.status,
+      })),
+    };
   }
 
   // ─── Task Timers ──────────────────────────────────────────────────────────

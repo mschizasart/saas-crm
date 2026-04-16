@@ -132,6 +132,26 @@ export class EmailsService {
     });
   }
 
+  @OnEvent('ticket.satisfaction_survey')
+  async handleTicketSatisfactionSurvey(payload: {
+    ticket: any;
+    orgId: string;
+    contactEmail: string;
+    orgName: string;
+  }) {
+    const { ticket, contactEmail, orgName } = payload;
+    const surveyUrl = `${process.env.APP_URL}/portal/survey/ticket/${ticket.id}`;
+    await this.queue({
+      to: contactEmail,
+      subject: `How was your support experience? — ${orgName}`,
+      html: `<p>Hi,</p>
+<p>Your support ticket <strong>"${ticket.subject}"</strong> has been resolved.</p>
+<p>We'd love to hear about your experience. Please take a moment to share your feedback:</p>
+<p><a href="${surveyUrl}" style="display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;">Rate your experience</a></p>
+<p>Thank you,<br/>${orgName} Support Team</p>`,
+    });
+  }
+
   @OnEvent('auth.password_reset_requested')
   async handlePasswordReset(payload: {
     user: any;

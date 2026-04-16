@@ -9,7 +9,7 @@ function getToken(): string | null {
   return localStorage.getItem('access_token');
 }
 
-type TabKey = 'company' | 'email' | 'gateways' | 'taxes' | 'currencies' | 'appearance';
+type TabKey = 'company' | 'email' | 'gateways' | 'taxes' | 'currencies' | 'appearance' | 'reports';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'company', label: 'Company' },
@@ -18,6 +18,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'taxes', label: 'Taxes' },
   { key: 'currencies', label: 'Currencies' },
   { key: 'appearance', label: 'Appearance' },
+  { key: 'reports', label: 'Reports' },
 ];
 
 interface Tax { id?: string; name: string; rate: number }
@@ -242,6 +243,56 @@ export default function SettingsPage() {
                 <option value="24h">24-hour</option>
                 <option value="12h">12-hour</option>
               </select>
+            </div>
+          </div>
+        )}
+
+        {tab === 'reports' && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">Scheduled Report Emails</h3>
+              <p className="text-xs text-gray-500 mb-4">Automatically send sales summary emails to all admin users in your organization.</p>
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.reports?.weeklyEmail ?? false}
+                    onChange={(e) => setSetting('reports', { ...(settings.reports ?? {}), weeklyEmail: e.target.checked })}
+                    className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary/30"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Send weekly sales summary email</span>
+                    <p className="text-xs text-gray-500">Sent every Monday at 8:00 AM to all admin users</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.reports?.monthlyEmail ?? false}
+                    onChange={(e) => setSetting('reports', { ...(settings.reports ?? {}), monthlyEmail: e.target.checked })}
+                    className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary/30"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Send monthly report email</span>
+                    <p className="text-xs text-gray-500">Sent on the 1st of each month at 8:00 AM to all admin users</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3">Ticket Surveys</h3>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={settings.ticketSatisfactionSurvey ?? false}
+                  onChange={(e) => setSetting('ticketSatisfactionSurvey', e.target.checked)}
+                  className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary/30"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Send satisfaction survey on ticket close</span>
+                  <p className="text-xs text-gray-500">Automatically email a satisfaction survey to the client contact when a ticket is closed</p>
+                </div>
+              </label>
             </div>
           </div>
         )}

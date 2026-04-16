@@ -48,6 +48,7 @@ import { BackupsModule } from './modules/backups/backups.module';
 import { SavedItemsModule } from './modules/saved-items/saved-items.module';
 import { PredefinedRepliesModule } from './modules/predefined-replies/predefined-replies.module';
 import { ImportsModule } from './modules/imports/imports.module';
+import { ClockModule } from './modules/clock/clock.module';
 
 @Module({
   imports: [
@@ -111,6 +112,7 @@ import { ImportsModule } from './modules/imports/imports.module';
     SavedItemsModule,
     PredefinedRepliesModule,
     ImportsModule,
+    ClockModule,
   ],
 })
 export class AppModule {}
