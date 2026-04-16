@@ -383,13 +383,21 @@ export default function LeadsPage() {
             </p>
           )}
         </div>
-        <Link
-          href="/leads/new"
-          className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          <span className="text-lg leading-none">+</span>
-          New Lead
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/leads/import"
+            className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Import CSV
+          </Link>
+          <Link
+            href="/leads/new"
+            className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            <span className="text-lg leading-none">+</span>
+            New Lead
+          </Link>
+        </div>
       </div>
 
       {/* ------------------------------------------------------------------ */}

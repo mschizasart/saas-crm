@@ -25,6 +25,30 @@ export interface LogTimeDto {
   billable?: boolean;
 }
 
+export interface CreateMilestoneDto {
+  name: string;
+  description?: string;
+  dueDate?: string;
+  color?: string;
+  order?: number;
+}
+
+export interface CreateDiscussionDto {
+  subject: string;
+  description?: string;
+}
+
+export interface CreateDiscussionCommentDto {
+  content: string;
+}
+
+export interface CreateProjectFileDto {
+  fileName: string;
+  fileUrl: string;
+  fileSize?: number;
+  mimeType?: string;
+}
+
 @Injectable()
 export class ProjectsService {
   constructor(
@@ -416,6 +440,208 @@ export class ProjectsService {
       ]);
 
       return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    });
+  }
+
+  // ─── Milestones ─────────────────────────────────────────────
+
+  async getMilestones(orgId: string, projectId: string) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.milestone.findMany({
+        where: { projectId, organizationId: orgId },
+        orderBy: { order: 'asc' },
+        include: {
+          tasks: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              dueDate: true,
+              priority: true,
+            },
+            orderBy: { order: 'asc' },
+          },
+        },
+      });
+    });
+  }
+
+  async createMilestone(orgId: string, projectId: string, dto: CreateMilestoneDto) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      // Get next order value
+      const maxOrder = await tx.milestone.findFirst({
+        where: { projectId, organizationId: orgId },
+        orderBy: { order: 'desc' },
+        select: { order: true },
+      });
+      return tx.milestone.create({
+        data: {
+          organizationId: orgId,
+          projectId,
+          name: dto.name,
+          description: dto.description ?? null,
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+          color: dto.color ?? '#6b7280',
+          order: dto.order ?? (maxOrder ? maxOrder.order + 1 : 0),
+        },
+      });
+    });
+  }
+
+  async updateMilestone(
+    orgId: string,
+    projectId: string,
+    milestoneId: string,
+    dto: Partial<CreateMilestoneDto> & { completed?: boolean },
+  ) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.milestone.findFirst({
+        where: { id: milestoneId, projectId, organizationId: orgId },
+      });
+      if (!existing) throw new NotFoundException('Milestone not found');
+
+      return tx.milestone.update({
+        where: { id: milestoneId },
+        data: {
+          ...(dto.name !== undefined && { name: dto.name }),
+          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.dueDate !== undefined && {
+            dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+          }),
+          ...(dto.color !== undefined && { color: dto.color }),
+          ...(dto.order !== undefined && { order: dto.order }),
+          ...(dto.completed !== undefined && {
+            completed: dto.completed,
+            completedAt: dto.completed ? new Date() : null,
+          }),
+        },
+      });
+    });
+  }
+
+  async deleteMilestone(orgId: string, projectId: string, milestoneId: string) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.milestone.findFirst({
+        where: { id: milestoneId, projectId, organizationId: orgId },
+      });
+      if (!existing) throw new NotFoundException('Milestone not found');
+      await tx.milestone.delete({ where: { id: milestoneId } });
+    });
+  }
+
+  // ─── Project Files ──────────────────────────────────────────
+
+  async getFiles(orgId: string, projectId: string) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return (tx as any).projectFile.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+  }
+
+  async createFile(orgId: string, projectId: string, dto: CreateProjectFileDto, userId?: string) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return (tx as any).projectFile.create({
+        data: {
+          projectId,
+          userId: userId ?? null,
+          fileName: dto.fileName,
+          fileUrl: dto.fileUrl,
+          fileSize: dto.fileSize ?? null,
+          mimeType: dto.mimeType ?? null,
+        },
+      });
+    });
+  }
+
+  async deleteFile(orgId: string, projectId: string, fileId: string) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const file = await (tx as any).projectFile.findFirst({
+        where: { id: fileId, projectId },
+      });
+      if (!file) throw new NotFoundException('File not found');
+      await (tx as any).projectFile.delete({ where: { id: fileId } });
+      return file;
+    });
+  }
+
+  // ─── Project Discussions ────────────────────────────────────
+
+  async getDiscussions(orgId: string, projectId: string) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return (tx as any).projectDiscussion.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          _count: { select: { comments: true } },
+        },
+      });
+    });
+  }
+
+  async getDiscussion(orgId: string, projectId: string, discussionId: string) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const discussion = await (tx as any).projectDiscussion.findFirst({
+        where: { id: discussionId, projectId },
+        include: {
+          comments: {
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      });
+      if (!discussion) throw new NotFoundException('Discussion not found');
+      return discussion;
+    });
+  }
+
+  async createDiscussion(orgId: string, projectId: string, dto: CreateDiscussionDto, userId?: string) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return (tx as any).projectDiscussion.create({
+        data: {
+          projectId,
+          userId: userId ?? null,
+          subject: dto.subject,
+          description: dto.description ?? null,
+        },
+        include: {
+          _count: { select: { comments: true } },
+        },
+      });
+    });
+  }
+
+  async addDiscussionComment(
+    orgId: string,
+    projectId: string,
+    discussionId: string,
+    dto: CreateDiscussionCommentDto,
+    userId?: string,
+  ) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const discussion = await (tx as any).projectDiscussion.findFirst({
+        where: { id: discussionId, projectId },
+      });
+      if (!discussion) throw new NotFoundException('Discussion not found');
+
+      return (tx as any).projectDiscussionComment.create({
+        data: {
+          discussionId,
+          userId: userId ?? null,
+          content: dto.content,
+        },
+      });
     });
   }
 }

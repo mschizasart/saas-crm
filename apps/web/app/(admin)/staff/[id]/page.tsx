@@ -15,6 +15,7 @@ interface StaffUser {
   lastName: string;
   email: string;
   phone: string | null;
+  avatar?: string | null;
   isActive: boolean;
   isAdmin: boolean;
   twoFactorEnabled: boolean;
@@ -66,6 +67,39 @@ export default function StaffDetailPage() {
   const [newPassword, setNewPassword] = useState('');
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+
+  const [uploading, setUploading] = useState(false);
+
+  async function uploadAvatar(file: File) {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('folder', 'avatars');
+
+      const uploadRes = await fetch(`${API_BASE}/api/v1/storage/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: formData,
+      });
+      if (!uploadRes.ok) throw new Error('Upload failed');
+      const uploadData = await uploadRes.json();
+      const avatarUrl = uploadData.url || uploadData.path || uploadData.fileUrl;
+
+      const patchRes = await fetch(`${API_BASE}/api/v1/users/${userId}`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ avatar: avatarUrl }),
+      });
+      if (!patchRes.ok) throw new Error('Failed to update avatar');
+      const updated: StaffUser = await patchRes.json();
+      setUser(updated);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Avatar upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const fetchUser = useCallback(async () => {
     setLoading(true);
@@ -202,6 +236,33 @@ export default function StaffDetailPage() {
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
+          <div className="relative group">
+            {user.avatar ? (
+              <img
+                src={user.avatar}
+                alt={`${user.firstName} ${user.lastName}`}
+                className="w-12 h-12 rounded-full object-cover border-2 border-gray-200"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center text-lg font-semibold border-2 border-gray-200">
+                {user.firstName[0]}{user.lastName[0]}
+              </div>
+            )}
+            <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white text-xs font-medium rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+              {uploading ? '...' : 'Edit'}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadAvatar(file);
+                  e.target.value = '';
+                }}
+                disabled={uploading}
+              />
+            </label>
+          </div>
           <h1 className="text-2xl font-bold text-gray-900">{user.firstName} {user.lastName}</h1>
           <Badge tone={user.isActive ? 'green' : 'gray'}>{user.isActive ? 'Active' : 'Inactive'}</Badge>
           {user.isAdmin && <Badge tone="blue">Admin</Badge>}

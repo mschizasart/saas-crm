@@ -12,7 +12,14 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { ProjectsService, CreateProjectDto } from './projects.service';
+import {
+  ProjectsService,
+  CreateProjectDto,
+  CreateMilestoneDto,
+  CreateDiscussionDto,
+  CreateDiscussionCommentDto,
+  CreateProjectFileDto,
+} from './projects.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
@@ -181,5 +188,127 @@ export class ProjectsController {
     @Body() dto: { taskId?: string; startTime: string; endTime?: string; duration?: number; note?: string; billable?: boolean },
   ) {
     return this.service.logTime(org.id, id, dto, user.id);
+  }
+
+  // ─── Milestones ─────────────────────────────────────────────
+
+  @Get(':id/milestones')
+  @Permissions('projects.view')
+  @ApiOperation({ summary: 'List milestones for a project (with tasks)' })
+  getMilestones(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.getMilestones(org.id, id);
+  }
+
+  @Post(':id/milestones')
+  @Permissions('projects.edit')
+  @ApiOperation({ summary: 'Create a milestone in a project' })
+  createMilestone(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Body() dto: CreateMilestoneDto,
+  ) {
+    return this.service.createMilestone(org.id, id, dto);
+  }
+
+  @Patch(':projectId/milestones/:milestoneId')
+  @Permissions('projects.edit')
+  @ApiOperation({ summary: 'Update a milestone' })
+  updateMilestone(
+    @CurrentOrg() org: any,
+    @Param('projectId') projectId: string,
+    @Param('milestoneId') milestoneId: string,
+    @Body() dto: Partial<CreateMilestoneDto> & { completed?: boolean },
+  ) {
+    return this.service.updateMilestone(org.id, projectId, milestoneId, dto);
+  }
+
+  @Delete(':projectId/milestones/:milestoneId')
+  @Permissions('projects.edit')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a milestone' })
+  deleteMilestone(
+    @CurrentOrg() org: any,
+    @Param('projectId') projectId: string,
+    @Param('milestoneId') milestoneId: string,
+  ) {
+    return this.service.deleteMilestone(org.id, projectId, milestoneId);
+  }
+
+  // ─── Project Files ──────────────────────────────────────────
+
+  @Get(':id/files')
+  @Permissions('projects.view')
+  @ApiOperation({ summary: 'List files attached to a project' })
+  getFiles(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.getFiles(org.id, id);
+  }
+
+  @Post(':id/files')
+  @Permissions('projects.edit')
+  @ApiOperation({ summary: 'Register a file record for a project' })
+  createFile(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() dto: CreateProjectFileDto,
+  ) {
+    return this.service.createFile(org.id, id, dto, user.id);
+  }
+
+  @Delete(':projectId/files/:fileId')
+  @Permissions('projects.edit')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a project file record' })
+  deleteFile(
+    @CurrentOrg() org: any,
+    @Param('projectId') projectId: string,
+    @Param('fileId') fileId: string,
+  ) {
+    return this.service.deleteFile(org.id, projectId, fileId);
+  }
+
+  // ─── Discussions ────────────────────────────────────────────
+
+  @Get(':id/discussions')
+  @Permissions('projects.view')
+  @ApiOperation({ summary: 'List discussion threads for a project' })
+  getDiscussions(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.getDiscussions(org.id, id);
+  }
+
+  @Post(':id/discussions')
+  @Permissions('projects.edit')
+  @ApiOperation({ summary: 'Create a new discussion thread' })
+  createDiscussion(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() dto: CreateDiscussionDto,
+  ) {
+    return this.service.createDiscussion(org.id, id, dto, user.id);
+  }
+
+  @Get(':id/discussions/:discussionId')
+  @Permissions('projects.view')
+  @ApiOperation({ summary: 'Get a discussion with all comments' })
+  getDiscussion(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Param('discussionId') discussionId: string,
+  ) {
+    return this.service.getDiscussion(org.id, id, discussionId);
+  }
+
+  @Post(':id/discussions/:discussionId/comments')
+  @Permissions('projects.edit')
+  @ApiOperation({ summary: 'Add a comment to a discussion' })
+  addDiscussionComment(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Param('discussionId') discussionId: string,
+    @Body() dto: CreateDiscussionCommentDto,
+  ) {
+    return this.service.addDiscussionComment(org.id, id, discussionId, dto, user.id);
   }
 }

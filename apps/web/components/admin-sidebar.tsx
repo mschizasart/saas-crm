@@ -177,6 +177,7 @@ const NAV_ITEMS: NavItem[] = [
       { label: 'Todos', href: '/todos', icon: ListTodo },
       { label: 'Calendar', href: '/calendar', icon: Calendar },
       { label: 'Goals', href: '/goals', icon: Target },
+      { label: 'Timesheets', href: '/timesheets', icon: ClipboardList },
     ],
   },
   {
@@ -224,7 +225,12 @@ const NAV_ITEMS: NavItem[] = [
       { label: 'Custom Fields', href: '/settings/custom-fields', icon: FileText },
       { label: 'Tags', href: '/settings/tags', icon: Tag },
       { label: 'Roles', href: '/settings/roles', icon: Users },
+      { label: 'Saved Items', href: '/settings/saved-items', icon: BookOpen },
+      { label: 'Predefined Replies', href: '/settings/predefined-replies', icon: FileCheck },
+      { label: 'Lead Statuses', href: '/settings/lead-statuses', icon: Target },
+      { label: 'Lead Sources', href: '/settings/lead-sources', icon: UserCircle },
       { label: 'Email Templates', href: '/settings/email-templates', icon: FileCheck },
+      { label: 'Payment Modes', href: '/settings/payment-modes', icon: CreditCard },
     ],
   },
 ];

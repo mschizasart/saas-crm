@@ -10,6 +10,7 @@ interface StaffUser {
   lastName: string;
   email: string;
   phone: string | null;
+  avatar?: string | null;
   isActive: boolean;
   isAdmin: boolean;
   twoFactorEnabled: boolean;
@@ -204,8 +205,19 @@ export default function StaffPage() {
                     onClick={() => router.push(`/staff/${u.id}`)}
                   >
                     <td className="px-4 py-3 font-medium text-gray-900">
-                      {u.firstName} {u.lastName}
-                      {u.isAdmin && <span className="ml-2"><Badge tone="blue">Admin</Badge></span>}
+                      <div className="flex items-center gap-2.5">
+                        {u.avatar ? (
+                          <img src={u.avatar} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                        ) : (
+                          <span className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                            {u.firstName[0]}{u.lastName[0]}
+                          </span>
+                        )}
+                        <span>
+                          {u.firstName} {u.lastName}
+                          {u.isAdmin && <span className="ml-2"><Badge tone="blue">Admin</Badge></span>}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-500">{u.email}</td>
                     <td className="px-4 py-3 text-gray-500">{u.role?.name ?? <span className="text-gray-300">—</span>}</td>

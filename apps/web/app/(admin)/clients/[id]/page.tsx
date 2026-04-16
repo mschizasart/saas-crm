@@ -130,6 +130,9 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Statement download
+  const [downloadingStatement, setDownloadingStatement] = useState(false);
+
   // Edit mode
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Client>>({});
@@ -185,6 +188,31 @@ export default function ClientDetailPage() {
       .catch(() => setInvoices([]))
       .finally(() => setInvoicesLoading(false));
   }, [activeTab, clientId]);
+
+  // ── Download statement ─────────────────────────────────────────────────────
+
+  async function downloadStatement() {
+    setDownloadingStatement(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/clients/${clientId}/statement/pdf`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error(`Failed to download statement: ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `statement-${client?.company ?? clientId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // silent — could show toast in the future
+    } finally {
+      setDownloadingStatement(false);
+    }
+  }
 
   // ── Edit handlers ─────────────────────────────────────────────────────────
 
@@ -288,12 +316,31 @@ export default function ClientDetailPage() {
           <ActiveBadge active={client.isActive} />
         </div>
         {!editing && (
-          <button
-            onClick={startEdit}
-            className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            Edit
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={downloadStatement}
+              disabled={downloadingStatement}
+              className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              {downloadingStatement ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Generating…
+                </>
+              ) : (
+                'Download Statement'
+              )}
+            </button>
+            <button
+              onClick={startEdit}
+              className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              Edit
+            </button>
+          </div>
         )}
       </div>
 

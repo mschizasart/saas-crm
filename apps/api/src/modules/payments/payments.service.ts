@@ -250,11 +250,42 @@ export class PaymentsService {
     });
   }
 
-  async createPaymentMode(orgId: string, name: string) {
+  async createPaymentMode(orgId: string, name: string, description?: string) {
     return this.prisma.withOrganization(orgId, async (tx) => {
       return tx.paymentMode.create({
-        data: { organizationId: orgId, name },
+        data: { organizationId: orgId, name, description: description ?? null },
       });
+    });
+  }
+
+  async updatePaymentMode(
+    orgId: string,
+    id: string,
+    dto: { name?: string; description?: string; active?: boolean },
+  ) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.paymentMode.findFirst({
+        where: { id, organizationId: orgId },
+      });
+      if (!existing) throw new NotFoundException('Payment mode not found');
+      return tx.paymentMode.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined && { name: dto.name }),
+          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.active !== undefined && { active: dto.active }),
+        },
+      });
+    });
+  }
+
+  async deletePaymentMode(orgId: string, id: string) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.paymentMode.findFirst({
+        where: { id, organizationId: orgId },
+      });
+      if (!existing) throw new NotFoundException('Payment mode not found');
+      await tx.paymentMode.delete({ where: { id } });
     });
   }
 

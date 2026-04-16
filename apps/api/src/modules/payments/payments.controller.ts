@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Body,
   Param,
@@ -120,8 +121,27 @@ export class PaymentsController {
   @Post('modes')
   @Permissions('settings.edit')
   @ApiOperation({ summary: 'Create a payment mode' })
-  createPaymentMode(@CurrentOrg() org: any, @Body() body: { name: string }) {
-    return this.service.createPaymentMode(org.id, body.name);
+  createPaymentMode(@CurrentOrg() org: any, @Body() body: { name: string; description?: string }) {
+    return this.service.createPaymentMode(org.id, body.name, body.description);
+  }
+
+  @Patch('modes/:id')
+  @Permissions('settings.edit')
+  @ApiOperation({ summary: 'Update a payment mode' })
+  updatePaymentMode(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Body() body: { name?: string; description?: string; active?: boolean },
+  ) {
+    return this.service.updatePaymentMode(org.id, id, body);
+  }
+
+  @Delete('modes/:id')
+  @Permissions('settings.edit')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a payment mode' })
+  deletePaymentMode(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.deletePaymentMode(org.id, id);
   }
 
   // ─── Payments CRUD ─────────────────────────────────────────

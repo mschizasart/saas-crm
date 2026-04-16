@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { RichTextEditor } from '../../../../components/rich-text-editor';
 
 interface ClientOption { id: string; company?: string; company_name?: string; name?: string; }
 interface UserOption { id: string; name?: string; email?: string; }
@@ -110,8 +111,8 @@ export default function NewProposalPage() {
           </Field>
         </div>
 
-        <Field label="Content (HTML)" required>
-          <textarea required rows={12} value={content} onChange={(e) => setContent(e.target.value)} className={inputClass} placeholder="<h1>Proposal</h1>..." />
+        <Field label="Content" required>
+          <RichTextEditor value={content} onChange={setContent} placeholder="Write your proposal content here..." minHeight="250px" />
         </Field>
 
         <label className="flex items-center gap-2 text-sm text-gray-700">

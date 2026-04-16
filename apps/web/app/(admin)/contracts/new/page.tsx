@@ -1,10 +1,24 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { RichTextEditor, RichTextEditorHandle } from '../../../../components/rich-text-editor';
 
 interface ClientOption { id: string; company?: string; company_name?: string; name?: string; }
+interface MergeField { key: string; label: string; }
+
+const MERGE_FIELDS: MergeField[] = [
+  { key: '{client_name}', label: 'Client Company Name' },
+  { key: '{contact_name}', label: 'Primary Contact Name' },
+  { key: '{contact_email}', label: 'Primary Contact Email' },
+  { key: '{contract_value}', label: 'Contract Value' },
+  { key: '{start_date}', label: 'Start Date' },
+  { key: '{end_date}', label: 'End Date' },
+  { key: '{today}', label: "Today's Date" },
+  { key: '{organization_name}', label: 'Your Company Name' },
+  { key: '{organization_address}', label: 'Your Company Address' },
+];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -15,6 +29,7 @@ function getToken(): string | null {
 
 export default function NewContractPage() {
   const router = useRouter();
+  const editorRef = useRef<RichTextEditorHandle>(null);
   const [subject, setSubject] = useState('');
   const [clientId, setClientId] = useState('');
   const [content, setContent] = useState('');
@@ -25,6 +40,7 @@ export default function NewContractPage() {
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMergeFields, setShowMergeFields] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -98,7 +114,31 @@ export default function NewContractPage() {
         </div>
 
         <Field label="Content" required>
-          <textarea required rows={12} value={content} onChange={(e) => setContent(e.target.value)} className={inputClass} />
+          <div className="flex gap-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setShowMergeFields(!showMergeFields)}
+              className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              {showMergeFields ? 'Hide Merge Fields' : 'Insert Merge Field'}
+            </button>
+          </div>
+          {showMergeFields && (
+            <div className="flex flex-wrap gap-1.5 mb-2 p-2 bg-blue-50 border border-blue-100 rounded-lg">
+              {MERGE_FIELDS.map((field) => (
+                <button
+                  key={field.key}
+                  type="button"
+                  onClick={() => editorRef.current?.insertText(field.key)}
+                  className="px-2 py-1 text-xs bg-white border border-blue-200 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+                  title={field.label}
+                >
+                  {field.key}
+                </button>
+              ))}
+            </div>
+          )}
+          <RichTextEditor ref={editorRef} value={content} onChange={setContent} placeholder="Write your contract content here... Use merge fields to insert dynamic values." minHeight="250px" />
         </Field>
 
         <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">

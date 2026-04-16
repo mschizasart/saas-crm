@@ -13,10 +13,12 @@ import {
   API_BASE,
   authHeaders,
   formatCurrency,
+  defaultDateRange,
   StatCard,
   SkeletonCard,
   ErrorBanner,
   PageHeader,
+  DateRangeFilter,
   ExportMenu,
   PIE_PALETTE,
 } from '../_shared';
@@ -35,13 +37,17 @@ interface ClientsReport {
 }
 
 export default function ClientsReportPage() {
+  const [range, setRange] = useState(defaultDateRange());
   const [data, setData] = useState<ClientsReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    fetch(`${API_BASE}/api/v1/reports/clients`, { headers: authHeaders() })
+    setLoading(true);
+    setError(null);
+    const qs = new URLSearchParams({ from: range.from, to: range.to });
+    fetch(`${API_BASE}/api/v1/reports/clients?${qs}`, { headers: authHeaders() })
       .then(async (res) => {
         if (!res.ok) throw new Error('Failed to load report');
         return res.json();
@@ -52,14 +58,23 @@ export default function ClientsReportPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [range]);
 
   return (
     <div>
       <PageHeader
         title="Clients Report"
         description="Customer base breakdown, distribution and top revenue accounts."
-        right={<ExportMenu resource="clients" />}
+        right={
+          <div className="flex items-center gap-3 flex-wrap">
+            <DateRangeFilter
+              from={range.from}
+              to={range.to}
+              onChange={setRange}
+            />
+            <ExportMenu resource="clients" filter={range} />
+          </div>
+        }
       />
 
       {error && <ErrorBanner message={error} />}

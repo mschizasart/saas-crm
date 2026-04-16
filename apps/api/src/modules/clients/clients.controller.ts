@@ -160,4 +160,12 @@ export class ClientsController {
   createGroup(@CurrentOrg() org: any, @Body() body: { name: string }) {
     return this.service.createGroup(org.id, body.name);
   }
+
+  @Delete('groups/:id')
+  @Permissions('clients.delete')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a client group' })
+  deleteGroup(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.deleteGroup(org.id, id);
+  }
 }

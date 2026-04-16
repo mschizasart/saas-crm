@@ -247,6 +247,31 @@ export class TicketsService {
     });
   }
 
+  async updateDepartment(orgId: string, id: string, data: { name?: string; email?: string }) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.department.findFirst({ where: { id, organizationId: orgId } });
+      if (!existing) throw new NotFoundException('Department not found');
+      return tx.department.update({
+        where: { id },
+        data: {
+          ...(data.name !== undefined && { name: data.name }),
+          ...(data.email !== undefined && { email: data.email || null }),
+        },
+        include: { _count: { select: { tickets: true } } },
+      });
+    });
+  }
+
+  async deleteDepartment(orgId: string, id: string) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.department.findFirst({ where: { id, organizationId: orgId } });
+      if (!existing) throw new NotFoundException('Department not found');
+      // Unlink tickets from this department
+      await tx.ticket.updateMany({ where: { departmentId: id, organizationId: orgId }, data: { departmentId: null } });
+      await tx.department.delete({ where: { id } });
+    });
+  }
+
   // ─── getStats ─────────────────────────────────────────────────────────────
 
   async getStats(orgId: string) {

@@ -54,6 +54,39 @@ export class ContractsController {
     res.end(pdf);
   }
 
+  // ─── Merge Fields ──────────────────────────────────────────────────────────
+
+  @Get('merge-fields')
+  @Permissions('clients.view')
+  @ApiOperation({ summary: 'Get available merge fields for contract templates' })
+  getMergeFields() {
+    return ContractsService.getAvailableMergeFields();
+  }
+
+  // ─── Contract Types ────────────────────────────────────────────────────────
+
+  @Get('types')
+  @Permissions('clients.view')
+  @ApiOperation({ summary: 'List contract types' })
+  getContractTypes(@CurrentOrg() org: any) {
+    return this.service.getContractTypes(org.id);
+  }
+
+  @Post('types')
+  @Permissions('settings.edit')
+  @ApiOperation({ summary: 'Create a contract type' })
+  createContractType(@CurrentOrg() org: any, @Body() body: { name: string }) {
+    return this.service.createContractType(org.id, body.name);
+  }
+
+  @Delete('types/:id')
+  @Permissions('settings.edit')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a contract type' })
+  deleteContractType(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.deleteContractType(org.id, id);
+  }
+
   // ─── Stats ─────────────────────────────────────────────────────────────────
 
   @Get('stats')
@@ -161,6 +194,24 @@ export class ContractsController {
   @ApiOperation({ summary: 'Send contract for signing (triggers email listener)' })
   sendForSigning(@CurrentOrg() org: any, @Param('id') id: string) {
     return this.service.sendForSigning(org.id, id);
+  }
+
+  // ─── Rendered Content (merge fields replaced) ─────────────────────────────
+
+  @Get(':id/rendered')
+  @Permissions('clients.view')
+  @ApiOperation({ summary: 'Get contract with merge fields replaced' })
+  renderContent(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.renderContent(org.id, id);
+  }
+
+  // ─── Renew ────────────────────────────────────────────────────────────────
+
+  @Post(':id/renew')
+  @Permissions('clients.create')
+  @ApiOperation({ summary: 'Renew a contract (clone with new dates)' })
+  renew(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.renew(org.id, id);
   }
 
   // ─── Add Comment ──────────────────────────────────────────────────────────

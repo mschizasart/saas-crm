@@ -223,4 +223,17 @@ export class InvoicesController {
       })),
     }, user.id);
   }
+
+  // ─── Clone to Estimate ────────────────────────────────────────────────────
+
+  @Post(':id/clone-to-estimate')
+  @Permissions('invoices.create')
+  @ApiOperation({ summary: 'Clone an invoice to a new estimate' })
+  cloneToEstimate(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ) {
+    return this.service.cloneToEstimate(org.id, id, user.id);
+  }
 }

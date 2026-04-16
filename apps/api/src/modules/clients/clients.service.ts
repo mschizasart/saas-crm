@@ -214,6 +214,18 @@ export class ClientsService {
     });
   }
 
+  async deleteGroup(orgId: string, id: string) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.clientGroup.findFirst({
+        where: { id, organizationId: orgId },
+      });
+      if (!existing) throw new NotFoundException('Client group not found');
+      // Set groupId to null on clients in this group
+      await tx.client.updateMany({ where: { groupId: id, organizationId: orgId }, data: { groupId: null } });
+      await tx.clientGroup.delete({ where: { id } });
+    });
+  }
+
   // ─── Statement ─────────────────────────────────────────────
 
   async getStatement(orgId: string, clientId: string) {

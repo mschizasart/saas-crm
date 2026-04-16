@@ -437,6 +437,74 @@ export class InvoicesService {
     return result;
   }
 
+  // ─── cloneToEstimate ───────────────────────────────────────────────────────
+
+  async cloneToEstimate(orgId: string, id: string, createdBy: string) {
+    const source = await this.findOne(orgId, id);
+
+    const estimate = await this.prisma.withOrganization(orgId, async (tx) => {
+      const count = await tx.estimate.count({ where: { organizationId: orgId } });
+      const number = `EST-${String(count + 1).padStart(4, '0')}`;
+
+      let subtotal = 0;
+      let tax = 0;
+      const discount = Number(source.discount ?? 0);
+
+      for (const item of source.items as any[]) {
+        const lineTotal = Number(item.quantity) * Number(item.unitPrice);
+        const lineTax = lineTotal * (Number(item.taxRate ?? 0) / 100);
+        subtotal += lineTotal;
+        tax += lineTax;
+      }
+
+      const total = subtotal + tax - discount;
+
+      return tx.estimate.create({
+        data: {
+          organizationId: orgId,
+          clientId: source.clientId ?? null,
+          number,
+          date: new Date(),
+          expiryDate: null,
+          status: 'draft',
+          subtotal,
+          tax,
+          discount,
+          total,
+          notes: source.notes ?? null,
+          terms: source.terms ?? null,
+          currency: (source as any).currency ?? 'USD',
+          createdBy,
+          items: {
+            createMany: {
+              data: (source.items as any[]).map((item: any) => ({
+                description: item.description,
+                quantity: Number(item.quantity),
+                unitPrice: Number(item.unitPrice),
+                taxRate: Number(item.taxRate ?? 0),
+                total: Number(item.total),
+                order: item.order,
+              })),
+            },
+          },
+        },
+        include: {
+          client: { select: { id: true, company: true } },
+          items: { orderBy: { order: 'asc' } },
+        },
+      });
+    });
+
+    this.events.emit('estimate.created', {
+      estimate,
+      orgId,
+      createdBy,
+      clonedFromInvoice: id,
+    });
+
+    return estimate;
+  }
+
   // ─── getStats ─────────────────────────────────────────────────────────────
 
   async getStats(orgId: string) {

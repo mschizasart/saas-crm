@@ -100,6 +100,85 @@ export class OrganizationsService {
     });
   }
 
+  // ─── Taxes ─────────────────────────────────────────────────
+
+  async getTaxes(orgId: string) {
+    return this.prisma.tax.findMany({
+      where: { organizationId: orgId },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async createTax(orgId: string, name: string, rate: number) {
+    return this.prisma.tax.create({
+      data: { organizationId: orgId, name, rate },
+    });
+  }
+
+  async updateTax(orgId: string, id: string, data: { name?: string; rate?: number }) {
+    const existing = await this.prisma.tax.findFirst({ where: { id, organizationId: orgId } });
+    if (!existing) throw new NotFoundException('Tax not found');
+    return this.prisma.tax.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.rate !== undefined && { rate: data.rate }),
+      },
+    });
+  }
+
+  async deleteTax(orgId: string, id: string) {
+    const existing = await this.prisma.tax.findFirst({ where: { id, organizationId: orgId } });
+    if (!existing) throw new NotFoundException('Tax not found');
+    await this.prisma.tax.delete({ where: { id } });
+  }
+
+  // ─── Currencies ───────────────────────────────────────────
+
+  async getCurrencies(orgId: string) {
+    return this.prisma.currency.findMany({
+      where: { organizationId: orgId },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async createCurrency(
+    orgId: string,
+    data: { name: string; symbol: string; symbolPlacement?: string; decimalSeparator?: string; thousandSeparator?: string; decimalPlaces?: number; isDefault?: boolean; exchangeRate?: number },
+  ) {
+    return this.prisma.currency.create({
+      data: {
+        organizationId: orgId,
+        name: data.name,
+        symbol: data.symbol,
+        symbolPlacement: data.symbolPlacement ?? 'before',
+        decimalSeparator: data.decimalSeparator ?? '.',
+        thousandSeparator: data.thousandSeparator ?? ',',
+        decimalPlaces: data.decimalPlaces ?? 2,
+        isDefault: data.isDefault ?? false,
+        exchangeRate: data.exchangeRate ?? 1,
+      },
+    });
+  }
+
+  async updateCurrency(
+    orgId: string,
+    id: string,
+    data: { name?: string; symbol?: string; symbolPlacement?: string; decimalSeparator?: string; thousandSeparator?: string; decimalPlaces?: number; isDefault?: boolean; exchangeRate?: number },
+  ) {
+    const existing = await this.prisma.currency.findFirst({ where: { id, organizationId: orgId } });
+    if (!existing) throw new NotFoundException('Currency not found');
+    return this.prisma.currency.update({ where: { id }, data });
+  }
+
+  async deleteCurrency(orgId: string, id: string) {
+    const existing = await this.prisma.currency.findFirst({ where: { id, organizationId: orgId } });
+    if (!existing) throw new NotFoundException('Currency not found');
+    await this.prisma.currency.delete({ where: { id } });
+  }
+
+  // ─── Usage Stats ──────────────────────────────────────────
+
   async getUsageStats(orgId: string) {
     const [staffCount, clientCount, projectCount] = await Promise.all([
       this.prisma.user.count({

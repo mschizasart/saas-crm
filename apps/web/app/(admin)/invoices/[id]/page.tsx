@@ -236,6 +236,28 @@ export default function InvoiceDetailPage() {
           >
             Duplicate
           </button>
+          <button
+            onClick={() =>
+              runAction('credit-note', (data) => {
+                if (data?.id) router.push(`/credit-notes/${data.id}`);
+              })
+            }
+            disabled={actionLoading}
+            className="px-4 py-2 text-sm font-medium border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            Create Credit Note
+          </button>
+          <button
+            onClick={() =>
+              runAction('clone-to-estimate', (data) => {
+                if (data?.id) router.push(`/estimates/${data.id}`);
+              })
+            }
+            disabled={actionLoading}
+            className="px-4 py-2 text-sm font-medium border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            Clone to Estimate
+          </button>
         </div>
       </div>
 

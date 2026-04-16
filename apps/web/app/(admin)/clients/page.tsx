@@ -161,13 +161,21 @@ export default function ClientsPage() {
       {/* ------------------------------------------------------------------ */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Clients</h1>
-        <Link
-          href="/clients/new"
-          className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          <span className="text-lg leading-none">+</span>
-          New Client
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/clients/import"
+            className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Import CSV
+          </Link>
+          <Link
+            href="/clients/new"
+            className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            <span className="text-lg leading-none">+</span>
+            New Client
+          </Link>
+        </div>
       </div>
 
       {/* ------------------------------------------------------------------ */}

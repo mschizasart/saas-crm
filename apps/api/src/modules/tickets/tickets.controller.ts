@@ -58,6 +58,25 @@ export class TicketsController {
     return this.service.createDepartment(org.id, body.name, body.email);
   }
 
+  @Patch('departments/:id')
+  @Permissions('settings.edit')
+  @ApiOperation({ summary: 'Update a ticket department' })
+  updateDepartment(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Body() body: { name?: string; email?: string },
+  ) {
+    return this.service.updateDepartment(org.id, id, body);
+  }
+
+  @Delete('departments/:id')
+  @Permissions('settings.edit')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a ticket department' })
+  deleteDepartment(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.deleteDepartment(org.id, id);
+  }
+
   // ─── List ──────────────────────────────────────────────────────────────────
 
   @Get()
