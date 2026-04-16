@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -18,13 +19,18 @@ import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { PdfService } from '../pdf/pdf.service';
+import { renderStatementHtml } from '../pdf/templates/statement.template';
 
 @ApiTags('Clients')
 @Controller({ version: '1', path: 'clients' })
 @UseGuards(JwtAuthGuard, RbacGuard)
 @ApiBearerAuth()
 export class ClientsController {
-  constructor(private service: ClientsService) {}
+  constructor(
+    private service: ClientsService,
+    private pdfService: PdfService,
+  ) {}
 
   // ─── Client CRUD ───────────────────────────────────────────
 
@@ -117,6 +123,26 @@ export class ClientsController {
   @ApiOperation({ summary: 'Get client financial statement (invoices + payments)' })
   getStatement(@CurrentOrg() org: any, @Param('id') id: string) {
     return this.service.getStatement(org.id, id);
+  }
+
+  @Get(':id/statement/pdf')
+  @Permissions('clients.view')
+  @ApiOperation({ summary: 'Download client statement as PDF' })
+  async getStatementPdf(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Res() res: any,
+  ) {
+    const client = await this.service.findOne(org.id, id);
+    const { invoices, payments } = await this.service.getStatement(org.id, id);
+    const html = renderStatementHtml(client, invoices, payments, org);
+    const pdf = await this.pdfService.generatePdf(html);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="statement-${(client as any).company?.replace(/\s+/g, '-') ?? id}.pdf"`,
+    );
+    res.end(pdf);
   }
 
   // ─── Groups ────────────────────────────────────────────────

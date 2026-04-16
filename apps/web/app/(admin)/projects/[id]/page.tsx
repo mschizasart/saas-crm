@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 
 interface Task {
   id: string;
@@ -53,10 +53,12 @@ type Tab = 'overview' | 'tasks' | 'members' | 'time';
 
 export default function ProjectDetailPage() {
   const { id } = useParams() as { id: string };
+  const router = useRouter();
   const [p, setP] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
+  const [cloning, setCloning] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -74,6 +76,28 @@ export default function ProjectDetailPage() {
 
   useEffect(() => { if (id) fetchData(); }, [id, fetchData]);
 
+  async function handleClone() {
+    setCloning(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/projects/${id}/clone`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) throw new Error(`Clone failed (${res.status})`);
+      const cloned = await res.json();
+      const clonedId = cloned?.data?.id ?? cloned?.id;
+      if (clonedId) {
+        router.push(`/projects/${clonedId}`);
+      } else {
+        router.push('/projects');
+      }
+    } catch {
+      alert('Failed to clone project');
+    } finally {
+      setCloning(false);
+    }
+  }
+
   if (loading) return <div className="max-w-4xl animate-pulse h-96 bg-gray-100 rounded-xl" />;
   if (error || !p) return <div className="text-red-600">{error ?? 'Not found'}</div>;
 
@@ -86,7 +110,19 @@ export default function ProjectDetailPage() {
           <h1 className="text-2xl font-bold text-gray-900">{p.name}</h1>
           <p className="text-sm text-gray-500 mt-1">{p.client?.company ?? p.client?.company_name ?? '—'}</p>
         </div>
-        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">{p.status}</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleClone}
+            disabled={cloning}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+            </svg>
+            {cloning ? 'Cloning...' : 'Clone Project'}
+          </button>
+          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">{p.status}</span>
+        </div>
       </div>
 
       <div className="border-b border-gray-200 mb-6">

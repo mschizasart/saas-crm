@@ -182,6 +182,121 @@ export class ProjectsService {
     });
   }
 
+  // ─── Clone ──────────────────────────────────────────────────
+
+  async clone(orgId: string, id: string, createdBy: string) {
+    const source = await this.findOne(orgId, id);
+
+    const cloned = await this.prisma.withOrganization(orgId, async (tx) => {
+      // Create the new project
+      const newProject = await tx.project.create({
+        data: {
+          organizationId: orgId,
+          clientId: source.clientId ?? null,
+          name: `${source.name} (Copy)`,
+          description: source.description ?? null,
+          status: 'not_started',
+          billingType: source.billingType ?? 'not_billable',
+          fixedRate: source.fixedRate ?? null,
+          hourlyRate: source.hourlyRate ?? null,
+          startDate: null,
+          deadline: null,
+          estimatedHours: source.estimatedHours ?? null,
+          budgetNotify: false,
+          progressManual: false,
+          progress: 0,
+        },
+      });
+
+      // Clone members
+      if (source.members && source.members.length > 0) {
+        await (tx as any).projectMember.createMany({
+          data: source.members.map((m: any) => ({
+            projectId: newProject.id,
+            userId: m.userId,
+            hourlyRate: m.hourlyRate ?? null,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      // Clone milestones and build a mapping for tasks
+      const milestoneMap = new Map<string, string>();
+      if (source.milestones && source.milestones.length > 0) {
+        for (const ms of source.milestones as any[]) {
+          const newMs = await tx.milestone.create({
+            data: {
+              organizationId: orgId,
+              projectId: newProject.id,
+              name: ms.name,
+              description: ms.description ?? null,
+              dueDate: ms.dueDate ?? null,
+              completed: false,
+              completedAt: null,
+              color: ms.color ?? '#6b7280',
+              order: ms.order ?? 0,
+            },
+          });
+          milestoneMap.set(ms.id, newMs.id);
+        }
+      }
+
+      // Clone tasks
+      const tasks = await tx.task.findMany({
+        where: { projectId: id, organizationId: orgId },
+        include: { assignments: true },
+      });
+
+      for (const task of tasks) {
+        const newTask = await tx.task.create({
+          data: {
+            organizationId: orgId,
+            projectId: newProject.id,
+            milestoneId: task.milestoneId ? milestoneMap.get(task.milestoneId) ?? null : null,
+            name: task.name,
+            description: task.description ?? null,
+            status: 'not_started',
+            priority: task.priority ?? 'medium',
+            startDate: null,
+            dueDate: null,
+            hourlyRate: task.hourlyRate ?? null,
+            billingType: task.billingType ?? 'task_hours',
+            estimatedHours: task.estimatedHours ?? null,
+            order: task.order ?? 0,
+            isPublic: task.isPublic,
+            billable: task.billable,
+            createdBy,
+            completedAt: null,
+          },
+        });
+
+        // Clone task assignments
+        if (task.assignments && task.assignments.length > 0) {
+          await (tx as any).taskAssignment.createMany({
+            data: task.assignments.map((a: any) => ({
+              taskId: newTask.id,
+              userId: a.userId,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return tx.project.findFirst({
+        where: { id: newProject.id },
+        include: {
+          client: { select: { id: true, company: true } },
+          members: true,
+          milestones: true,
+          _count: { select: { tasks: true, timeEntries: true } },
+        },
+      });
+    });
+
+    this.events.emit('project.created', { project: cloned, orgId, createdBy, clonedFrom: id });
+    return cloned;
+  }
+
   // ─── Progress ────────────────────────────────────────────────
 
   async updateProgress(orgId: string, id: string, progress: number) {

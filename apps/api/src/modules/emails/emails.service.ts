@@ -83,6 +83,23 @@ export class EmailsService {
     });
   }
 
+  @OnEvent('estimate.sent')
+  async handleEstimateSent(payload: { estimate: any; orgId: string }) {
+    const { estimate } = payload;
+    const to =
+      estimate.client?.contacts?.[0]?.email ??
+      estimate.client?.primaryEmail ??
+      estimate.client?.email;
+    if (!to) return;
+    await this.queue({
+      to,
+      subject: `Estimate ${estimate.number} from ${estimate.organization?.name ?? 'Us'}`,
+      html: `<p>Hi ${estimate.client?.company ?? ''},</p>
+<p>Please find your estimate <strong>${estimate.number}</strong> for ${(estimate as any).currency ?? 'USD'} ${estimate.total}.</p>
+<p><a href="${process.env.APP_URL}/portal/estimates/${estimate.id}">View Estimate</a></p>`,
+    });
+  }
+
   @OnEvent('contract.sent_for_signing')
   async handleContractSentForSigning(payload: {
     contract: any;

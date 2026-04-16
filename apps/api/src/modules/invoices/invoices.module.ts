@@ -4,6 +4,7 @@ import { InvoicesController } from './invoices.controller';
 import { InvoicesService } from './invoices.service';
 import { RecurringInvoicesProcessor } from './recurring-invoices.processor';
 import { RecurringScheduler } from './recurring-scheduler.service';
+import { PaymentReminderService } from './payment-reminder.service';
 import { CreditNotesModule } from '../credit-notes/credit-notes.module';
 
 @Module({
@@ -12,7 +13,7 @@ import { CreditNotesModule } from '../credit-notes/credit-notes.module';
     forwardRef(() => CreditNotesModule),
   ],
   controllers: [InvoicesController],
-  providers: [InvoicesService, RecurringInvoicesProcessor, RecurringScheduler],
+  providers: [InvoicesService, RecurringInvoicesProcessor, RecurringScheduler, PaymentReminderService],
   exports: [InvoicesService],
 })
 export class InvoicesModule {}

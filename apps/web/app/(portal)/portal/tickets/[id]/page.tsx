@@ -10,6 +10,7 @@ interface Reply {
   createdAt: string;
   author?: { name?: string } | null;
   fromClient?: boolean;
+  isInternal?: boolean;
 }
 
 interface Ticket {
@@ -97,7 +98,7 @@ export default function PortalTicketDetailPage() {
           <p className="text-sm text-gray-800 whitespace-pre-wrap">{ticket.message}</p>
         </div>
 
-        {(ticket.replies ?? []).map((r) => (
+        {(ticket.replies ?? []).filter((r) => !r.isInternal).map((r) => (
           <div key={r.id} className={`rounded-xl border p-4 ${r.fromClient ? 'bg-primary/5 border-primary/20' : 'bg-white border-gray-100'}`}>
             <p className="text-xs text-gray-500 mb-2">
               {r.author?.name ?? (r.fromClient ? 'You' : 'Support')} · {new Date(r.createdAt).toLocaleString()}

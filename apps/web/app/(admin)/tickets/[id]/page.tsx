@@ -12,6 +12,7 @@ interface TicketReply {
   id: string;
   message: string;
   isStaff: boolean;
+  isInternal?: boolean;
   createdAt: string;
   user: {
     id: string;
@@ -104,15 +105,33 @@ function Badge({ label, colourClass }: { label: string; colourClass: string }) {
 
 function ReplyCard({ reply }: { reply: TicketReply }) {
   const isStaff = reply.isStaff;
+  const isInternal = reply.isInternal ?? false;
+
+  let bgClass = isStaff ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800';
+  let metaClass = isStaff ? 'text-blue-100' : 'text-gray-500';
+
+  if (isInternal) {
+    bgClass = 'bg-yellow-50 text-gray-800 border border-yellow-200';
+    metaClass = 'text-yellow-700';
+  }
+
   return (
     <div className={`flex ${isStaff ? 'justify-end' : 'justify-start'}`}>
       <div
         className={[
           'max-w-xl w-full rounded-xl px-4 py-3 text-sm shadow-sm',
-          isStaff ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800',
+          bgClass,
         ].join(' ')}
       >
-        <div className={`flex items-center gap-2 mb-1.5 text-xs font-medium ${isStaff ? 'text-blue-100' : 'text-gray-500'}`}>
+        <div className={`flex items-center gap-2 mb-1.5 text-xs font-medium ${metaClass}`}>
+          {isInternal && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-yellow-200 text-yellow-800 text-[10px] font-semibold uppercase tracking-wide">
+              <svg className="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+              Internal
+            </span>
+          )}
           <span>{reply.user?.name ?? (isStaff ? 'Staff' : 'Client')}</span>
           <span>·</span>
           <span>{new Date(reply.createdAt).toLocaleString()}</span>
@@ -140,6 +159,7 @@ export default function TicketDetailPage() {
 
   // Reply
   const [replyText, setReplyText] = useState('');
+  const [isInternal, setIsInternal] = useState(false);
   const [sendingReply, setSendingReply] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
 
@@ -209,7 +229,7 @@ export default function TicketDetailPage() {
       const res = await fetch(`${API_BASE}/api/v1/tickets/${ticketId}/replies`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ message: replyText, isStaff: true }),
+        body: JSON.stringify({ message: replyText, isStaff: true, isInternal }),
       });
       if (!res.ok) throw new Error(`Failed to send reply: ${res.status}`);
       const newReply: TicketReply = await res.json();
@@ -217,6 +237,7 @@ export default function TicketDetailPage() {
         prev ? { ...prev, replies: [...(prev.replies ?? []), newReply] } : prev,
       );
       setReplyText('');
+      setIsInternal(false);
     } catch (err) {
       setReplyError(err instanceof Error ? err.message : 'Failed to send reply');
     } finally {
@@ -343,13 +364,29 @@ export default function TicketDetailPage() {
             placeholder="Type your reply…"
             className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-y"
           />
-          <div className="mt-3 flex justify-end">
+          <div className="mt-3 flex items-center justify-between">
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isInternal}
+                onChange={(e) => setIsInternal(e.target.checked)}
+                className="rounded border-gray-300 text-yellow-500 focus:ring-yellow-400"
+              />
+              <svg className="w-4 h-4 text-yellow-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+              Internal note (hidden from client)
+            </label>
             <button
               type="submit"
               disabled={sendingReply || !replyText.trim()}
-              className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              className={`px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors ${
+                isInternal
+                  ? 'bg-yellow-500 text-white hover:bg-yellow-600'
+                  : 'bg-primary text-white hover:bg-primary/90'
+              }`}
             >
-              {sendingReply ? 'Sending…' : 'Send Reply'}
+              {sendingReply ? 'Sending…' : isInternal ? 'Add Internal Note' : 'Send Reply'}
             </button>
           </div>
         </form>

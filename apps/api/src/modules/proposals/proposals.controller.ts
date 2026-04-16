@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -21,13 +22,18 @@ import {
   Permissions,
   Public,
 } from '../../common/decorators/permissions.decorator';
+import { PdfService } from '../pdf/pdf.service';
+import { renderProposalHtml } from '../pdf/templates/proposal.template';
 
 @ApiTags('Proposals')
 @Controller({ version: '1', path: 'proposals' })
 @UseGuards(JwtAuthGuard, RbacGuard)
 @ApiBearerAuth()
 export class ProposalsController {
-  constructor(private service: ProposalsService) {}
+  constructor(
+    private service: ProposalsService,
+    private pdfService: PdfService,
+  ) {}
 
   // ─── Stats ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +64,27 @@ export class ProposalsController {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
+  }
+
+  // ─── Download PDF ──────────────────────────────────────────────────────────
+
+  @Get(':id/pdf')
+  @Permissions('clients.view')
+  @ApiOperation({ summary: 'Download proposal as PDF' })
+  async downloadPdf(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Res() res: any,
+  ) {
+    const proposal = await this.service.findOne(org.id, id);
+    const html = renderProposalHtml(proposal, org);
+    const pdf = await this.pdfService.generatePdf(html);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="proposal-${(proposal as any).id}.pdf"`,
+    );
+    res.end(pdf);
   }
 
   // ─── View by hash (public) ────────────────────────────────────────────────

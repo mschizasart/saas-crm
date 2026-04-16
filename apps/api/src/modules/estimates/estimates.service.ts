@@ -258,10 +258,31 @@ export class EstimatesService {
     }
 
     const updated = await this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.estimate.update({ where: { id }, data: { status: 'sent' } });
+      await tx.estimate.update({ where: { id }, data: { status: 'sent' } });
+      // Re-fetch with client contacts and org info for email listener
+      return tx.estimate.findUnique({
+        where: { id },
+        include: {
+          client: {
+            include: {
+              contacts: {
+                where: { type: 'contact', active: true },
+                take: 5,
+              },
+            },
+          },
+          items: { orderBy: { order: 'asc' } },
+        },
+      });
     });
 
-    this.events.emit('estimate.sent', { estimate: updated, orgId });
+    // Fetch org info separately for the event
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, name: true },
+    });
+
+    this.events.emit('estimate.sent', { estimate: { ...updated, organization: org }, orgId });
     return updated;
   }
 

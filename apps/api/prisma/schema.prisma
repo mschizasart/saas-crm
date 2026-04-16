@@ -1096,6 +1096,7 @@ model TicketReply {
   ticketId    String
   userId      String?  // staff or contact user id
   message     String
+  isInternal  Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)

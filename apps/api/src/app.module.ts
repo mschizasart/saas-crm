@@ -47,6 +47,7 @@ import { GdprModule } from './modules/gdpr/gdpr.module';
 import { BackupsModule } from './modules/backups/backups.module';
 import { SavedItemsModule } from './modules/saved-items/saved-items.module';
 import { PredefinedRepliesModule } from './modules/predefined-replies/predefined-replies.module';
+import { ImportsModule } from './modules/imports/imports.module';
 
 @Module({
   imports: [
@@ -109,6 +110,7 @@ import { PredefinedRepliesModule } from './modules/predefined-replies/predefined
     BackupsModule,
     SavedItemsModule,
     PredefinedRepliesModule,
+    ImportsModule,
   ],
 })
 export class AppModule {}

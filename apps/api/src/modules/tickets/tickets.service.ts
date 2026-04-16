@@ -16,6 +16,7 @@ export interface CreateTicketDto {
 export interface CreateReplyDto {
   message: string;
   isStaff?: boolean;
+  isInternal?: boolean;
 }
 
 @Injectable()
@@ -145,7 +146,9 @@ export class TicketsService {
     await this.findOne(orgId, ticketId);
 
     const isStaff = dto.isStaff ?? true;
-    const newStatus = isStaff ? 'answered' : 'open';
+    const isInternal = dto.isInternal ?? false;
+    // Internal notes should not change ticket status
+    const newStatus = isInternal ? undefined : (isStaff ? 'answered' : 'open');
 
     const reply = await this.prisma.withOrganization(orgId, async (tx) => {
       const [created] = await Promise.all([
@@ -154,13 +157,14 @@ export class TicketsService {
             ticketId,
             userId,
             message: dto.message,
+            isInternal: dto.isInternal ?? false,
           },
         }),
         tx.ticket.update({
           where: { id: ticketId },
           data: {
             lastReplyAt: new Date(),
-            status: newStatus,
+            ...(newStatus && { status: newStatus }),
           },
         }),
       ]);

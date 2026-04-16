@@ -94,6 +94,19 @@ export class ProjectsController {
     return this.service.delete(org.id, id);
   }
 
+  // ─── Clone ──────────────────────────────────────────────────
+
+  @Post(':id/clone')
+  @Permissions('projects.create')
+  @ApiOperation({ summary: 'Clone a project with tasks, milestones, and members' })
+  clone(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ) {
+    return this.service.clone(org.id, id, user.id);
+  }
+
   // ─── Progress ────────────────────────────────────────────────
 
   @Patch(':id/progress')
