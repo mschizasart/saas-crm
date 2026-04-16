@@ -61,7 +61,7 @@ export default function LoginPage() {
       }
       await saveTokens(body.accessToken, body.refreshToken);
       toast.success('Welcome back!');
-      router.push('/dashboard');
+      window.location.href = '/dashboard';
     } catch (e) {
       toast.error('Could not reach the server. Please try again.');
     } finally {
@@ -87,7 +87,7 @@ export default function LoginPage() {
         return;
       }
       await saveTokens(body.accessToken, body.refreshToken);
-      router.push('/dashboard');
+      window.location.href = '/dashboard';
     } catch {
       toast.error('Verification failed');
     } finally {

@@ -71,7 +71,7 @@ export default function RegisterPage() {
       localStorage.setItem('refresh_token', refreshToken);
 
       toast.success('Account created! Welcome aboard.');
-      router.push('/dashboard');
+      window.location.href = '/dashboard';
     } catch {
       toast.error('Something went wrong. Please try again.');
     } finally {
