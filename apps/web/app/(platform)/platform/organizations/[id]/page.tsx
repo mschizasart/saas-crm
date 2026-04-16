@@ -147,7 +147,7 @@ export default function OrgDetailPage() {
           Authorization: `Bearer ${t}`,
           'Content-Type': 'application/json',
         },
-        body: body ? JSON.stringify(body) : undefined,
+        body: JSON.stringify(body ?? {}),
       });
       if (res.status === 401) {
         router.replace('/platform/login');
