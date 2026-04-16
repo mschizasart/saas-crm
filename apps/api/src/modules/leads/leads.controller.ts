@@ -133,4 +133,86 @@ export class LeadsController {
   ) {
     return this.service.addNote(org.id, id, body.note, user.id);
   }
+
+  // ─── Lead Statuses Admin CRUD ─────────────────────────────────
+
+  @Get('admin/statuses')
+  @Permissions('leads.view')
+  @ApiOperation({ summary: 'List all lead statuses' })
+  getStatuses(@CurrentOrg() org: any) {
+    return this.service.getStatuses(org.id);
+  }
+
+  @Post('admin/statuses')
+  @Permissions('leads.create')
+  @ApiOperation({ summary: 'Create a lead status' })
+  createStatus(
+    @CurrentOrg() org: any,
+    @Body() body: { name: string; color?: string; isDefault?: boolean },
+  ) {
+    return this.service.createStatus(org.id, body);
+  }
+
+  @Patch('admin/statuses/:statusId')
+  @Permissions('leads.edit')
+  @ApiOperation({ summary: 'Update a lead status' })
+  updateLeadStatus(
+    @CurrentOrg() org: any,
+    @Param('statusId') statusId: string,
+    @Body() body: { name?: string; color?: string; position?: number; isDefault?: boolean },
+  ) {
+    return this.service.updateStatus2(org.id, statusId, body);
+  }
+
+  @Delete('admin/statuses/:statusId')
+  @Permissions('leads.delete')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a lead status' })
+  deleteStatus(
+    @CurrentOrg() org: any,
+    @Param('statusId') statusId: string,
+  ) {
+    return this.service.deleteStatus(org.id, statusId);
+  }
+
+  // ─── Lead Sources Admin CRUD ──────────────────────────────────
+
+  @Get('admin/sources')
+  @Permissions('leads.view')
+  @ApiOperation({ summary: 'List all lead sources' })
+  getSources(@CurrentOrg() org: any) {
+    return this.service.getSources(org.id);
+  }
+
+  @Post('admin/sources')
+  @Permissions('leads.create')
+  @ApiOperation({ summary: 'Create a lead source' })
+  createSource(
+    @CurrentOrg() org: any,
+    @Body() body: { name: string },
+  ) {
+    return this.service.createSource(org.id, body);
+  }
+
+  @Patch('admin/sources/:sourceId')
+  @Permissions('leads.edit')
+  @ApiOperation({ summary: 'Update a lead source' })
+  updateSource(
+    @CurrentOrg() org: any,
+    @Param('sourceId') sourceId: string,
+    @Body() body: { name: string },
+  ) {
+    return this.service.updateSource(org.id, sourceId, body);
+  }
+
+  @Delete('admin/sources/:sourceId')
+  @Permissions('leads.delete')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a lead source' })
+  deleteSource(
+    @CurrentOrg() org: any,
+    @Param('sourceId') sourceId: string,
+  ) {
+    return this.service.deleteSource(org.id, sourceId);
+  }
 }

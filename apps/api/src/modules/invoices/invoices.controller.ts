@@ -23,6 +23,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PdfService } from '../pdf/pdf.service';
 import { renderInvoiceHtml } from '../pdf/templates/invoice.template';
 import { EinvoiceService } from '../einvoice/einvoice.service';
+import { CreditNotesService } from '../credit-notes/credit-notes.service';
 
 @ApiTags('Invoices')
 @Controller({ version: '1', path: 'invoices' })
@@ -33,6 +34,7 @@ export class InvoicesController {
     private service: InvoicesService,
     private pdfService: PdfService,
     private einvoiceService: EinvoiceService,
+    private creditNotesService: CreditNotesService,
   ) {}
 
   // ─── Download UBL 2.1 E-Invoice XML ────────────────────────────────────────
@@ -194,5 +196,31 @@ export class InvoicesController {
     @Param('id') id: string,
   ) {
     return this.service.duplicate(org.id, id, user.id);
+  }
+
+  // ─── Credit Note from Invoice ─────────────────────────────────────────────
+
+  @Post(':id/credit-note')
+  @Permissions('invoices.create')
+  @ApiOperation({ summary: 'Create a credit note pre-populated from invoice items' })
+  async createCreditNote(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ) {
+    const invoice = await this.service.findOne(org.id, id);
+    return this.creditNotesService.create(org.id, {
+      clientId: invoice.clientId ?? undefined,
+      invoiceId: invoice.id,
+      date: new Date().toISOString(),
+      currency: (invoice as any).currency ?? 'USD',
+      items: (invoice.items as any[]).map((item) => ({
+        description: item.description,
+        quantity: Number(item.qty ?? item.quantity ?? 1),
+        unitPrice: Number(item.rate ?? item.unitPrice ?? 0),
+        taxRate: Number(item.taxRate ?? 0),
+        order: item.order,
+      })),
+    }, user.id);
   }
 }

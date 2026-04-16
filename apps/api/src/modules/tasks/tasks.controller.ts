@@ -125,4 +125,45 @@ export class TasksController {
   ) {
     return this.service.addComment(org.id, id, body.content, user.id);
   }
+
+  // ─── Task Timers ──────────────────────────────────────────────────────────
+
+  @Post(':id/timer/start')
+  @ApiOperation({ summary: 'Start a timer on a task' })
+  startTimer(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ) {
+    return this.service.startTimer(org.id, id, user.id);
+  }
+
+  @Post(':id/timer/stop')
+  @ApiOperation({ summary: 'Stop a running timer on a task' })
+  stopTimer(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ) {
+    return this.service.stopTimer(org.id, id, user.id);
+  }
+
+  @Get(':id/timer')
+  @ApiOperation({ summary: 'Get the active timer for a task' })
+  getActiveTimer(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ) {
+    return this.service.getActiveTimer(org.id, id, user.id);
+  }
+
+  @Get(':id/time-entries')
+  @ApiOperation({ summary: 'Get all time entries for a task' })
+  getTimeEntries(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+  ) {
+    return this.service.getTimeEntries(org.id, id);
+  }
 }

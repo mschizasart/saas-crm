@@ -45,6 +45,8 @@ import { SmsModule } from './modules/sms/sms.module';
 import { EinvoiceModule } from './modules/einvoice/einvoice.module';
 import { GdprModule } from './modules/gdpr/gdpr.module';
 import { BackupsModule } from './modules/backups/backups.module';
+import { SavedItemsModule } from './modules/saved-items/saved-items.module';
+import { PredefinedRepliesModule } from './modules/predefined-replies/predefined-replies.module';
 
 @Module({
   imports: [
@@ -105,6 +107,8 @@ import { BackupsModule } from './modules/backups/backups.module';
     EinvoiceModule,
     GdprModule,
     BackupsModule,
+    SavedItemsModule,
+    PredefinedRepliesModule,
   ],
 })
 export class AppModule {}

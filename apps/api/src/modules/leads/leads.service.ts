@@ -282,6 +282,126 @@ export class LeadsService {
     });
   }
 
+  // ─── Lead Statuses CRUD ──────────────────────────────────────
+
+  async getStatuses(orgId: string) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.leadStatus.findMany({
+        where: { organizationId: orgId },
+        orderBy: { position: 'asc' },
+        include: { _count: { select: { leads: true } } },
+      });
+    });
+  }
+
+  async createStatus(
+    orgId: string,
+    dto: { name: string; color?: string; isDefault?: boolean },
+  ) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const maxPos = await tx.leadStatus.aggregate({
+        where: { organizationId: orgId },
+        _max: { position: true },
+      });
+      return tx.leadStatus.create({
+        data: {
+          organizationId: orgId,
+          name: dto.name,
+          color: dto.color ?? '#6b7280',
+          isDefault: dto.isDefault ?? false,
+          position: (maxPos._max.position ?? -1) + 1,
+        },
+      });
+    });
+  }
+
+  async updateStatus2(
+    orgId: string,
+    id: string,
+    dto: { name?: string; color?: string; position?: number; isDefault?: boolean },
+  ) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.leadStatus.findFirst({
+        where: { id, organizationId: orgId },
+      });
+      if (!existing) throw new NotFoundException('Lead status not found');
+      return tx.leadStatus.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined && { name: dto.name }),
+          ...(dto.color !== undefined && { color: dto.color }),
+          ...(dto.position !== undefined && { position: dto.position }),
+          ...(dto.isDefault !== undefined && { isDefault: dto.isDefault }),
+        },
+      });
+    });
+  }
+
+  async deleteStatus(orgId: string, id: string) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.leadStatus.findFirst({
+        where: { id, organizationId: orgId },
+      });
+      if (!existing) throw new NotFoundException('Lead status not found');
+      const count = await tx.lead.count({ where: { statusId: id } });
+      if (count > 0) {
+        throw new BadRequestException(
+          `Cannot delete status: ${count} leads are using it`,
+        );
+      }
+      await tx.leadStatus.delete({ where: { id } });
+    });
+  }
+
+  // ─── Lead Sources CRUD ─────────────────────────────────────
+
+  async getSources(orgId: string) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.leadSource.findMany({
+        where: { organizationId: orgId },
+        orderBy: { name: 'asc' },
+        include: { _count: { select: { leads: true } } },
+      });
+    });
+  }
+
+  async createSource(orgId: string, dto: { name: string }) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.leadSource.create({
+        data: { organizationId: orgId, name: dto.name },
+      });
+    });
+  }
+
+  async updateSource(orgId: string, id: string, dto: { name: string }) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.leadSource.findFirst({
+        where: { id, organizationId: orgId },
+      });
+      if (!existing) throw new NotFoundException('Lead source not found');
+      return tx.leadSource.update({
+        where: { id },
+        data: { name: dto.name },
+      });
+    });
+  }
+
+  async deleteSource(orgId: string, id: string) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.leadSource.findFirst({
+        where: { id, organizationId: orgId },
+      });
+      if (!existing) throw new NotFoundException('Lead source not found');
+      const count = await tx.lead.count({ where: { sourceId: id } });
+      if (count > 0) {
+        throw new BadRequestException(
+          `Cannot delete source: ${count} leads are using it`,
+        );
+      }
+      await tx.leadSource.delete({ where: { id } });
+    });
+  }
+
   // ─── Kanban Board ────────────────────────────────────────────
 
   async getKanbanBoard(orgId: string) {

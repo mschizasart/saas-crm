@@ -90,6 +90,8 @@ model Organization {
   contractTypes      ContractType[]
   clientGroups       ClientGroup[]
   events             Event[]
+  savedItems         SavedItem[]
+  predefinedReplies  PredefinedReply[]
 
   @@map("organizations")
 }
@@ -1618,4 +1620,44 @@ model PlatformPlan {
   updatedAt            DateTime @updatedAt
 
   @@map("platform_plans")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SAVED ITEMS (Predefined line items for invoices/estimates)
+// ═══════════════════════════════════════════════════════════════
+
+model SavedItem {
+  id              String   @id @default(uuid())
+  organizationId  String
+  description     String
+  longDescription String?
+  rate            Decimal  @db.Decimal(15, 2)
+  taxRate         Decimal  @db.Decimal(5, 2) @default(0)
+  unit            String?
+  groupName       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("saved_items")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PREDEFINED REPLIES (Ticket reply templates)
+// ═══════════════════════════════════════════════════════════════
+
+model PredefinedReply {
+  id              String   @id @default(uuid())
+  organizationId  String
+  name            String
+  body            String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("predefined_replies")
 }

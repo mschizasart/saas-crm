@@ -253,4 +253,95 @@ export class TasksService {
       });
     });
   }
+
+  // ─── Task Timers ──────────────────────────────────────────────────────────
+
+  async startTimer(orgId: string, taskId: string, userId: string) {
+    await this.findOne(orgId, taskId);
+
+    // Check if there's already a running timer for this user on this task
+    const running = await this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.timeEntry.findFirst({
+        where: {
+          organizationId: orgId,
+          taskId,
+          userId,
+          endTime: null,
+        },
+      });
+    });
+
+    if (running) {
+      return running; // Already running, return existing
+    }
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.timeEntry.create({
+        data: {
+          organizationId: orgId,
+          taskId,
+          userId,
+          startTime: new Date(),
+          seconds: 0,
+        },
+      });
+    });
+  }
+
+  async stopTimer(orgId: string, taskId: string, userId: string) {
+    await this.findOne(orgId, taskId);
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const running = await tx.timeEntry.findFirst({
+        where: {
+          organizationId: orgId,
+          taskId,
+          userId,
+          endTime: null,
+        },
+      });
+
+      if (!running) {
+        throw new NotFoundException('No running timer found for this task');
+      }
+
+      const endTime = new Date();
+      const seconds = Math.floor(
+        (endTime.getTime() - running.startTime.getTime()) / 1000,
+      );
+
+      return tx.timeEntry.update({
+        where: { id: running.id },
+        data: { endTime, seconds },
+      });
+    });
+  }
+
+  async getActiveTimer(orgId: string, taskId: string, userId: string) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.timeEntry.findFirst({
+        where: {
+          organizationId: orgId,
+          taskId,
+          userId,
+          endTime: null,
+        },
+      });
+    });
+  }
+
+  async getTimeEntries(orgId: string, taskId: string) {
+    await this.findOne(orgId, taskId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.timeEntry.findMany({
+        where: { organizationId: orgId, taskId },
+        include: {
+          user: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+        },
+        orderBy: { startTime: 'desc' },
+      });
+    });
+  }
 }
