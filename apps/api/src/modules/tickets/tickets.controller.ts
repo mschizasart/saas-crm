@@ -176,6 +176,19 @@ export class TicketsController {
     return this.service.reply(org.id, id, dto, user.id);
   }
 
+  // ─── Merge ─────────────────────────────────────────────────────────────────
+
+  @Post(':id/merge')
+  @Permissions('tickets.edit')
+  @ApiOperation({ summary: 'Merge another ticket into this one' })
+  merge(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Body() body: { sourceTicketId: string },
+  ) {
+    return this.service.merge(org.id, id, body.sourceTicketId);
+  }
+
   // ─── Delete ────────────────────────────────────────────────────────────────
 
   @Delete(':id')

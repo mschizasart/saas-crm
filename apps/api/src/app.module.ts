@@ -49,6 +49,7 @@ import { SavedItemsModule } from './modules/saved-items/saved-items.module';
 import { PredefinedRepliesModule } from './modules/predefined-replies/predefined-replies.module';
 import { ImportsModule } from './modules/imports/imports.module';
 import { ClockModule } from './modules/clock/clock.module';
+import { NewsfeedModule } from './modules/newsfeed/newsfeed.module';
 
 @Module({
   imports: [
@@ -113,6 +114,7 @@ import { ClockModule } from './modules/clock/clock.module';
     PredefinedRepliesModule,
     ImportsModule,
     ClockModule,
+    NewsfeedModule,
   ],
 })
 export class AppModule {}

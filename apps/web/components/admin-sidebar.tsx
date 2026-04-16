@@ -9,7 +9,7 @@ import {
   Headphones, BookOpen, FileSignature, Receipt, Target,
   BarChart3, Settings, Bell, Building2, Zap, ClipboardList,
   ChevronDown, ChevronRight, ListTodo, Calendar, Megaphone,
-  Activity, Tag, Lock,
+  Activity, Tag, Lock, MessageCircle,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -181,6 +181,7 @@ function useNavItems(): NavItem[] {
         { label: t('nav.calendar'), href: '/calendar', icon: Calendar },
         { label: t('nav.goals'), href: '/goals', icon: Target },
         { label: t('nav.timesheets'), href: '/timesheets', icon: ClipboardList },
+        { label: t('nav.newsfeed'), href: '/newsfeed', icon: MessageCircle },
       ],
     },
     {

@@ -86,7 +86,8 @@
     "leadStatuses": "Lead Statuses",
     "leadSources": "Lead Sources",
     "emailTemplates": "Email Templates",
-    "paymentModes": "Payment Modes"
+    "paymentModes": "Payment Modes",
+    "newsfeed": "Newsfeed"
   },
   "dashboard": {
     "title": "Dashboard",

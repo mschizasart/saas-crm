@@ -146,6 +146,13 @@ function ReplyCard({ reply }: { reply: TicketReply }) {
 // Page
 // ---------------------------------------------------------------------------
 
+interface MergeSearchTicket {
+  id: string;
+  subject: string;
+  status: string;
+  createdAt: string;
+}
+
 export default function TicketDetailPage() {
   const params = useParams();
   const ticketId = params.id as string;
@@ -165,6 +172,15 @@ export default function TicketDetailPage() {
 
   // Predefined replies
   const [predefinedReplies, setPredefinedReplies] = useState<{ id: string; name: string; body: string }[]>([]);
+
+  // Merge
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeSearch, setMergeSearch] = useState('');
+  const [mergeResults, setMergeResults] = useState<MergeSearchTicket[]>([]);
+  const [mergeSearching, setMergeSearching] = useState(false);
+  const [mergeConfirm, setMergeConfirm] = useState<MergeSearchTicket | null>(null);
+  const [merging, setMerging] = useState(false);
+  const [mergeToast, setMergeToast] = useState(false);
 
   // Auto-refresh ref
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -218,6 +234,60 @@ export default function TicketDetailPage() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchTicket]);
+
+  // ── Merge: search tickets ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!mergeOpen || mergeSearch.trim().length < 2) {
+      setMergeResults([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setMergeSearching(true);
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/v1/tickets?search=${encodeURIComponent(mergeSearch)}&limit=10`,
+          { headers: authHeaders() },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const items: MergeSearchTicket[] = (data.data ?? []).filter(
+          (t: any) => t.id !== ticketId,
+        );
+        setMergeResults(items);
+      } catch {
+        /* ignore */
+      } finally {
+        setMergeSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [mergeSearch, mergeOpen, ticketId]);
+
+  // ── Merge: execute ────────────────────────────────────────────────────────
+
+  async function handleMerge() {
+    if (!mergeConfirm) return;
+    setMerging(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/tickets/${ticketId}/merge`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ sourceTicketId: mergeConfirm.id }),
+      });
+      if (!res.ok) throw new Error(`Merge failed with ${res.status}`);
+      setMergeOpen(false);
+      setMergeConfirm(null);
+      setMergeSearch('');
+      setMergeToast(true);
+      setTimeout(() => setMergeToast(false), 3000);
+      fetchTicket();
+    } catch {
+      // silent
+    } finally {
+      setMerging(false);
+    }
+  }
 
   // ── Status change ─────────────────────────────────────────────────────────
 
@@ -304,8 +374,15 @@ export default function TicketDetailPage() {
           </div>
         </div>
 
-        {/* Status change dropdown */}
-        <div className="flex-shrink-0">
+        {/* Actions */}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <button
+            onClick={() => setMergeOpen(true)}
+            className="px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Merge
+          </button>
+          <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Change Status</label>
           <select
             value={ticket.status}
@@ -319,6 +396,7 @@ export default function TicketDetailPage() {
               </option>
             ))}
           </select>
+          </div>
         </div>
       </div>
 
@@ -432,6 +510,84 @@ export default function TicketDetailPage() {
           </div>
         </form>
       </div>
+
+      {/* ── Merge modal ──────────────────────────────────────────────── */}
+      {mergeOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+            {!mergeConfirm ? (
+              <>
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900">Merge Ticket</h3>
+                  <button onClick={() => { setMergeOpen(false); setMergeSearch(''); setMergeResults([]); }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+                </div>
+                <div className="p-5">
+                  <p className="text-sm text-gray-500 mb-3">Search for a ticket to merge into this one. All replies from the selected ticket will be moved here.</p>
+                  <input
+                    type="text"
+                    value={mergeSearch}
+                    onChange={(e) => setMergeSearch(e.target.value)}
+                    placeholder="Search tickets by subject..."
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    autoFocus
+                  />
+                  <div className="mt-3 max-h-60 overflow-y-auto space-y-1">
+                    {mergeSearching && <p className="text-xs text-gray-400 text-center py-3">Searching...</p>}
+                    {!mergeSearching && mergeSearch.trim().length >= 2 && mergeResults.length === 0 && (
+                      <p className="text-xs text-gray-400 text-center py-3">No tickets found</p>
+                    )}
+                    {mergeResults.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => setMergeConfirm(t)}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-200"
+                      >
+                        <p className="text-sm font-medium text-gray-900 truncate">{t.subject}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          <span className="capitalize">{t.status.replace('_', ' ')}</span> &middot; {new Date(t.createdAt).toLocaleDateString()}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h3 className="text-lg font-semibold text-gray-900">Confirm Merge</h3>
+                </div>
+                <div className="p-5">
+                  <p className="text-sm text-gray-700">
+                    Merge ticket <strong>&ldquo;{mergeConfirm.subject}&rdquo;</strong> into this ticket? All replies will be moved here and the source ticket will be closed.
+                  </p>
+                  <div className="flex items-center justify-end gap-3 mt-5">
+                    <button
+                      onClick={() => setMergeConfirm(null)}
+                      className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleMerge}
+                      disabled={merging}
+                      className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {merging ? 'Merging...' : 'Confirm Merge'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Merge toast ──────────────────────────────────────────────── */}
+      {mergeToast && (
+        <div className="fixed bottom-6 right-6 bg-green-600 text-white px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium z-50">
+          Tickets merged
+        </div>
+      )}
     </div>
   );
 }

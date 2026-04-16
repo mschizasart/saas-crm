@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
@@ -429,6 +429,46 @@ export class TicketsService {
         ticketsWithResponseSla: totalWithResponseSla,
         ticketsWithResolutionSla: totalWithResolutionSla,
       };
+    });
+  }
+
+  // ─── merge ──────────────────────────────────────────────────────────────────
+
+  async merge(orgId: string, targetTicketId: string, sourceTicketId: string) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const target = await tx.ticket.findFirst({ where: { id: targetTicketId, organizationId: orgId } });
+      const source = await tx.ticket.findFirst({ where: { id: sourceTicketId, organizationId: orgId } });
+      if (!target || !source) throw new NotFoundException('Ticket not found');
+      if (targetTicketId === sourceTicketId) throw new BadRequestException('Cannot merge a ticket with itself');
+
+      // Move all replies from source to target
+      await tx.ticketReply.updateMany({
+        where: { ticketId: sourceTicketId },
+        data: { ticketId: targetTicketId },
+      });
+
+      // Add a system note to target
+      await tx.ticketReply.create({
+        data: {
+          ticketId: targetTicketId,
+          userId: target.assignedTo ?? target.contactId ?? '',
+          message: `[System] Merged from ticket #${source.subject ?? sourceTicketId}`,
+        },
+      });
+
+      // Close source ticket
+      await tx.ticket.update({
+        where: { id: sourceTicketId },
+        data: { status: 'closed', closedAt: new Date() },
+      });
+
+      // Update target lastReplyAt
+      await tx.ticket.update({
+        where: { id: targetTicketId },
+        data: { lastReplyAt: new Date() },
+      });
+
+      return target;
     });
   }
 
