@@ -170,6 +170,10 @@ export default function TicketDetailPage() {
   const [sendingReply, setSendingReply] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
 
+  // AI Draft
+  const [aiDrafting, setAiDrafting] = useState(false);
+  const [aiTone, setAiTone] = useState<'professional' | 'friendly' | 'formal'>('professional');
+
   // Predefined replies
   const [predefinedReplies, setPredefinedReplies] = useState<{ id: string; name: string; body: string }[]>([]);
 
@@ -336,6 +340,39 @@ export default function TicketDetailPage() {
     }
   }
 
+  // ── AI Draft ──────────────────────────────────────────────────────────────
+
+  async function handleAiDraft() {
+    if (!ticket) return;
+    setAiDrafting(true);
+    setReplyError(null);
+    try {
+      const lastReplies = (ticket.replies ?? []).slice(-5).map((r) => ({
+        from: r.isStaff ? 'Staff' : 'Client',
+        message: r.message,
+        date: r.createdAt,
+      }));
+      const res = await fetch(`${API_BASE}/api/v1/ai/draft-reply`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          subject: ticket.subject,
+          previousMessages: lastReplies,
+          tone: aiTone,
+        }),
+      });
+      if (!res.ok) throw new Error(`AI draft failed (${res.status})`);
+      const data = await res.json();
+      if (data.draft) {
+        setReplyText((prev) => (prev ? prev + '\n' + data.draft : data.draft));
+      }
+    } catch (err) {
+      setReplyError(err instanceof Error ? err.message : 'AI draft failed');
+    } finally {
+      setAiDrafting(false);
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (loading) return <Spinner />;
@@ -459,24 +496,56 @@ export default function TicketDetailPage() {
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-gray-700">Send Reply</h3>
-          {predefinedReplies.length > 0 && (
-            <select
-              onChange={(e) => {
-                const selected = predefinedReplies.find((r) => r.id === e.target.value);
-                if (selected) {
-                  setReplyText((prev) => (prev ? prev + '\n' + selected.body : selected.body));
-                }
-                e.target.value = '';
-              }}
-              defaultValue=""
-              className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white text-gray-600"
-            >
-              <option value="" disabled>Insert Predefined Reply</option>
-              {predefinedReplies.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          )}
+          <div className="flex items-center gap-2">
+            {/* AI Draft button */}
+            <div className="flex items-center gap-1">
+              <select
+                value={aiTone}
+                onChange={(e) => setAiTone(e.target.value as 'professional' | 'friendly' | 'formal')}
+                className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white text-gray-600"
+              >
+                <option value="professional">Professional</option>
+                <option value="friendly">Friendly</option>
+                <option value="formal">Formal</option>
+              </select>
+              <button
+                type="button"
+                onClick={handleAiDraft}
+                disabled={aiDrafting}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200 rounded-lg hover:bg-violet-100 transition-colors disabled:opacity-50"
+              >
+                {aiDrafting ? (
+                  <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+                  </svg>
+                )}
+                {aiDrafting ? 'Drafting...' : 'Draft with AI'}
+              </button>
+            </div>
+            {predefinedReplies.length > 0 && (
+              <select
+                onChange={(e) => {
+                  const selected = predefinedReplies.find((r) => r.id === e.target.value);
+                  if (selected) {
+                    setReplyText((prev) => (prev ? prev + '\n' + selected.body : selected.body));
+                  }
+                  e.target.value = '';
+                }}
+                defaultValue=""
+                className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white text-gray-600"
+              >
+                <option value="" disabled>Insert Predefined Reply</option>
+                {predefinedReplies.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
         {replyError && (
           <div className="mb-3 px-3 py-2 bg-red-50 border border-red-100 text-red-600 text-xs rounded-lg">

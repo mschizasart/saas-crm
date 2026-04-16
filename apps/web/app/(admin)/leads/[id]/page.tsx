@@ -85,6 +85,10 @@ export default function LeadDetailPage() {
   const [logForm, setLogForm] = useState({ direction: 'outbound', subject: '', body: '', fromEmail: '', toEmail: '' });
   const [sendingEmail, setSendingEmail] = useState(false);
 
+  // AI Draft
+  const [aiDrafting, setAiDrafting] = useState(false);
+  const [aiTone, setAiTone] = useState<'professional' | 'friendly' | 'formal'>('professional');
+
   const fetchLead = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -213,6 +217,36 @@ export default function LeadDetailPage() {
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Log failed');
     } finally { setSendingEmail(false); }
+  }
+
+  async function handleAiDraftEmail() {
+    if (!lead) return;
+    setAiDrafting(true);
+    try {
+      const previousMessages = emails.slice(-5).map((em) => ({
+        from: em.direction === 'inbound' ? (em.fromEmail ?? 'Client') : 'Staff',
+        message: em.body ?? '',
+        date: em.sentAt,
+      }));
+      const res = await fetch(`${API_BASE}/api/v1/ai/draft-reply`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          subject: emailForm.subject || `Email to ${lead.name}`,
+          previousMessages,
+          tone: aiTone,
+        }),
+      });
+      if (!res.ok) throw new Error('AI draft failed');
+      const data = await res.json();
+      if (data.draft) {
+        setEmailForm((prev) => ({ ...prev, body: prev.body ? prev.body + '\n' + data.draft : data.draft }));
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'AI draft failed');
+    } finally {
+      setAiDrafting(false);
+    }
   }
 
   if (loading) {
@@ -430,7 +464,38 @@ export default function LeadDetailPage() {
                     <input value={emailForm.subject} onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })} className={inputClass} required />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Body</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-medium text-gray-600">Body</label>
+                      <div className="flex items-center gap-1">
+                        <select
+                          value={aiTone}
+                          onChange={(e) => setAiTone(e.target.value as 'professional' | 'friendly' | 'formal')}
+                          className="px-2 py-1 text-[11px] border border-gray-200 rounded-md bg-white text-gray-600"
+                        >
+                          <option value="professional">Professional</option>
+                          <option value="friendly">Friendly</option>
+                          <option value="formal">Formal</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={handleAiDraftEmail}
+                          disabled={aiDrafting}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium bg-violet-50 text-violet-700 border border-violet-200 rounded-md hover:bg-violet-100 disabled:opacity-50"
+                        >
+                          {aiDrafting ? (
+                            <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                            </svg>
+                          )}
+                          {aiDrafting ? 'Drafting...' : 'Draft with AI'}
+                        </button>
+                      </div>
+                    </div>
                     <textarea rows={5} value={emailForm.body} onChange={(e) => setEmailForm({ ...emailForm, body: e.target.value })} className={inputClass} />
                   </div>
                   <div className="flex justify-end gap-2 pt-2">

@@ -73,6 +73,12 @@ export default function CalendarPage() {
     allDay: false,
   });
 
+  // Google Calendar sync state
+  const [feedUrl, setFeedUrl] = useState<string | null>(null);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [feedCopied, setFeedCopied] = useState(false);
+  const [showSyncPanel, setShowSyncPanel] = useState(false);
+
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const today = new Date();
@@ -190,11 +196,44 @@ export default function CalendarPage() {
     }
   }
 
+  async function fetchFeedUrl() {
+    setFeedLoading(true);
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/api/v1/calendar/feed-url`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFeedUrl(data.feedUrl);
+      }
+    } finally {
+      setFeedLoading(false);
+    }
+  }
+
+  function copyFeedUrl() {
+    if (!feedUrl) return;
+    navigator.clipboard.writeText(feedUrl).then(() => {
+      setFeedCopied(true);
+      setTimeout(() => setFeedCopied(false), 2000);
+    });
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Calendar</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setShowSyncPanel((v) => !v);
+              if (!feedUrl) fetchFeedUrl();
+            }}
+            className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white hover:bg-gray-50"
+          >
+            Sync with Google Calendar
+          </button>
           <button
             onClick={() => setCursor(new Date(year, month - 1, 1))}
             className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white hover:bg-gray-50"
@@ -221,6 +260,41 @@ export default function CalendarPage() {
           </span>
         </div>
       </div>
+
+      {showSyncPanel && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-2">
+            Subscribe in Google Calendar
+          </h2>
+          <p className="text-xs text-gray-500 mb-3">
+            Copy the URL below and paste it in Google Calendar: Other Calendars (+) &rarr; From URL.
+            Events will sync automatically.
+          </p>
+          {feedLoading ? (
+            <p className="text-xs text-gray-400">Generating feed URL...</p>
+          ) : feedUrl ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={feedUrl}
+                className="flex-1 px-3 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 text-gray-700 font-mono"
+              />
+              <button
+                onClick={copyFeedUrl}
+                className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
+              >
+                {feedCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-red-500">Failed to generate feed URL.</p>
+          )}
+          <p className="text-[11px] text-gray-400 mt-2">
+            This link expires in 30 days. Generate a new one after expiry.
+          </p>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-100">

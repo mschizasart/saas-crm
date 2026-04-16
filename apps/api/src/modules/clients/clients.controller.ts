@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ClientsService, CreateClientDto, CreateContactDto } from './clients.service';
+import { HealthScoreService } from './health-score.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
@@ -30,7 +31,17 @@ export class ClientsController {
   constructor(
     private service: ClientsService,
     private pdfService: PdfService,
+    private healthScoreService: HealthScoreService,
   ) {}
+
+  // ─── Health Scores (must be before :id to avoid param conflict) ──
+
+  @Get('health-scores')
+  @Permissions('clients.view')
+  @ApiOperation({ summary: 'Get health scores for all active clients (sorted worst-first)' })
+  getHealthScores(@CurrentOrg() org: any) {
+    return this.healthScoreService.getScoresForAllClients(org.id);
+  }
 
   // ─── Client CRUD ───────────────────────────────────────────
 
@@ -57,6 +68,13 @@ export class ClientsController {
   @ApiOperation({ summary: 'Get single client with contacts and stats' })
   findOne(@CurrentOrg() org: any, @Param('id') id: string) {
     return this.service.findOne(org.id, id);
+  }
+
+  @Get(':id/health-score')
+  @Permissions('clients.view')
+  @ApiOperation({ summary: 'Get health score for a single client' })
+  getHealthScore(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.healthScoreService.calculateScore(org.id, id);
   }
 
   @Post()

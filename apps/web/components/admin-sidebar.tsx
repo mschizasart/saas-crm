@@ -191,6 +191,7 @@ function useNavItems(): NavItem[] {
       icon: Headphones,
       children: [
         { label: t('nav.tickets'), href: '/tickets', icon: Headphones },
+        { label: 'Live Chat', href: '/chat', icon: MessageCircle },
         { label: t('nav.knowledgeBase'), href: '/knowledge-base', icon: BookOpen },
       ],
     },
@@ -242,6 +243,7 @@ function useNavItems(): NavItem[] {
         { label: 'Automations', href: '/settings/automations', icon: Workflow },
         { label: 'Webhooks', href: '/settings/webhooks', icon: Webhook },
         { label: 'API Keys', href: '/settings/api-keys', icon: Key },
+        { label: 'Chat Widget', href: '/settings/chat-widget', icon: MessageCircle },
       ],
     },
   ];

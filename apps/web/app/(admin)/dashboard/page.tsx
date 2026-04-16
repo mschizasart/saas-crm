@@ -24,6 +24,7 @@ interface WidgetConfig {
 }
 
 const ALL_WIDGETS: WidgetConfig[] = [
+  { id: 'smart-suggestions', label: 'Smart Suggestions', enabled: true },
   { id: 'revenue-chart', label: 'Revenue Chart', enabled: true },
   { id: 'recent-invoices', label: 'Recent Invoices', enabled: true },
   { id: 'recent-tickets', label: 'Recent Tickets', enabled: true },
@@ -121,6 +122,17 @@ interface KanbanColumn {
 
 interface KanbanResponse {
   columns: KanbanColumn[];
+}
+
+interface Suggestion {
+  id: string;
+  type: 'follow_up' | 'overdue' | 'expiring' | 'stale_lead' | 'unassigned';
+  title: string;
+  description: string;
+  actionUrl: string;
+  actionLabel: string;
+  priority: 'high' | 'medium' | 'low';
+  createdAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -360,6 +372,11 @@ export default function DashboardPage() {
   >([]);
   const [loadingActivity, setLoadingActivity] = useState(true);
 
+  // -- Smart suggestions --
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
+  const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
+
   // -- Widget customization --
   const [widgets, setWidgets] = useState<WidgetConfig[]>(ALL_WIDGETS.map((w) => ({ ...w })));
   const [showCustomize, setShowCustomize] = useState(false);
@@ -498,6 +515,16 @@ export default function DashboardPage() {
       })
       .catch(() => {})
       .finally(() => setLoadingActivity(false));
+
+    // ---- Smart suggestions ----
+    fetch(`${API_BASE}/api/v1/suggestions`, { headers })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const json = await res.json();
+        setSuggestions(Array.isArray(json) ? json : []);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingSuggestions(false));
 
     // ---- Leads kanban ----
     fetch(`${API_BASE}/api/v1/leads/kanban`, { headers })
@@ -679,6 +706,119 @@ export default function DashboardPage() {
           )
         )}
       </div>
+
+      {/* -------------------------------------------------------------------- */}
+      {/* Smart Suggestions                                                      */}
+      {/* -------------------------------------------------------------------- */}
+      <DashboardWidget id="smart-suggestions" widgets={widgets}>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-gray-900 text-base flex items-center gap-2">
+              <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.674M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5.002 5.002 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+              Smart Suggestions
+            </h2>
+            {suggestions.length > 5 && (
+              <button
+                onClick={() => setSuggestionsExpanded((prev) => !prev)}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                {suggestionsExpanded ? 'Show less' : `Show all (${suggestions.length})`}
+              </button>
+            )}
+          </div>
+
+          {loadingSuggestions ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 animate-pulse">
+                  <SkeletonBox className="h-8 w-8 rounded-lg flex-shrink-0" />
+                  <div className="flex-1">
+                    <SkeletonBox className="h-4 w-3/4 mb-1" />
+                    <SkeletonBox className="h-3 w-1/2" />
+                  </div>
+                  <SkeletonBox className="h-7 w-20 rounded-md" />
+                </div>
+              ))}
+            </div>
+          ) : suggestions.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-sm text-gray-500">No suggestions — you&apos;re all caught up!</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {(suggestionsExpanded ? suggestions : suggestions.slice(0, 5)).map((s) => {
+                const iconMap: Record<string, string> = {
+                  overdue: 'text-red-500 bg-red-50',
+                  stale_lead: 'text-amber-500 bg-amber-50',
+                  expiring: 'text-blue-500 bg-blue-50',
+                  unassigned: 'text-violet-500 bg-violet-50',
+                  follow_up: 'text-green-500 bg-green-50',
+                };
+                const svgMap: Record<string, React.ReactNode> = {
+                  overdue: (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ),
+                  stale_lead: (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                    </svg>
+                  ),
+                  expiring: (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  ),
+                  unassigned: (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                    </svg>
+                  ),
+                  follow_up: (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  ),
+                };
+                const colorClass = iconMap[s.type] ?? 'text-gray-500 bg-gray-50';
+                const priorityClass =
+                  s.priority === 'high'
+                    ? 'bg-red-100 text-red-700'
+                    : s.priority === 'medium'
+                      ? 'bg-yellow-100 text-yellow-700'
+                      : 'bg-gray-100 text-gray-500';
+
+                return (
+                  <div
+                    key={s.id}
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${colorClass}`}>
+                      {svgMap[s.type] ?? svgMap.follow_up}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{s.title}</p>
+                      <p className="text-xs text-gray-400 truncate">{s.description}</p>
+                    </div>
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase flex-shrink-0 ${priorityClass}`}>
+                      {s.priority}
+                    </span>
+                    <Link
+                      href={s.actionUrl}
+                      className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-primary border border-primary/20 rounded-md hover:bg-primary/5 transition-colors flex-shrink-0"
+                    >
+                      {s.actionLabel}
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </DashboardWidget>
 
       {/* -------------------------------------------------------------------- */}
       {/* Middle row: Recent Invoices + Recent Tickets                           */}

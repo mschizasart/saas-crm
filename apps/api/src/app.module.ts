@@ -57,6 +57,8 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { ProductsModule } from './modules/products/products.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { SuggestionsModule } from './modules/suggestions/suggestions.module';
 
 @Module({
   imports: [
@@ -129,6 +131,8 @@ import { ProductsModule } from './modules/products/products.module';
     ApiKeysModule,
     AppointmentsModule,
     ProductsModule,
+    ChatModule,
+    SuggestionsModule,
   ],
 })
 export class AppModule {}

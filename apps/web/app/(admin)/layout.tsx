@@ -6,6 +6,7 @@ import { AdminSidebar } from '@/components/admin-sidebar';
 import { AnnouncementsBanner } from '@/components/announcements-banner';
 import { ToastProvider } from '@/components/toast-provider';
 import { GlobalSearch } from '@/components/global-search';
+import { KeyboardShortcuts } from '@/components/keyboard-shortcuts';
 
 export default function AdminLayout({
   children,
@@ -76,6 +77,7 @@ export default function AdminLayout({
         </div>
       </div>
       <GlobalSearch />
+      <KeyboardShortcuts />
     </ToastProvider>
   );
 }

@@ -116,8 +116,91 @@ export class WebhooksService {
     }
   }
 
+  private formatPayload(url: string, eventName: string, payload: any): string {
+    // Slack webhooks: use blocks format
+    if (
+      url.includes('hooks.slack.com') ||
+      url.includes('discord.com/api/webhooks')
+    ) {
+      const text = this.eventToText(eventName, payload);
+      if (url.includes('discord.com')) {
+        return JSON.stringify({ content: text });
+      }
+      return JSON.stringify({
+        text,
+        blocks: [
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*${eventName}*\n${text}` },
+          },
+          ...(payload?.data?.url
+            ? [
+                {
+                  type: 'actions',
+                  elements: [
+                    {
+                      type: 'button',
+                      text: { type: 'plain_text', text: 'View in CRM' },
+                      url: payload.data.url,
+                    },
+                  ],
+                },
+              ]
+            : []),
+        ],
+      });
+    }
+    // Default: raw JSON
+    return JSON.stringify(payload);
+  }
+
+  private eventToText(event: string, payload: any): string {
+    const data = payload?.data ?? payload ?? {};
+    switch (event) {
+      case 'lead.created':
+        return `New lead: ${data.lead?.name ?? data.name ?? 'Unknown'} (${data.lead?.email ?? data.email ?? ''})`;
+      case 'lead.status_changed':
+        return `Lead status changed: ${data.lead?.name ?? data.name ?? 'Unknown'}`;
+      case 'lead.assigned':
+        return `Lead assigned: ${data.lead?.name ?? data.name ?? 'Unknown'}`;
+      case 'invoice.created':
+        return `New invoice ${data.invoice?.number ?? data.number ?? ''} for ${data.invoice?.total ?? data.total ?? ''}`;
+      case 'invoice.sent':
+        return `Invoice ${data.invoice?.number ?? data.number ?? ''} sent to client`;
+      case 'invoice.overdue':
+        return `Invoice ${data.invoice?.number ?? data.number ?? ''} is overdue`;
+      case 'ticket.created':
+        return `New ticket: ${data.ticket?.subject ?? data.subject ?? ''}`;
+      case 'ticket.status_changed':
+        return `Ticket status changed: ${data.ticket?.subject ?? data.subject ?? ''}`;
+      case 'ticket.replied':
+        return `Ticket reply: ${data.ticket?.subject ?? data.subject ?? ''}`;
+      case 'task.created':
+        return `New task: ${data.task?.name ?? data.name ?? ''}`;
+      case 'task.completed':
+        return `Task completed: ${data.task?.name ?? data.name ?? ''}`;
+      case 'payment.received':
+        return `Payment received: ${data.payment?.amount ?? data.amount ?? ''}`;
+      case 'contract.signed':
+        return `Contract signed: ${data.contract?.subject ?? data.subject ?? ''}`;
+      case 'client.created':
+        return `New client: ${data.client?.company ?? data.company ?? ''}`;
+      case 'project.created':
+        return `New project: ${data.project?.name ?? data.name ?? ''}`;
+      case 'estimate.sent':
+        return `Estimate sent: ${data.estimate?.number ?? data.number ?? ''}`;
+      default:
+        return `${event}: ${JSON.stringify(data).slice(0, 200)}`;
+    }
+  }
+
   private async deliverWebhook(webhook: any, payload: any) {
-    const body = JSON.stringify(payload);
+    const isSlackOrDiscord =
+      webhook.url.includes('hooks.slack.com') ||
+      webhook.url.includes('discord.com/api/webhooks');
+    const body = isSlackOrDiscord
+      ? this.formatPayload(webhook.url, payload.event, payload)
+      : JSON.stringify(payload);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-Webhook-Id': webhook.id,

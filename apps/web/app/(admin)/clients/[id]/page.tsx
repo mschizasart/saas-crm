@@ -172,6 +172,14 @@ export default function ClientDetailPage() {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
 
+  // Health score
+  const [healthScore, setHealthScore] = useState<{
+    score: number;
+    grade: 'excellent' | 'good' | 'at_risk' | 'critical';
+    factors: { name: string; score: number; maxScore: number; detail: string }[];
+  } | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+
   // ── Fetch client ──────────────────────────────────────────────────────────
 
   const fetchClient = useCallback(async () => {
@@ -194,6 +202,20 @@ export default function ClientDetailPage() {
   useEffect(() => {
     fetchClient();
   }, [fetchClient]);
+
+  // Fetch health score
+  useEffect(() => {
+    setHealthLoading(true);
+    fetch(`${API_BASE}/api/v1/clients/${clientId}/health-score`, {
+      headers: authHeaders(),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && typeof data.score === 'number') setHealthScore(data);
+      })
+      .catch(() => {})
+      .finally(() => setHealthLoading(false));
+  }, [clientId]);
 
   // ── Fetch invoices when tab changes ──────────────────────────────────────
 
@@ -464,6 +486,88 @@ export default function ClientDetailPage() {
               </div>
             ))}
           </div>
+
+          {/* Health Score Card */}
+          {healthLoading ? (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 animate-pulse">
+              <div className="h-4 w-1/3 bg-gray-100 rounded mb-4" />
+              <div className="h-20 w-20 bg-gray-100 rounded-full mx-auto" />
+            </div>
+          ) : healthScore ? (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">Health Score</h3>
+              <div className="flex items-start gap-6">
+                {/* Circular score display */}
+                <div className="flex flex-col items-center gap-2 flex-shrink-0">
+                  <div
+                    className={[
+                      'relative w-20 h-20 rounded-full flex items-center justify-center border-4',
+                      healthScore.grade === 'excellent'
+                        ? 'border-green-500'
+                        : healthScore.grade === 'good'
+                          ? 'border-blue-500'
+                          : healthScore.grade === 'at_risk'
+                            ? 'border-orange-500'
+                            : 'border-red-500',
+                    ].join(' ')}
+                  >
+                    <span className="text-2xl font-bold text-gray-900">
+                      {healthScore.score}
+                    </span>
+                  </div>
+                  <span
+                    className={[
+                      'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize',
+                      healthScore.grade === 'excellent'
+                        ? 'bg-green-100 text-green-700'
+                        : healthScore.grade === 'good'
+                          ? 'bg-blue-100 text-blue-700'
+                          : healthScore.grade === 'at_risk'
+                            ? 'bg-orange-100 text-orange-700'
+                            : 'bg-red-100 text-red-700',
+                    ].join(' ')}
+                  >
+                    {healthScore.grade.replace('_', ' ')}
+                  </span>
+                </div>
+                {/* Factor breakdown */}
+                <div className="flex-1 space-y-3">
+                  {healthScore.factors.map((f) => (
+                    <div key={f.name}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-gray-600">
+                          {f.name}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {f.score}/{f.maxScore}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className={[
+                            'h-full rounded-full transition-all',
+                            f.score / f.maxScore >= 0.7
+                              ? 'bg-green-500'
+                              : f.score / f.maxScore >= 0.4
+                                ? 'bg-blue-500'
+                                : f.score / f.maxScore >= 0.2
+                                  ? 'bg-orange-500'
+                                  : 'bg-red-500',
+                          ].join(' ')}
+                          style={{
+                            width: `${Math.round((f.score / f.maxScore) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {f.detail}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <CustomFieldsForm fieldTo="client" entityId={clientId} values={customFieldValues} onChange={setCustomFieldValues} />
           {Object.keys(customFieldValues).length > 0 && (

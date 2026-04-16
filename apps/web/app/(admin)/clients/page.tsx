@@ -17,6 +17,27 @@ interface Client {
   is_active: boolean;
 }
 
+interface HealthScore {
+  clientId: string;
+  company: string;
+  score: number;
+  grade: string;
+}
+
+const HEALTH_COLORS: Record<string, string> = {
+  excellent: 'bg-green-500',
+  good: 'bg-blue-500',
+  at_risk: 'bg-orange-500',
+  critical: 'bg-red-500',
+};
+
+const HEALTH_LABELS: Record<string, string> = {
+  excellent: 'Excellent',
+  good: 'Good',
+  at_risk: 'At Risk',
+  critical: 'Critical',
+};
+
 interface ClientsResponse {
   data: Client[];
   meta: {
@@ -94,7 +115,7 @@ function Spinner() {
 function SkeletonRow() {
   return (
     <tr className="border-b border-gray-100 last:border-0">
-      {Array.from({ length: 6 }).map((_, i) => (
+      {Array.from({ length: 7 }).map((_, i) => (
         <td key={i} className="px-4 py-3">
           <div className="h-4 bg-gray-100 rounded animate-pulse" style={{ width: i === 0 ? '60%' : '40%' }} />
         </td>
@@ -107,6 +128,17 @@ function SkeletonRow() {
 // Page
 // ---------------------------------------------------------------------------
 
+function HealthDot({ grade, score }: { grade: string; score: number }) {
+  const color = HEALTH_COLORS[grade] ?? 'bg-gray-400';
+  const label = HEALTH_LABELS[grade] ?? grade;
+  return (
+    <span
+      className={`inline-block w-2.5 h-2.5 rounded-full ${color} flex-shrink-0`}
+      title={`Health: ${label} (${score}/100)`}
+    />
+  );
+}
+
 export default function ClientsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -116,8 +148,26 @@ export default function ClientsPage() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [healthScores, setHealthScores] = useState<Map<string, HealthScore>>(new Map());
 
   const debouncedSearch = useDebounce(search, 350);
+
+  // Fetch health scores once on mount
+  useEffect(() => {
+    const token = getToken();
+    fetch(`${API_BASE}/api/v1/clients/health-scores`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data: HealthScore[]) => {
+        if (Array.isArray(data)) {
+          const map = new Map<string, HealthScore>();
+          for (const hs of data) map.set(hs.clientId, hs);
+          setHealthScores(map);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Reset to page 1 whenever the search term changes
   useEffect(() => {
@@ -285,7 +335,12 @@ export default function ClientsPage() {
             <Link key={client.id} href={`/clients/${client.id}`} className="block bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-gray-200 transition-colors">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-medium text-gray-900 truncate">{client.company_name}</p>
+                  <p className="font-medium text-gray-900 truncate flex items-center gap-1.5">
+                    {healthScores.get(client.id) && (
+                      <HealthDot grade={healthScores.get(client.id)!.grade} score={healthScores.get(client.id)!.score} />
+                    )}
+                    {client.company_name}
+                  </p>
                   <p className="text-xs text-gray-500 mt-0.5">{client.phone ?? 'No phone'}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     {[client.city, client.country].filter(Boolean).join(', ') || 'No location'}
@@ -324,6 +379,7 @@ export default function ClientsPage() {
                   />
                 </th>
                 <th className="px-4 py-3">Company</th>
+                <th className="px-4 py-3">Health</th>
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Website</th>
                 <th className="px-4 py-3">Location</th>
@@ -336,7 +392,7 @@ export default function ClientsPage() {
                 Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
               ) : clients.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center">
+                  <td colSpan={8} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-2 text-gray-400">
                       <svg className="w-10 h-10 opacity-40" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 21h16.5M4.5 3h15l-.75 12H5.25L4.5 3zm3.75 12V9m3.75 6V9m3.75 6V9" />
@@ -368,6 +424,21 @@ export default function ClientsPage() {
                     </td>
                     <td className="px-4 py-3 font-medium text-gray-900">
                       {client.company_name}
+                    </td>
+                    <td className="px-4 py-3">
+                      {healthScores.get(client.id) ? (
+                        <span className="flex items-center gap-1.5">
+                          <HealthDot
+                            grade={healthScores.get(client.id)!.grade}
+                            score={healthScores.get(client.id)!.score}
+                          />
+                          <span className="text-xs text-gray-500">
+                            {healthScores.get(client.id)!.score}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">--</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-500">
                       {client.phone ?? <span className="text-gray-300">—</span>}
