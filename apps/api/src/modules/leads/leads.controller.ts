@@ -12,7 +12,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { Response } from 'express';
+
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { LeadsService, CreateLeadDto } from './leads.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -37,7 +37,7 @@ export class LeadsController {
   async webFormSubmit(
     @Body() dto: any,
     @Query('orgSlug') orgSlug: string,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: any,
   ) {
     const result = await this.service.createFromWebForm(orgSlug, {
       name: dto.name,
