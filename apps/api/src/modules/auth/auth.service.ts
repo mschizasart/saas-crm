@@ -297,6 +297,7 @@ export class AuthService {
         slug: dto.slug.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
         subscriptionStatus: 'trialing',
         trialEndsAt,
+        settings: { defaultCurrency: dto.currency ?? 'USD' },
         users: {
           create: {
             email: dto.email,

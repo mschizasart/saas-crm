@@ -76,4 +76,9 @@ export class RegisterOrganizationDto {
   @IsString()
   @MinLength(8)
   password: string;
+
+  @ApiProperty({ required: false, example: 'EUR' })
+  @IsOptional()
+  @IsString()
+  currency?: string;
 }

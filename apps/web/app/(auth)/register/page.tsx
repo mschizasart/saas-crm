@@ -9,6 +9,21 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 
+const CURRENCIES = [
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
+  { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
+  { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+  { code: 'BRL', symbol: 'R$', name: 'Brazilian Real' },
+  { code: 'TRY', symbol: '₺', name: 'Turkish Lira' },
+  { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham' },
+];
+
 const registerSchema = z.object({
   organizationName: z.string().min(2, 'Organization name must be at least 2 characters'),
   slug: z
@@ -20,6 +35,7 @@ const registerSchema = z.object({
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
+  currency: z.string().default('USD'),
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;
@@ -170,6 +186,18 @@ export default function RegisterPage() {
           {errors.password && (
             <p className="mt-1 text-xs text-destructive">{errors.password.message}</p>
           )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Default Currency</label>
+          <select
+            {...register('currency')}
+            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm bg-white"
+          >
+            {CURRENCIES.map(c => (
+              <option key={c.code} value={c.code}>{c.symbol} {c.name} ({c.code})</option>
+            ))}
+          </select>
         </div>
 
         <button
