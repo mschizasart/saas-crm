@@ -9,20 +9,41 @@ import { ActivityLogService } from '../activity-log/activity-log.service';
 
 export interface CreateInvoiceDto {
   clientId: string;
+  number?: string;
   date: string; // ISO date
   dueDate?: string;
   currencyId?: string;
   currency?: string;
   notes?: string;
+  clientNote?: string;
+  adminNote?: string;
   terms?: string;
   discount?: number;
+  discountType?: string;
+  status?: string;
+  // New Perfex-style fields
+  tags?: string;
+  saleAgentId?: string;
+  allowedPaymentModes?: string[];
+  preventOverdueReminders?: boolean;
+  // Recurring
   recurring?: boolean;
   recurringFrequency?: string;
+  isRecurring?: boolean;
+  recurringEvery?: number;
+  recurringType?: string;
+  totalCycles?: number;
   items: Array<{
     description: string;
-    quantity: number;
-    unitPrice: number;
+    longDescription?: string;
+    quantity?: number;
+    unitPrice?: number;
+    qty?: number;
+    rate?: number;
     taxRate?: number;
+    tax1?: string;
+    tax2?: string;
+    unit?: string;
     order?: number;
   }>;
 }
@@ -145,36 +166,79 @@ export class InvoicesService {
 
   async create(orgId: string, dto: CreateInvoiceDto, createdBy: string) {
     const invoice = await this.prisma.withOrganization(orgId, async (tx) => {
-      const number = await this.generateInvoiceNumber(orgId, tx);
-      const totals = this.calculateTotals(dto.items, dto.discount ?? 0);
+      const number = dto.number || (await this.generateInvoiceNumber(orgId, tx));
+
+      // Normalize items: support both old (quantity/unitPrice/taxRate) and new (qty/rate/tax1) field names
+      const normalizedItems = dto.items.map((item) => ({
+        qty: item.qty ?? item.quantity ?? 0,
+        rate: item.rate ?? item.unitPrice ?? 0,
+        description: item.description,
+        longDescription: item.longDescription ?? undefined,
+        tax1: item.tax1 ?? undefined,
+        tax2: item.tax2 ?? undefined,
+        taxRate: item.taxRate ?? 0,
+        unit: item.unit ?? undefined,
+        order: item.order,
+      }));
+
+      const totals = this.calculateTotals(
+        normalizedItems.map((i) => ({
+          quantity: i.qty,
+          unitPrice: i.rate,
+          taxRate: i.taxRate,
+        })),
+        dto.discount ?? 0,
+      );
+
+      const invoiceData: any = {
+        organizationId: orgId,
+        clientId: dto.clientId,
+        number,
+        date: new Date(dto.date),
+        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        status: dto.status ?? 'draft',
+        subTotal: totals.subtotal,
+        totalTax: totals.tax,
+        discount: totals.discount,
+        discountType: dto.discountType ?? 'fixed',
+        total: totals.total,
+        clientNote: dto.clientNote ?? dto.notes ?? null,
+        adminNote: dto.adminNote ?? null,
+        terms: dto.terms ?? null,
+        currency: dto.currency ?? 'USD',
+        currencyId: dto.currencyId ?? null,
+        // Recurring fields
+        isRecurring: dto.isRecurring ?? dto.recurring ?? false,
+        recurringEvery: dto.recurringEvery ?? null,
+        recurringType: dto.recurringType ?? dto.recurringFrequency ?? null,
+        totalCycles: dto.totalCycles ?? null,
+        // Payment modes
+        allowedPaymentModes: dto.allowedPaymentModes ?? [],
+        createdBy,
+      };
+
+      // Add saleAgentId if provided (field may not exist in schema yet)
+      if (dto.saleAgentId) {
+        (invoiceData as any).saleAgentId = dto.saleAgentId;
+      }
+      // Add preventOverdueReminders if provided (field may not exist in schema yet)
+      if (dto.preventOverdueReminders !== undefined) {
+        (invoiceData as any).preventOverdueReminders = dto.preventOverdueReminders;
+      }
 
       const created = await tx.invoice.create({
         data: {
-          organizationId: orgId,
-          clientId: dto.clientId,
-          number,
-          date: new Date(dto.date),
-          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-          status: 'draft',
-          subtotal: totals.subtotal,
-          tax: totals.tax,
-          discount: totals.discount,
-          total: totals.total,
-          notes: dto.notes ?? null,
-          terms: dto.terms ?? null,
-          currency: dto.currency ?? 'USD',
-          currencyId: dto.currencyId ?? null,
-          recurring: dto.recurring ?? false,
-          recurringFrequency: dto.recurringFrequency ?? null,
-          createdBy,
+          ...invoiceData,
           items: {
             createMany: {
-              data: dto.items.map((item, index) => ({
+              data: normalizedItems.map((item, index) => ({
                 description: item.description,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice,
-                taxRate: item.taxRate ?? 0,
-                total: item.quantity * item.unitPrice,
+                longDesc: item.longDescription ?? null,
+                qty: item.qty,
+                rate: item.rate,
+                tax1: item.tax1 ?? null,
+                tax2: item.tax2 ?? null,
+                unit: item.unit ?? null,
                 order: item.order ?? index,
               })),
             },
@@ -215,16 +279,27 @@ export class InvoicesService {
     }
 
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const items = dto.items ?? existing.items.map((i: any) => ({
+      // Normalize items for totals calculation (support both old and new field names)
+      const rawItems = dto.items ?? existing.items.map((i: any) => ({
         description: i.description,
-        quantity: Number(i.quantity),
-        unitPrice: Number(i.unitPrice),
-        taxRate: Number(i.taxRate),
+        qty: Number(i.qty ?? i.quantity ?? 0),
+        rate: Number(i.rate ?? i.unitPrice ?? 0),
+        taxRate: Number(i.taxRate ?? 0),
+        tax1: i.tax1,
+        tax2: i.tax2,
+        longDescription: i.longDesc ?? i.longDescription,
+        unit: i.unit,
         order: i.order,
       }));
 
+      const normalizedForCalc = rawItems.map((i: any) => ({
+        quantity: i.qty ?? i.quantity ?? 0,
+        unitPrice: i.rate ?? i.unitPrice ?? 0,
+        taxRate: i.taxRate ?? 0,
+      }));
+
       const totals = this.calculateTotals(
-        items,
+        normalizedForCalc,
         dto.discount ?? Number(existing.discount),
       );
 
@@ -234,36 +309,50 @@ export class InvoicesService {
           data: dto.items.map((item, index) => ({
             invoiceId: id,
             description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            taxRate: item.taxRate ?? 0,
-            total: item.quantity * item.unitPrice,
+            longDesc: item.longDescription ?? null,
+            qty: item.qty ?? item.quantity ?? 0,
+            rate: item.rate ?? item.unitPrice ?? 0,
+            tax1: item.tax1 ?? null,
+            tax2: item.tax2 ?? null,
+            unit: item.unit ?? null,
             order: item.order ?? index,
           })),
         });
       }
 
+      const updateData: any = {
+        ...(dto.clientId && { clientId: dto.clientId }),
+        ...(dto.date && { date: new Date(dto.date) }),
+        ...(dto.dueDate !== undefined && {
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        }),
+        ...(dto.clientNote !== undefined && { clientNote: dto.clientNote }),
+        ...(dto.adminNote !== undefined && { adminNote: dto.adminNote }),
+        ...(dto.terms !== undefined && { terms: dto.terms }),
+        ...(dto.discountType && { discountType: dto.discountType }),
+        ...(dto.currencyId !== undefined && { currencyId: dto.currencyId }),
+        ...(dto.isRecurring !== undefined && { isRecurring: dto.isRecurring }),
+        ...(dto.recurringEvery !== undefined && { recurringEvery: dto.recurringEvery }),
+        ...(dto.recurringType !== undefined && { recurringType: dto.recurringType }),
+        ...(dto.totalCycles !== undefined && { totalCycles: dto.totalCycles }),
+        ...(dto.allowedPaymentModes && { allowedPaymentModes: dto.allowedPaymentModes }),
+        subTotal: totals.subtotal,
+        totalTax: totals.tax,
+        discount: totals.discount,
+        total: totals.total,
+      };
+
+      // Fields that may not exist in schema yet
+      if (dto.saleAgentId !== undefined) {
+        (updateData as any).saleAgentId = dto.saleAgentId;
+      }
+      if (dto.preventOverdueReminders !== undefined) {
+        (updateData as any).preventOverdueReminders = dto.preventOverdueReminders;
+      }
+
       const updated = await tx.invoice.update({
         where: { id },
-        data: {
-          ...(dto.clientId && { clientId: dto.clientId }),
-          ...(dto.date && { date: new Date(dto.date) }),
-          ...(dto.dueDate !== undefined && {
-            dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-          }),
-          ...(dto.notes !== undefined && { notes: dto.notes }),
-          ...(dto.terms !== undefined && { terms: dto.terms }),
-          ...(dto.currency && { currency: dto.currency }),
-          ...(dto.currencyId !== undefined && { currencyId: dto.currencyId }),
-          ...(dto.recurring !== undefined && { recurring: dto.recurring }),
-          ...(dto.recurringFrequency !== undefined && {
-            recurringFrequency: dto.recurringFrequency,
-          }),
-          subtotal: totals.subtotal,
-          tax: totals.tax,
-          discount: totals.discount,
-          total: totals.total,
-        },
+        data: updateData,
         include: {
           client: { select: { id: true, company: true } },
           items: { orderBy: { order: 'asc' } },
@@ -391,25 +480,31 @@ export class InvoicesService {
           date: new Date(),
           dueDate: null,
           status: 'draft',
-          subtotal: source.subtotal,
-          tax: source.tax,
+          subTotal: (source as any).subTotal ?? (source as any).subtotal ?? 0,
+          totalTax: (source as any).totalTax ?? (source as any).tax ?? 0,
           discount: source.discount,
+          discountType: (source as any).discountType ?? 'fixed',
           total: source.total,
-          notes: source.notes,
+          clientNote: (source as any).clientNote ?? (source as any).notes ?? null,
+          adminNote: (source as any).adminNote ?? null,
           terms: source.terms,
-          currency: source.currency,
           currencyId: source.currencyId,
-          recurring: source.recurring,
-          recurringFrequency: source.recurringFrequency,
+          isRecurring: (source as any).isRecurring ?? false,
+          recurringEvery: (source as any).recurringEvery ?? null,
+          recurringType: (source as any).recurringType ?? null,
+          totalCycles: (source as any).totalCycles ?? null,
+          allowedPaymentModes: (source as any).allowedPaymentModes ?? [],
           createdBy,
           items: {
             createMany: {
               data: (source.items as any[]).map((item) => ({
                 description: item.description,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice,
-                taxRate: item.taxRate,
-                total: item.total,
+                longDesc: item.longDesc ?? null,
+                qty: item.qty ?? item.quantity ?? 0,
+                rate: item.rate ?? item.unitPrice ?? 0,
+                tax1: item.tax1 ?? null,
+                tax2: item.tax2 ?? null,
+                unit: item.unit ?? null,
                 order: item.order,
               })),
             },
@@ -475,7 +570,7 @@ export class InvoicesService {
       const discount = Number(source.discount ?? 0);
 
       for (const item of source.items as any[]) {
-        const lineTotal = Number(item.quantity) * Number(item.unitPrice);
+        const lineTotal = Number(item.qty ?? item.quantity ?? 0) * Number(item.rate ?? item.unitPrice ?? 0);
         const lineTax = lineTotal * (Number(item.taxRate ?? 0) / 100);
         subtotal += lineTotal;
         tax += lineTax;
@@ -491,22 +586,25 @@ export class InvoicesService {
           date: new Date(),
           expiryDate: null,
           status: 'draft',
-          subtotal,
-          tax,
+          subTotal: subtotal,
+          totalTax: tax,
           discount,
           total,
-          notes: source.notes ?? null,
+          clientNote: (source as any).clientNote ?? null,
+          adminNote: (source as any).adminNote ?? null,
           terms: source.terms ?? null,
-          currency: (source as any).currency ?? 'USD',
+          currencyId: source.currencyId ?? null,
           createdBy,
           items: {
             createMany: {
               data: (source.items as any[]).map((item: any) => ({
                 description: item.description,
-                quantity: Number(item.quantity),
-                unitPrice: Number(item.unitPrice),
-                taxRate: Number(item.taxRate ?? 0),
-                total: Number(item.total),
+                longDesc: item.longDesc ?? null,
+                qty: Number(item.qty ?? item.quantity ?? 0),
+                rate: Number(item.rate ?? item.unitPrice ?? 0),
+                tax1: item.tax1 ?? null,
+                tax2: item.tax2 ?? null,
+                unit: item.unit ?? null,
                 order: item.order,
               })),
             },
