@@ -69,9 +69,9 @@ export class TenantInterceptor implements NestInterceptor {
     }
 
     // 3. Fall back to JWT claim (set after auth)
-    if (!organization && request.user?.organizationId) {
+    if (!organization && (request.user?.orgId || request.user?.organizationId)) {
       organization = await this.prisma.organization.findUnique({
-        where: { id: request.user.organizationId },
+        where: { id: request.user.orgId || request.user.organizationId },
         select: {
           id: true,
           name: true,
