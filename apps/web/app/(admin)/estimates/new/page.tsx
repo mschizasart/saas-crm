@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import SavedItemModal from '../../../../components/saved-item-modal';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -282,26 +283,27 @@ export default function NewEstimatePage() {
     setActiveAutocomplete(null);
   }
 
-  async function saveAsItem(idx: number) {
+  // Save as Item modal state
+  const [saveItemModalOpen, setSaveItemModalOpen] = useState(false);
+  const [saveItemInitialData, setSaveItemInitialData] = useState<any>(undefined);
+
+  function saveAsItem(idx: number) {
     const item = items[idx];
     if (!item.description) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/saved-items`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          description: item.description,
-          longDescription: item.longDescription,
-          rate: Number(item.rate) || 0,
-          taxRate: 0,
-          unit: item.unit,
-        }),
-      });
-      if (res.ok) {
-        setSaveItemMsg('Item saved for future use');
-        setTimeout(() => setSaveItemMsg(null), 3000);
-      }
-    } catch {}
+    setSaveItemInitialData({
+      description: item.description,
+      longDescription: item.longDescription,
+      rate: Number(item.rate) || 0,
+      tax1: item.taxId || undefined,
+      tax2: item.taxId2 || undefined,
+      unit: item.unit,
+    });
+    setSaveItemModalOpen(true);
+  }
+
+  function handleSaveItemSaved() {
+    setSaveItemMsg('Item saved for future use');
+    setTimeout(() => setSaveItemMsg(null), 3000);
   }
 
   // ─── Totals ───────────────────────────────────────────────────────────────
@@ -730,6 +732,13 @@ export default function NewEstimatePage() {
           </button>
         </div>
       </form>
+
+      <SavedItemModal
+        open={saveItemModalOpen}
+        onClose={() => { setSaveItemModalOpen(false); setSaveItemInitialData(undefined); }}
+        onSaved={handleSaveItemSaved}
+        initialData={saveItemInitialData}
+      />
     </div>
   );
 }
