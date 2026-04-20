@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 import SavedItemModal from '../../../../components/saved-item-modal';
+import { ComplexFormPageLayout } from '@/components/layouts/complex-form-page-layout';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -479,14 +480,11 @@ export default function NewInvoicePage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-6xl">
-      <div className="mb-4">
-        <Link href="/invoices" className="text-sm text-gray-500 hover:text-primary">
-          &larr; Back to Invoices
-        </Link>
-      </div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Create New Invoice</h1>
-
+    <ComplexFormPageLayout
+      title="Create New Invoice"
+      backHref="/invoices"
+      backLabel="Back to Invoices"
+    >
       <form onSubmit={(e) => handleSubmit(e)} className="space-y-6">
         {error && (
           <div className="px-4 py-3 bg-red-50 border border-red-200 text-sm text-red-700 rounded-lg">
@@ -502,10 +500,10 @@ export default function NewInvoicePage() {
         {/* ─── Top Section: Two Columns ─────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* LEFT COLUMN */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 space-y-4">
             {/* Customer (searchable) */}
             <div className="relative">
-              <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
                 Customer <span className="text-red-500">*</span>
               </label>
               <input
@@ -527,7 +525,7 @@ export default function NewInvoicePage() {
                 <input type="hidden" name="clientId" value={clientId} />
               )}
               {showClientDropdown && filteredClients.length > 0 && (
-                <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                   {filteredClients.map((c) => (
                     <button
                       key={c.id}
@@ -546,9 +544,9 @@ export default function NewInvoicePage() {
             </div>
 
             {/* Bill To / Ship To */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
                   Bill To
                 </label>
                 <input
@@ -557,17 +555,17 @@ export default function NewInvoicePage() {
                   onChange={(e) => setBillStreet(e.target.value)}
                   className={inputClass + ' mb-1'}
                 />
-                <div className="grid grid-cols-2 gap-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                   <input placeholder="City" value={billCity} onChange={(e) => setBillCity(e.target.value)} className={inputClass} />
                   <input placeholder="State" value={billState} onChange={(e) => setBillState(e.target.value)} className={inputClass} />
                 </div>
-                <div className="grid grid-cols-2 gap-1 mt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 mt-1">
                   <input placeholder="ZIP" value={billZip} onChange={(e) => setBillZip(e.target.value)} className={inputClass} />
                   <input placeholder="Country" value={billCountry} onChange={(e) => setBillCountry(e.target.value)} className={inputClass} />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
                   Ship To
                 </label>
                 <input
@@ -576,11 +574,11 @@ export default function NewInvoicePage() {
                   onChange={(e) => setShipStreet(e.target.value)}
                   className={inputClass + ' mb-1'}
                 />
-                <div className="grid grid-cols-2 gap-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                   <input placeholder="City" value={shipCity} onChange={(e) => setShipCity(e.target.value)} className={inputClass} />
                   <input placeholder="State" value={shipState} onChange={(e) => setShipState(e.target.value)} className={inputClass} />
                 </div>
-                <div className="grid grid-cols-2 gap-1 mt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 mt-1">
                   <input placeholder="ZIP" value={shipZip} onChange={(e) => setShipZip(e.target.value)} className={inputClass} />
                   <input placeholder="Country" value={shipCountry} onChange={(e) => setShipCountry(e.target.value)} className={inputClass} />
                 </div>
@@ -589,7 +587,7 @@ export default function NewInvoicePage() {
 
             {/* Invoice Number */}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
                 Invoice Number
               </label>
               <div className="flex gap-1">
@@ -608,7 +606,7 @@ export default function NewInvoicePage() {
             </div>
 
             {/* Dates */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Invoice Date" required>
                 <input
                   type="date"
@@ -639,7 +637,7 @@ export default function NewInvoicePage() {
             </Field>
 
             {/* Prevent overdue reminders */}
-            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
               <input
                 type="checkbox"
                 checked={preventOverdueReminders}
@@ -651,7 +649,7 @@ export default function NewInvoicePage() {
           </div>
 
           {/* RIGHT COLUMN */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 space-y-4">
             {/* Tags */}
             <Field label="Tags">
               <input
@@ -665,14 +663,14 @@ export default function NewInvoicePage() {
             {/* Allowed Payment Modes */}
             {paymentModes.length > 0 && (
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wide">
                   Allowed Payment Modes
                 </label>
                 <div className="space-y-1">
                   {paymentModes
                     .filter((m) => m.active)
                     .map((mode) => (
-                      <label key={mode.id} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                      <label key={mode.id} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={allowedPaymentModes.includes(mode.id)}
@@ -706,20 +704,20 @@ export default function NewInvoicePage() {
 
             {/* Recurring Invoice */}
             <div>
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mb-2">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer mb-2">
                 <input
                   type="checkbox"
                   checked={isRecurring}
                   onChange={(e) => setIsRecurring(e.target.checked)}
                   className="rounded border-gray-300 text-primary focus:ring-primary/30"
                 />
-                <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">
                   Recurring Invoice
                 </span>
               </label>
               {isRecurring && (
                 <div className="ml-6 space-y-2 border-l-2 border-primary/20 pl-4">
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <Field label="Repeat Every">
                       <div className="flex gap-1">
                         <input
@@ -758,7 +756,7 @@ export default function NewInvoicePage() {
 
             {/* Discount */}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
                 Discount
               </label>
               <div className="flex gap-1">
@@ -794,13 +792,13 @@ export default function NewInvoicePage() {
         </div>
 
         {/* ─── Line Items Section ──────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
               Line Items
             </h2>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500">Show quantity as:</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Show quantity as:</span>
               <button
                 type="button"
                 onClick={() => setQuantityLabel(quantityLabel === 'qty' ? 'hours' : 'qty')}
@@ -818,7 +816,7 @@ export default function NewInvoicePage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[800px]">
               <thead>
-                <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b border-gray-200">
+                <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide border-b border-gray-200 dark:border-gray-700">
                   <th className="pb-2 pr-2 w-10">#</th>
                   <th className="pb-2 pr-2">Item</th>
                   <th className="pb-2 pr-2 w-48">Description</th>
@@ -859,7 +857,7 @@ export default function NewInvoicePage() {
                       onDragEnd={() => setDragIdx(null)}
                     >
                       {/* Row number */}
-                      <td className="py-3 pr-2 text-gray-400 cursor-grab select-none">
+                      <td className="py-3 pr-2 text-gray-400 dark:text-gray-500 cursor-grab select-none">
                         <span className="text-xs">{idx + 1}</span>
                       </td>
 
@@ -883,7 +881,7 @@ export default function NewInvoicePage() {
                           placeholder="Search items..."
                         />
                         {activeAutocomplete === idx && suggestions.length > 0 && (
-                          <div className="absolute z-20 left-0 right-2 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          <div className="absolute z-20 left-0 right-2 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                             {suggestions.map((s) => (
                               <button
                                 key={s.id}
@@ -894,10 +892,10 @@ export default function NewInvoicePage() {
                                   applySavedItem(idx, s);
                                 }}
                               >
-                                <span className="font-medium text-gray-900 flex-1">
+                                <span className="font-medium text-gray-900 dark:text-gray-100 flex-1">
                                   {s.description}
                                 </span>
-                                <span className="text-gray-500 text-xs">
+                                <span className="text-gray-500 dark:text-gray-400 text-xs">
                                   {Number(s.rate).toFixed(2)}
                                 </span>
                                 <span
@@ -995,7 +993,7 @@ export default function NewInvoicePage() {
                       </td>
 
                       {/* Amount */}
-                      <td className="py-3 pr-2 text-right tabular-nums font-medium text-gray-900">
+                      <td className="py-3 pr-2 text-right tabular-nums font-medium text-gray-900 dark:text-gray-100">
                         {lineAmount.toFixed(2)}
                       </td>
 
@@ -1005,7 +1003,7 @@ export default function NewInvoicePage() {
                           <button
                             type="button"
                             onClick={() => saveAsItem(idx)}
-                            className="text-gray-400 hover:text-primary p-1"
+                            className="text-gray-400 dark:text-gray-500 hover:text-primary p-1"
                             title="Save as reusable item"
                           >
                             <svg
@@ -1020,7 +1018,7 @@ export default function NewInvoicePage() {
                           <button
                             type="button"
                             onClick={() => removeItem(idx)}
-                            className="text-gray-400 hover:text-red-500 p-1 text-lg leading-none"
+                            className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1 text-lg leading-none"
                             aria-label="Remove item"
                           >
                             &times;
@@ -1057,7 +1055,7 @@ export default function NewInvoicePage() {
               {Object.entries(totals.taxBreakdown).map(([id, t]) => (
                 <TotalRow key={id} label={`${t.name} (${t.rate}%)`} value={t.amount.toFixed(2)} />
               ))}
-              <div className="border-t border-gray-200 mt-2 pt-2">
+              <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
                 <TotalRow
                   label="Total"
                   value={`${totals.total.toFixed(2)} ${currency}`}
@@ -1069,7 +1067,7 @@ export default function NewInvoicePage() {
         </div>
 
         {/* ─── Notes & Terms ──────────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Client Note">
             <textarea
               rows={4}
@@ -1100,7 +1098,7 @@ export default function NewInvoicePage() {
         <div className="flex justify-end gap-3 pt-2">
           <Link
             href="/invoices"
-            className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50"
+            className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
           >
             Cancel
           </Link>
@@ -1108,7 +1106,7 @@ export default function NewInvoicePage() {
             type="button"
             onClick={(e) => handleSubmit(e as any, true)}
             disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 border border-gray-200"
+            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 disabled:opacity-50 border border-gray-200 dark:border-gray-700"
           >
             {saving ? 'Saving...' : 'Save as Draft'}
           </button>
@@ -1128,7 +1126,7 @@ export default function NewInvoicePage() {
         onSaved={handleSaveItemSaved}
         initialData={saveItemInitialData}
       />
-    </div>
+    </ComplexFormPageLayout>
   );
 }
 
@@ -1150,7 +1148,7 @@ function Field({
 }) {
   return (
     <div className={className}>
-      <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>

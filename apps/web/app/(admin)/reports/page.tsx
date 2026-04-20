@@ -66,8 +66,8 @@ export default function ReportsHubPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Reports</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Analytics across sales, leads, finance, clients, projects and support.
         </p>
       </div>
@@ -77,7 +77,7 @@ export default function ReportsHubPage() {
           <Link
             key={r.href}
             href={r.href}
-            className="group bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-gray-200 transition-all"
+            className="group bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5 hover:shadow-md hover:border-gray-200 transition-all"
           >
             <div
               className={`w-10 h-10 rounded-lg flex items-center justify-center mb-4 ${r.accent}`}
@@ -95,10 +95,10 @@ export default function ReportsHubPage() {
                 <path d={r.icon} />
               </svg>
             </div>
-            <h2 className="font-semibold text-gray-900 mb-1 group-hover:text-primary transition-colors">
+            <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-1 group-hover:text-primary transition-colors">
               {r.title}
             </h2>
-            <p className="text-xs text-gray-500 leading-relaxed">
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
               {r.description}
             </p>
           </Link>

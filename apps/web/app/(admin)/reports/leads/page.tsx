@@ -133,11 +133,11 @@ export default function LeadsReportPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Conversion Funnel</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Conversion Funnel</h2>
           <div style={{ width: '100%', height: 320 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 animate-pulse rounded" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 animate-pulse rounded" />
             ) : (
               <ResponsiveContainer>
                 <BarChart data={funnel} layout="vertical">
@@ -161,13 +161,13 @@ export default function LeadsReportPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Lead Sources</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Lead Sources</h2>
           <div style={{ width: '100%', height: 320 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 animate-pulse rounded" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 animate-pulse rounded" />
             ) : data.bySource.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">
                 No source data.
               </p>
             ) : (
@@ -197,11 +197,11 @@ export default function LeadsReportPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Won vs Lost Over Time</h2>
+        <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Won vs Lost Over Time</h2>
           <div style={{ width: '100%', height: 320 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 animate-pulse rounded" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 animate-pulse rounded" />
             ) : (
               <ResponsiveContainer>
                 <LineChart data={data.byMonth}>
@@ -228,30 +228,30 @@ export default function LeadsReportPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Top Assignees</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Top Assignees</h2>
           {loading || !data ? (
             <div className="space-y-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-8 bg-gray-50 rounded animate-pulse"
+                  className="h-8 bg-gray-50 dark:bg-gray-900 rounded animate-pulse"
                 />
               ))}
             </div>
           ) : data.topAssignees.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">
+            <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
               No assigned leads.
             </p>
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
               {data.topAssignees.map((a) => (
                 <li
                   key={a.userId}
                   className="py-2 flex items-center justify-between gap-2"
                 >
-                  <p className="text-sm text-gray-800 truncate">{a.name}</p>
-                  <p className="text-xs text-gray-500 whitespace-nowrap">
+                  <p className="text-sm text-gray-800 dark:text-gray-200 truncate">{a.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {a.wonCount}/{a.leadCount}
                   </p>
                 </li>

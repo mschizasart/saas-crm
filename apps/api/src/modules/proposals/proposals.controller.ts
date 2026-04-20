@@ -24,6 +24,7 @@ import {
 } from '../../common/decorators/permissions.decorator';
 import { PdfService } from '../pdf/pdf.service';
 import { renderProposalHtml } from '../pdf/templates/proposal.template';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 
 @ApiTags('Proposals')
 @Controller({ version: '1', path: 'proposals' })
@@ -33,6 +34,7 @@ export class ProposalsController {
   constructor(
     private service: ProposalsService,
     private pdfService: PdfService,
+    private activityLog: ActivityLogService,
   ) {}
 
   // ─── Stats ─────────────────────────────────────────────────────────────────
@@ -129,6 +131,41 @@ export class ProposalsController {
     @Body() dto: Partial<CreateProposalDto>,
   ) {
     return this.service.update(org.id, id, dto);
+  }
+
+  // ─── Update Status (generic, used by pipeline/kanban) ─────────────────────
+
+  @Patch(':id/status')
+  @Permissions('proposals.edit')
+  @ApiOperation({
+    summary:
+      'Generic status change — used by the kanban pipeline. Accepts both `revised` and `revising`; persists the canonical value used by the service (`revising`). No side-effects.',
+  })
+  async updateStatus(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() body: { status: string },
+  ) {
+    const updated = await this.service.updateStatus(
+      org.id,
+      id,
+      body.status,
+      user?.id,
+    );
+    try {
+      await this.activityLog.log(org.id, {
+        userId: user?.id,
+        action: 'proposal.status_changed',
+        entityType: 'proposal',
+        entityId: id,
+        description: `Proposal ${(updated as any).subject ?? id} status → ${(updated as any).status}`,
+        metadata: { newStatus: (updated as any).status },
+      });
+    } catch {
+      // non-fatal
+    }
+    return updated;
   }
 
   // ─── Delete ────────────────────────────────────────────────────────────────

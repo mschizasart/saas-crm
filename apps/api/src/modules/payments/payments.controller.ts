@@ -8,14 +8,21 @@ import {
   Param,
   Query,
   Req,
+  Res,
   Headers,
   UseGuards,
   HttpCode,
   HttpStatus,
   RawBodyRequest,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { PaymentsService, CreatePaymentDto } from './payments.service';
+import {
+  PaymentsService,
+  CreatePaymentDto,
+  BatchPaymentDto,
+  RefundPaymentDto,
+} from './payments.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
@@ -171,6 +178,37 @@ export class PaymentsController {
     return this.service.findOne(org.id, id);
   }
 
+  // Payment receipt PDF — dual audience: staff with invoices.view perm OR the
+  // portal contact whose clientId matches the payment's clientId. RbacGuard
+  // short-circuits for contacts (user.type === 'contact'), so we re-check
+  // clientId here and 404 on mismatch instead of 403 (avoids leaking existence).
+  @Get(':id/pdf')
+  @Permissions('invoices.view')
+  @ApiOperation({ summary: 'Download a payment receipt as PDF' })
+  async getReceiptPdf(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Res() res: any,
+  ) {
+    const { pdf, payment } = await this.service.getReceiptPdf(org.id, id);
+
+    if (
+      user?.type === 'contact' &&
+      payment.clientId &&
+      user.clientId !== payment.clientId
+    ) {
+      throw new NotFoundException('Payment not found');
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="receipt-${payment.id}.pdf"`,
+    );
+    res.end(pdf);
+  }
+
   @Post()
   @Permissions('invoices.edit')
   @ApiOperation({ summary: 'Record a payment against an invoice' })
@@ -180,6 +218,34 @@ export class PaymentsController {
     @Body() dto: CreatePaymentDto,
   ) {
     return this.service.create(org.id, dto, user.id);
+  }
+
+  @Post('batch')
+  @Permissions('invoices.edit')
+  @ApiOperation({
+    summary:
+      'Record multiple payments against multiple invoices in one transaction',
+  })
+  createBatch(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Body() dto: BatchPaymentDto,
+  ) {
+    return this.service.createBatch(org.id, dto, user.id);
+  }
+
+  @Post(':id/refund')
+  @Permissions('invoices.edit')
+  @ApiOperation({
+    summary: 'Refund all or part of a payment (creates a negative row)',
+  })
+  refund(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() dto: RefundPaymentDto,
+  ) {
+    return this.service.refund(org.id, id, dto, user.id);
   }
 
   @Delete(':id')

@@ -14,10 +14,12 @@ const nextConfig = {
     domains: ['localhost'],
   },
   async rewrites() {
+    // Only rewrite /api/v1/* to the backend NestJS API.
+    // /api/auth/* must stay local — it's NextAuth's own route handler.
     return [
       {
-        source: '/api/:path*',
-        destination: `${process.env.API_URL || 'http://localhost:3001'}/api/:path*`,
+        source: '/api/v1/:path*',
+        destination: `${process.env.API_URL || 'http://localhost:3001'}/api/v1/:path*`,
       },
     ];
   },

@@ -1,0 +1,80 @@
+name: e2e (prod smoke)
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Override base URL (defaults to https://www.appoinlycrm.net)'
+        required: false
+        default: 'https://www.appoinlycrm.net'
+
+concurrency:
+  group: e2e-prod
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: apps/web
+
+    env:
+      # Repository → Settings → Secrets and variables → Actions
+      # E2E_EMAIL, E2E_PASSWORD must be set as repository secrets.
+      E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+      E2E_BASE_URL: ${{ inputs.base_url || 'https://www.appoinlycrm.net' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install workspace deps
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Check secrets present
+        run: |
+          if [ -z "$E2E_EMAIL" ] || [ -z "$E2E_PASSWORD" ]; then
+            echo "::error::E2E_EMAIL and E2E_PASSWORD secrets must be set on the repo."
+            exit 1
+          fi
+
+      - name: Run e2e against prod
+        run: pnpm e2e:prod
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 14
+
+      - name: Upload traces + videos on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: apps/web/test-results
+          retention-days: 14

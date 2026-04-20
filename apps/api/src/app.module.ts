@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
+import { TenantInterceptor } from './common/interceptors/tenant.interceptor';
 import { QueueModule } from './modules/queue/queue.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -133,6 +135,9 @@ import { SuggestionsModule } from './modules/suggestions/suggestions.module';
     ProductsModule,
     ChatModule,
     SuggestionsModule,
+  ],
+  providers: [
+    { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
   ],
 })
 export class AppModule {}

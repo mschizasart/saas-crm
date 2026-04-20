@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 const getToken = () =>
@@ -71,24 +74,17 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
-        <button
-          onClick={markAllRead}
-          className="text-sm font-medium px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
-        >
-          Mark all as read
-        </button>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+    <ListPageLayout
+      title="Notifications"
+      primaryAction={{ label: 'Mark all as read', onClick: markAllRead, variant: 'secondary' }}
+    >
+      <Card>
         {loading ? (
-          <p className="p-6 text-sm text-gray-400">Loading…</p>
+          <p className="p-6 text-sm text-gray-400 dark:text-gray-500">Loading…</p>
         ) : items.length === 0 ? (
-          <p className="p-6 text-sm text-gray-400">You have no notifications.</p>
+          <EmptyState title="You have no notifications." />
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
             {items.map((n) => (
               <li
                 key={n.id}
@@ -97,11 +93,11 @@ export default function NotificationsPage() {
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900">{n.title}</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{n.title}</p>
                   {n.description && (
-                    <p className="text-sm text-gray-600 mt-0.5">{n.description}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">{n.description}</p>
                   )}
-                  <p className="text-xs text-gray-400 mt-1">{relativeTime(n.createdAt)}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{relativeTime(n.createdAt)}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {n.link && (
@@ -115,7 +111,7 @@ export default function NotificationsPage() {
                   {!n.read && (
                     <button
                       onClick={() => markOneRead(n.id)}
-                      className="text-xs text-gray-500 hover:text-primary"
+                      className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary"
                     >
                       Mark read
                     </button>
@@ -131,7 +127,7 @@ export default function NotificationsPage() {
             ))}
           </ul>
         )}
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }

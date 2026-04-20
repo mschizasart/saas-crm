@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { SettingsPageLayout, SettingsSection } from '@/components/layouts/settings-page-layout';
+import { typography } from '@/lib/ui-tokens';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -84,52 +86,49 @@ export default function LeadSourcesPage() {
     } catch { /* ignore */ }
   }
 
-  if (loading) return <div className="p-6 text-sm text-gray-500">Loading...</div>;
+  if (loading) return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading...</div>;
 
   return (
-    <div className="max-w-3xl">
-      <div className="mb-4">
-        <Link href="/settings" className="text-sm text-gray-500 hover:text-primary">← Settings</Link>
-      </div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Lead Sources</h1>
-          <p className="text-sm text-gray-500 mt-1">Where your leads come from (e.g. Google, Referral, Cold Call)</p>
-        </div>
-        <button onClick={startNew} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90">
-          + New Source
-        </button>
+    <SettingsPageLayout title="Lead Sources" description="Where your leads come from (e.g. Google, Referral, Cold Call)">
+      <div className="mb-[-0.5rem]">
+        <Link href="/settings" className={`${typography.bodyMuted} hover:text-primary`}>← Settings</Link>
       </div>
 
       {message && (
-        <div className="mb-4 px-3 py-2 bg-blue-50 border border-blue-100 text-sm text-blue-700 rounded">{message}</div>
+        <div className="px-3 py-2 bg-blue-50 border border-blue-100 text-sm text-blue-700 rounded">{message}</div>
       )}
 
-      {(showNew || editId) && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
-          <div className="flex gap-4 items-end">
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg" placeholder="e.g. Google Ads" />
-            </div>
-            <button onClick={save} disabled={saving || !name} className="px-4 py-2 bg-primary text-white text-sm rounded-lg disabled:opacity-50">
-              {saving ? 'Saving...' : editId ? 'Update' : 'Create'}
-            </button>
-            <button onClick={() => { setShowNew(false); setEditId(null); }} className="px-3 py-2 text-sm text-gray-500">Cancel</button>
-          </div>
+      <SettingsSection title="Manage lead sources">
+        <div className="flex items-center justify-end mb-4">
+          <button onClick={startNew} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90">
+            + New Source
+          </button>
         </div>
-      )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+        {(showNew || editId) && (
+          <div className="mb-6 p-4 border border-gray-100 dark:border-gray-800 rounded-lg bg-gray-50/40 dark:bg-gray-900/40">
+            <div className="flex gap-4 items-end">
+              <div className="flex-1">
+                <label className={`${typography.caption} block mb-1`}>Name *</label>
+                <input value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg" placeholder="e.g. Google Ads" />
+              </div>
+              <button onClick={save} disabled={saving || !name} className="px-4 py-2 bg-primary text-white text-sm rounded-lg disabled:opacity-50">
+                {saving ? 'Saving...' : editId ? 'Update' : 'Create'}
+              </button>
+              <button onClick={() => { setShowNew(false); setEditId(null); }} className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Cancel</button>
+            </div>
+          </div>
+        )}
+
         {sources.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-400">No sources configured yet.</div>
+          <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">No sources configured yet.</div>
         ) : (
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-gray-100 dark:divide-gray-800 border border-gray-100 dark:border-gray-800 rounded-lg">
             {sources.map((s) => (
               <div key={s.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                  <span className="font-medium text-gray-900">{s.name}</span>
-                  <span className="text-xs text-gray-400">{s._count?.leads ?? 0} leads</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{s.name}</span>
+                  <span className={typography.caption}>{s._count?.leads ?? 0} leads</span>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => startEdit(s)} className="text-xs text-primary hover:underline">Edit</button>
@@ -139,7 +138,7 @@ export default function LeadSourcesPage() {
             ))}
           </div>
         )}
-      </div>
-    </div>
+      </SettingsSection>
+    </SettingsPageLayout>
   );
 }

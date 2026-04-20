@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { Search, MessageSquare } from 'lucide-react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorBanner } from '@/components/ui/error-banner';
+import { inputClass } from '@/components/ui/form-field';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -13,12 +22,12 @@ type TicketPriority = 'low' | 'medium' | 'high' | 'urgent';
 interface Ticket {
   id: string;
   subject: string;
-  client_name: string | null;
-  client_id: string | null;
+  client?: { id: string; company: string } | null;
+  clientId: string | null;
   priority: TicketPriority;
   status: TicketStatus;
-  assigned_to_name: string | null;
-  last_reply_at: string | null;
+  assignedTo?: string | null;
+  lastReplyAt: string | null;
   slaResponseStatus?: 'ok' | 'warning' | 'breached' | null;
   slaResolutionStatus?: 'ok' | 'warning' | 'breached' | null;
   slaResponseRemaining?: number | null;
@@ -27,12 +36,10 @@ interface Ticket {
 
 interface TicketsResponse {
   data: Ticket[];
-  meta: {
-    page: number;
-    per_page: number;
-    total: number;
-    total_pages: number;
-  };
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 interface TicketStats {
@@ -57,19 +64,21 @@ const STATUS_FILTERS: { label: string; value: TicketStatus | 'all' }[] = [
   { label: 'Closed',      value: 'closed' },
 ];
 
-const STATUS_BADGE: Record<TicketStatus, { bg: string; text: string; label: string }> = {
-  open:        { bg: 'bg-blue-100',   text: 'text-blue-700',   label: 'Open' },
-  in_progress: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'In Progress' },
-  answered:    { bg: 'bg-green-100',  text: 'text-green-700',  label: 'Answered' },
-  on_hold:     { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'On Hold' },
-  closed:      { bg: 'bg-gray-100',   text: 'text-gray-500',   label: 'Closed' },
+type BadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info' | 'muted';
+
+const STATUS_BADGE: Record<TicketStatus, { variant: BadgeVariant; label: string }> = {
+  open:        { variant: 'info',    label: 'Open' },
+  in_progress: { variant: 'info',    label: 'In Progress' },
+  answered:    { variant: 'success', label: 'Answered' },
+  on_hold:     { variant: 'warning', label: 'On Hold' },
+  closed:      { variant: 'muted',   label: 'Closed' },
 };
 
-const PRIORITY_BADGE: Record<TicketPriority, { bg: string; text: string; label: string }> = {
-  low:    { bg: 'bg-gray-100',   text: 'text-gray-500',   label: 'Low' },
-  medium: { bg: 'bg-blue-100',   text: 'text-blue-700',   label: 'Medium' },
-  high:   { bg: 'bg-orange-100', text: 'text-orange-700', label: 'High' },
-  urgent: { bg: 'bg-red-100',    text: 'text-red-600',    label: 'Urgent' },
+const PRIORITY_BADGE: Record<TicketPriority, { variant: BadgeVariant; label: string }> = {
+  low:    { variant: 'muted',   label: 'Low' },
+  medium: { variant: 'info',    label: 'Medium' },
+  high:   { variant: 'warning', label: 'High' },
+  urgent: { variant: 'error',   label: 'Urgent' },
 };
 
 // ---------------------------------------------------------------------------
@@ -105,32 +114,12 @@ function formatDate(iso: string | null): string {
 
 function StatusBadge({ status }: { status: TicketStatus }) {
   const s = STATUS_BADGE[status] ?? STATUS_BADGE.open;
-  return (
-    <span
-      className={[
-        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
-        s.bg,
-        s.text,
-      ].join(' ')}
-    >
-      {s.label}
-    </span>
-  );
+  return <Badge variant={s.variant}>{s.label}</Badge>;
 }
 
 function PriorityBadge({ priority }: { priority: TicketPriority }) {
   const p = PRIORITY_BADGE[priority] ?? PRIORITY_BADGE.low;
-  return (
-    <span
-      className={[
-        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
-        p.bg,
-        p.text,
-      ].join(' ')}
-    >
-      {p.label}
-    </span>
-  );
+  return <Badge variant={p.variant}>{p.label}</Badge>;
 }
 
 function StatsCard({
@@ -157,7 +146,7 @@ function StatsCard({
 }
 
 function SlaDot({ status, remaining }: { status?: 'ok' | 'warning' | 'breached' | null; remaining?: number | null }) {
-  if (!status) return <span className="text-gray-300">--</span>;
+  if (!status) return <span className="text-gray-300 dark:text-gray-600">--</span>;
   const colors = {
     ok: 'bg-green-500',
     warning: 'bg-yellow-400',
@@ -179,20 +168,6 @@ function SlaDot({ status, remaining }: { status?: 'ok' | 'warning' | 'breached' 
   );
 }
 
-function SkeletonRow() {
-  return (
-    <tr className="border-b border-gray-100 last:border-0">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <td key={i} className="px-4 py-3">
-          <div
-            className="h-4 bg-gray-100 rounded animate-pulse"
-            style={{ width: i === 1 ? '65%' : i === 0 ? '30%' : '40%' }}
-          />
-        </td>
-      ))}
-    </tr>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -203,7 +178,7 @@ export default function TicketsPage() {
   const [statusFilter, setStatusFilter] = useState<TicketStatus | 'all'>('all');
   const [page, setPage]               = useState(1);
   const [tickets, setTickets]         = useState<Ticket[]>([]);
-  const [meta, setMeta]               = useState<TicketsResponse['meta'] | null>(null);
+  const [meta, setMeta]               = useState<{ total: number; totalPages: number } | null>(null);
   const [stats, setStats]             = useState<TicketStats | null>(null);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState<string | null>(null);
@@ -246,7 +221,7 @@ export default function TicketsPage() {
 
       const json: TicketsResponse = await res.json();
       setTickets(json.data ?? []);
-      setMeta(json.meta ?? null);
+      setMeta({ total: json.total ?? 0, totalPages: json.totalPages ?? 1 });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tickets');
       setTickets([]);
@@ -259,7 +234,7 @@ export default function TicketsPage() {
     fetchTickets();
   }, [fetchTickets]);
 
-  const totalPages = meta?.total_pages ?? 1;
+  const totalPages = meta?.totalPages ?? 1;
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -309,30 +284,66 @@ export default function TicketsPage() {
     fetchTickets();
   };
 
-  return (
-    <div>
-      {/* ------------------------------------------------------------------ */}
-      {/* Header                                                               */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Support Tickets</h1>
+  const filtersNode = (
+    <>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {STATUS_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setStatusFilter(f.value)}
+            className={[
+              'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+              statusFilter === f.value
+                ? 'bg-primary text-white border-primary'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50',
+            ].join(' ')}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 pointer-events-none" aria-hidden="true" />
+        <input
+          type="text"
+          placeholder="Search tickets…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          aria-label="Search tickets"
+          className={`${inputClass} pl-9`}
+        />
+      </div>
+    </>
+  );
+
+  const paginationNode =
+    !loading && meta && meta.total > 0 ? (
+      <div className="flex items-center justify-between px-4 py-3 border border-gray-100 dark:border-gray-800 rounded-xl bg-gray-50/50 dark:bg-gray-800/50">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {meta.total} ticket{meta.total !== 1 ? 's' : ''} total
+        </p>
         <div className="flex items-center gap-2">
-          <Link
-            href="/tickets/kanban"
-            className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Kanban
-          </Link>
-          <Link
-            href="/tickets/new"
-            className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            <span className="text-lg leading-none">+</span>
-            New Ticket
-          </Link>
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+            Previous
+          </Button>
+          <span className="text-xs text-gray-600 dark:text-gray-400 min-w-[80px] text-center">
+            Page {page} of {totalPages}
+          </span>
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+            Next
+          </Button>
         </div>
       </div>
+    ) : null;
 
+  return (
+    <ListPageLayout
+      title="Support Tickets"
+      secondaryActions={[{ label: 'Kanban', href: '/tickets/kanban' }]}
+      primaryAction={{ label: 'New Ticket', href: '/tickets/new', icon: <span className="text-lg leading-none">+</span> }}
+      filters={filtersNode}
+      pagination={paginationNode}
+    >
       {/* ------------------------------------------------------------------ */}
       {/* Stats row                                                            */}
       {/* ------------------------------------------------------------------ */}
@@ -368,146 +379,121 @@ export default function TicketsPage() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Filter tabs                                                          */}
+      {/* Mobile card view                                                     */}
       {/* ------------------------------------------------------------------ */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {STATUS_FILTERS.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setStatusFilter(f.value)}
-            className={[
-              'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
-              statusFilter === f.value
-                ? 'bg-primary text-white border-primary'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50',
-            ].join(' ')}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Search                                                               */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="mb-4">
-        <div className="relative max-w-sm">
-          <svg
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"
-            />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search tickets…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white"
+      <div className="md:hidden space-y-3">
+        {error && <ErrorBanner message={error} onRetry={fetchTickets} />}
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 animate-pulse">
+              <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-3/4 mb-2" />
+              <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/2" />
+            </div>
+          ))
+        ) : tickets.length === 0 ? (
+          <EmptyState
+            icon={<MessageSquare className="w-10 h-10" />}
+            title={
+              search
+                ? `No tickets match "${search}"`
+                : statusFilter !== 'all'
+                ? `No ${STATUS_BADGE[statusFilter as TicketStatus]?.label ?? statusFilter} tickets`
+                : 'No tickets found'
+            }
+            action={!search && statusFilter === 'all' ? { label: 'Create your first ticket', href: '/tickets/new' } : undefined}
           />
-        </div>
+        ) : (
+          tickets.map((ticket) => (
+            <Link
+              key={ticket.id}
+              href={`/tickets/${ticket.id}`}
+              className="block bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 hover:border-gray-200 transition-colors"
+            >
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <p className="font-medium text-gray-900 dark:text-gray-100 line-clamp-1 flex-1">{ticket.subject}</p>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <PriorityBadge priority={ticket.priority} />
+                  <StatusBadge status={ticket.status} />
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span className="truncate">{ticket.client?.company ?? 'No client'}</span>
+                <span className="whitespace-nowrap ml-2">{formatDate(ticket.lastReplyAt)}</span>
+              </div>
+            </Link>
+          ))
+        )}
       </div>
 
       {/* ------------------------------------------------------------------ */}
       {/* Table card                                                           */}
       {/* ------------------------------------------------------------------ */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card className="hidden md:block">
         {error && (
-          <div className="px-4 py-3 bg-red-50 border-b border-red-100 text-sm text-red-600">
-            {error} —{' '}
-            <button className="underline" onClick={fetchTickets}>
-              retry
-            </button>
-          </div>
+          <ErrorBanner message={error} onRetry={fetchTickets} className="rounded-none border-0 border-b border-red-100" />
         )}
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                 <th className="px-4 py-3 w-10">
                   <input
                     type="checkbox"
                     checked={tickets.length > 0 && selected.size === tickets.length}
                     onChange={toggleAll}
+                    aria-label="Select all tickets"
                     className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
                   />
                 </th>
                 <th className="px-4 py-3">#</th>
                 <th className="px-4 py-3">Subject</th>
-                <th className="px-4 py-3">Client</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Client</th>
                 <th className="px-4 py-3">Priority</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Assigned To</th>
-                <th className="px-4 py-3">SLA</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Assigned To</th>
+                <th className="px-4 py-3 hidden lg:table-cell">SLA</th>
                 <th className="px-4 py-3">Last Reply</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
+                <TableSkeleton rows={8} columns={9} columnWidths={['16px', '30%', '65%', '40%', '25%', '25%', '30%', '25%', '30%']} />
               ) : tickets.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-16 text-center">
-                    <div className="flex flex-col items-center gap-2 text-gray-400">
-                      <svg
-                        className="w-10 h-10 opacity-40"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 4v-4z"
-                        />
-                      </svg>
-                      <p className="text-sm font-medium">
-                        {search
+                  <td colSpan={9} className="px-4 py-8">
+                    <EmptyState
+                      icon={<MessageSquare className="w-10 h-10" />}
+                      title={
+                        search
                           ? `No tickets match "${search}"`
                           : statusFilter !== 'all'
                           ? `No ${STATUS_BADGE[statusFilter as TicketStatus]?.label ?? statusFilter} tickets`
-                          : 'No tickets found'}
-                      </p>
-                      {!search && statusFilter === 'all' && (
-                        <Link
-                          href="/tickets/new"
-                          className="text-sm text-primary hover:underline"
-                        >
-                          Create your first ticket
-                        </Link>
-                      )}
-                    </div>
+                          : 'No tickets found'
+                      }
+                      action={!search && statusFilter === 'all' ? { label: 'Create your first ticket', href: '/tickets/new' } : undefined}
+                    />
                   </td>
                 </tr>
               ) : (
                 tickets.map((ticket) => (
                   <tr
                     key={ticket.id}
-                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
+                    className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60 transition-colors"
                   >
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
                         checked={selected.has(ticket.id)}
                         onChange={() => toggleSelect(ticket.id)}
+                        aria-label={`Select ticket ${ticket.subject}`}
                         className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
                       />
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">
+                    <td className="px-4 py-3 font-mono text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
                       #{ticket.id.slice(0, 6).toUpperCase()}
                     </td>
-                    <td className="px-4 py-3 font-medium text-gray-900 max-w-[260px]">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100 max-w-[260px]">
                       <Link
                         href={`/tickets/${ticket.id}`}
                         className="hover:text-primary transition-colors line-clamp-1"
@@ -515,16 +501,16 @@ export default function TicketsPage() {
                         {ticket.subject}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {ticket.client_id ? (
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">
+                      {ticket.clientId ? (
                         <Link
-                          href={`/clients/${ticket.client_id}`}
+                          href={`/clients/${ticket.clientId}`}
                           className="hover:text-primary transition-colors"
                         >
-                          {ticket.client_name ?? ticket.client_id}
+                          {ticket.client?.company ?? '—'}
                         </Link>
                       ) : (
-                        <span className="text-gray-300">—</span>
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -533,19 +519,19 @@ export default function TicketsPage() {
                     <td className="px-4 py-3">
                       <StatusBadge status={ticket.status} />
                     </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {ticket.assigned_to_name ?? (
-                        <span className="text-gray-300">Unassigned</span>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">
+                      {ticket.assignedTo ?? (
+                        <span className="text-gray-300 dark:text-gray-600">Unassigned</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 hidden lg:table-cell">
                       <div className="flex items-center gap-1.5">
                         <SlaDot status={ticket.slaResponseStatus} remaining={ticket.slaResponseRemaining} />
                         <SlaDot status={ticket.slaResolutionStatus} remaining={ticket.slaResolutionRemaining} />
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                      {formatDate(ticket.last_reply_at)}
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {formatDate(ticket.lastReplyAt)}
                     </td>
                   </tr>
                 ))
@@ -554,36 +540,7 @@ export default function TicketsPage() {
           </table>
         </div>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Pagination                                                         */}
-        {/* ---------------------------------------------------------------- */}
-        {!loading && meta && meta.total > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
-            <p className="text-xs text-gray-500">
-              {meta.total} ticket{meta.total !== 1 ? 's' : ''} total
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Previous
-              </button>
-              <span className="text-xs text-gray-600 min-w-[80px] text-center">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      </Card>
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
@@ -597,21 +554,17 @@ export default function TicketsPage() {
           >
             Close Selected
           </button>
-          <button
-            onClick={bulkDelete}
-            disabled={bulkLoading}
-            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium disabled:opacity-50 transition-colors"
-          >
+          <Button variant="destructive" size="sm" onClick={bulkDelete} disabled={bulkLoading}>
             Delete
-          </button>
+          </Button>
           <button
             onClick={() => setSelected(new Set())}
-            className="ml-2 text-gray-400 hover:text-white text-xs transition-colors"
+            className="ml-2 text-gray-400 dark:text-gray-500 hover:text-white text-xs transition-colors"
           >
             Cancel
           </button>
         </div>
       )}
-    </div>
+    </ListPageLayout>
   );
 }

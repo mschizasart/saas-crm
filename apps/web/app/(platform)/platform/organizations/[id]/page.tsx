@@ -210,8 +210,8 @@ export default function OrgDetailPage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="h-6 w-48 bg-gray-100 animate-pulse rounded" />
-        <div className="h-32 bg-gray-100 animate-pulse rounded-xl" />
+        <div className="h-6 w-48 bg-gray-100 dark:bg-gray-800 animate-pulse rounded" />
+        <div className="h-32 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-xl" />
       </div>
     );
   }
@@ -233,23 +233,23 @@ export default function OrgDetailPage() {
     <div>
       <Link
         href="/platform/organizations"
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 mb-4"
+        className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 mb-4"
       >
         <ArrowLeft className="w-4 h-4" /> Back to organizations
       </Link>
 
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-3">
             {org.name}
             <StatusBadge status={org.status} />
           </h1>
-          <p className="text-sm text-gray-500 mt-1">@{org.slug}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">@{org.slug}</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
         <div className="flex gap-6">
           {(['overview', 'users', 'actions'] as Tab[]).map((key) => (
             <button
@@ -278,8 +278,8 @@ export default function OrgDetailPage() {
               { label: 'Tickets', value: org.ticketCount, accent: 'text-orange-600' },
               { label: 'Leads', value: org.leadCount, accent: 'text-blue-600' },
             ].map((c) => (
-              <div key={c.label} className="rounded-xl border border-gray-100 bg-white shadow-sm p-5">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+              <div key={c.label} className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-5">
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">
                   {c.label}
                 </p>
                 <p className={`text-2xl font-bold ${c.accent}`}>{c.value}</p>
@@ -287,31 +287,31 @@ export default function OrgDetailPage() {
             ))}
           </div>
 
-          <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5 space-y-3">
+          <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-5 space-y-3">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Created</span>
-              <span className="text-gray-900">{new Date(org.createdAt).toLocaleString()}</span>
+              <span className="text-gray-500 dark:text-gray-400">Created</span>
+              <span className="text-gray-900 dark:text-gray-100">{new Date(org.createdAt).toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Trial Ends</span>
-              <span className="text-gray-900">
+              <span className="text-gray-500 dark:text-gray-400">Trial Ends</span>
+              <span className="text-gray-900 dark:text-gray-100">
                 {org.trialEndsAt ? new Date(org.trialEndsAt).toLocaleString() : '—'}
               </span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Subscription Plan</span>
-              <span className="text-gray-900">{org.plan ?? '—'}</span>
+              <span className="text-gray-500 dark:text-gray-400">Subscription Plan</span>
+              <span className="text-gray-900 dark:text-gray-100">{org.plan ?? '—'}</span>
             </div>
           </div>
         </div>
       )}
 
       {tab === 'users' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
                   <th className="px-4 py-2.5">Name</th>
                   <th className="px-4 py-2.5">Email</th>
                   <th className="px-4 py-2.5">Admin</th>
@@ -322,7 +322,7 @@ export default function OrgDetailPage() {
               <tbody>
                 {org.users.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
+                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
                       No users.
                     </td>
                   </tr>
@@ -330,10 +330,10 @@ export default function OrgDetailPage() {
                   org.users.map((u) => (
                     <tr
                       key={u.id}
-                      className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
+                      className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60 transition-colors"
                     >
-                      <td className="px-4 py-3 font-medium text-gray-900">{u.name}</td>
-                      <td className="px-4 py-3 text-gray-600">{u.email}</td>
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{u.name}</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{u.email}</td>
                       <td className="px-4 py-3">
                         {u.isAdmin && (
                           <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
@@ -352,7 +352,7 @@ export default function OrgDetailPage() {
                           {u.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                         {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never'}
                       </td>
                     </tr>
@@ -378,18 +378,18 @@ export default function OrgDetailPage() {
           )}
 
           {/* Assign Plan */}
-          <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5">
-            <h3 className="font-semibold text-gray-900 mb-1">Assign Subscription Plan</h3>
-            <p className="text-sm text-gray-500 mb-3">
+          <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-5">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Assign Subscription Plan</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
               Override this organization's plan. Current plan:{' '}
-              <span className="font-medium text-gray-900">{org.plan ?? '—'}</span> (status:{' '}
-              <span className="font-medium text-gray-900">{org.status}</span>)
+              <span className="font-medium text-gray-900 dark:text-gray-100">{org.plan ?? '—'}</span> (status:{' '}
+              <span className="font-medium text-gray-900 dark:text-gray-100">{org.status}</span>)
             </p>
             <div className="flex items-center gap-2">
               <select
                 value={selectedPlanSlug}
                 onChange={(e) => setSelectedPlanSlug(e.target.value)}
-                className="flex-1 max-w-xs px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                className="flex-1 max-w-xs px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               >
                 <option value="">— Select a plan —</option>
                 {plans.map((p) => (
@@ -409,9 +409,9 @@ export default function OrgDetailPage() {
           </div>
 
           {/* Impersonate */}
-          <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5">
-            <h3 className="font-semibold text-gray-900 mb-1">Impersonate Admin</h3>
-            <p className="text-sm text-gray-500 mb-3">
+          <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-5">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Impersonate Admin</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
               Log in as the org admin to troubleshoot their account.
             </p>
             <button
@@ -424,11 +424,11 @@ export default function OrgDetailPage() {
           </div>
 
           {/* Suspend / Activate */}
-          <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5">
-            <h3 className="font-semibold text-gray-900 mb-1">
+          <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-5">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">
               {org.status === 'suspended' ? 'Activate Organization' : 'Suspend Organization'}
             </h3>
-            <p className="text-sm text-gray-500 mb-3">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
               {org.status === 'suspended'
                 ? 'Re-enable access for this organization.'
                 : 'Temporarily block access to this organization.'}
@@ -453,18 +453,18 @@ export default function OrgDetailPage() {
           </div>
 
           {/* Extend trial */}
-          <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5">
-            <h3 className="font-semibold text-gray-900 mb-1">Extend Trial</h3>
-            <p className="text-sm text-gray-500 mb-3">Add additional trial days.</p>
+          <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-5">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Extend Trial</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Add additional trial days.</p>
             <div className="flex items-center gap-2">
               <input
                 type="number"
                 min={1}
                 value={trialDays}
                 onChange={(e) => setTrialDays(parseInt(e.target.value, 10) || 0)}
-                className="w-24 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                className="w-24 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               />
-              <span className="text-sm text-gray-500">days</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">days</span>
               <button
                 onClick={onExtendTrial}
                 disabled={busy || trialDays < 1}
@@ -476,9 +476,9 @@ export default function OrgDetailPage() {
           </div>
 
           {/* Delete */}
-          <div className="rounded-xl border border-red-100 bg-white shadow-sm p-5">
+          <div className="rounded-xl border border-red-100 bg-white dark:bg-gray-900 shadow-sm p-5">
             <h3 className="font-semibold text-red-700 mb-1">Delete Organization</h3>
-            <p className="text-sm text-gray-500 mb-3">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
               Permanently delete this organization and all of its data. This cannot be undone. Type{' '}
               <span className="font-mono font-semibold">DELETE</span> to confirm.
             </p>
@@ -488,7 +488,7 @@ export default function OrgDetailPage() {
                 value={deleteInput}
                 onChange={(e) => setDeleteInput(e.target.value)}
                 placeholder="DELETE"
-                className="w-40 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+                className="w-40 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
               />
               <button
                 onClick={onDelete}

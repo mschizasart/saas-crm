@@ -2,6 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { Briefcase } from 'lucide-react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorBanner } from '@/components/ui/error-banner';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,22 +25,20 @@ type ProjectStatus =
 interface Project {
   id: string;
   name: string;
-  client_name: string | null;
-  client_id: string | null;
+  client?: { id: string; company: string } | null;
+  clientId: string | null;
   status: ProjectStatus;
   progress: number;
   deadline: string | null;
-  members_count: number;
+  _count?: { tasks: number; members: number; timeEntries: number };
 }
 
 interface ProjectsResponse {
   data: Project[];
-  meta: {
-    page: number;
-    per_page: number;
-    total: number;
-    total_pages: number;
-  };
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 interface ProjectStats {
@@ -59,12 +65,14 @@ const STATUS_FILTERS: { label: string; value: ProjectStatus | 'all' }[] = [
   { label: 'Cancelled', value: 'cancelled' },
 ];
 
-const STATUS_BADGE: Record<ProjectStatus, { bg: string; text: string; label: string }> = {
-  not_started: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Not Started' },
-  in_progress:  { bg: 'bg-blue-100', text: 'text-blue-700', label: 'In Progress' },
-  on_hold:      { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'On Hold' },
-  finished:     { bg: 'bg-green-100', text: 'text-green-700', label: 'Finished' },
-  cancelled:    { bg: 'bg-red-100', text: 'text-red-600', label: 'Cancelled' },
+type BadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info' | 'muted';
+
+const STATUS_BADGE: Record<ProjectStatus, { variant: BadgeVariant; label: string }> = {
+  not_started: { variant: 'default', label: 'Not Started' },
+  in_progress:  { variant: 'info', label: 'In Progress' },
+  on_hold:      { variant: 'warning', label: 'On Hold' },
+  finished:     { variant: 'success', label: 'Finished' },
+  cancelled:    { variant: 'error', label: 'Cancelled' },
 };
 
 // ---------------------------------------------------------------------------
@@ -91,30 +99,20 @@ function formatDate(iso: string | null): string {
 
 function StatusBadge({ status }: { status: ProjectStatus }) {
   const s = STATUS_BADGE[status] ?? STATUS_BADGE.not_started;
-  return (
-    <span
-      className={[
-        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
-        s.bg,
-        s.text,
-      ].join(' ')}
-    >
-      {s.label}
-    </span>
-  );
+  return <Badge variant={s.variant}>{s.label}</Badge>;
 }
 
 function ProgressBar({ value }: { value: number }) {
   const pct = Math.max(0, Math.min(100, value));
   return (
     <div className="flex items-center gap-2 min-w-[100px]">
-      <div className="w-full bg-gray-100 rounded-full h-1.5">
+      <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5">
         <div
           className="bg-blue-500 h-1.5 rounded-full"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-xs text-gray-500 w-8 shrink-0">{pct}%</span>
+      <span className="text-xs text-gray-500 dark:text-gray-400 w-8 shrink-0">{pct}%</span>
     </div>
   );
 }
@@ -129,27 +127,12 @@ function StatCard({
   colorClass: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 flex flex-col gap-1">
+    <Card padding="md" className="flex flex-col gap-1">
       <span className={['text-2xl font-bold', colorClass].join(' ')}>
         {value ?? '—'}
       </span>
-      <span className="text-xs text-gray-500">{label}</span>
-    </div>
-  );
-}
-
-function SkeletonRow() {
-  return (
-    <tr className="border-b border-gray-100 last:border-0">
-      {Array.from({ length: 7 }).map((_, i) => (
-        <td key={i} className="px-4 py-3">
-          <div
-            className="h-4 bg-gray-100 rounded animate-pulse"
-            style={{ width: i === 0 ? '55%' : i === 4 ? '70%' : '40%' }}
-          />
-        </td>
-      ))}
-    </tr>
+      <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+    </Card>
   );
 }
 
@@ -161,7 +144,7 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
   const [page, setPage]                 = useState(1);
   const [projects, setProjects]         = useState<Project[]>([]);
-  const [meta, setMeta]                 = useState<ProjectsResponse['meta'] | null>(null);
+  const [meta, setMeta]                 = useState<{ total: number; totalPages: number } | null>(null);
   const [stats, setStats]               = useState<ProjectStats | null>(null);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState<string | null>(null);
@@ -199,7 +182,7 @@ export default function ProjectsPage() {
 
       const json: ProjectsResponse = await res.json();
       setProjects(json.data ?? []);
-      setMeta(json.meta ?? null);
+      setMeta({ total: json.total ?? 0, totalPages: json.totalPages ?? 1 });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load projects');
       setProjects([]);
@@ -212,24 +195,50 @@ export default function ProjectsPage() {
     fetchProjects();
   }, [fetchProjects]);
 
-  const totalPages = meta?.total_pages ?? 1;
+  const totalPages = meta?.totalPages ?? 1;
+
+  const filtersNode = (
+    <div className="flex flex-wrap gap-2">
+      {STATUS_FILTERS.map((f) => (
+        <button
+          key={f.value}
+          onClick={() => setStatusFilter(f.value)}
+          className={[
+            'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+            statusFilter === f.value
+              ? 'bg-primary text-white border-primary'
+              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50',
+          ].join(' ')}
+        >
+          {f.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const paginationNode =
+    !loading && meta && meta.total > 0 ? (
+      <div className="flex items-center justify-between px-4 py-3 border border-gray-100 dark:border-gray-800 rounded-xl bg-gray-50/50 dark:bg-gray-800/50">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {meta.total} project{meta.total !== 1 ? 's' : ''} total
+        </p>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>Previous</Button>
+          <span className="text-xs text-gray-600 dark:text-gray-400 min-w-[80px] text-center">
+            Page {page} of {totalPages}
+          </span>
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>Next</Button>
+        </div>
+      </div>
+    ) : null;
 
   return (
-    <div>
-      {/* ------------------------------------------------------------------ */}
-      {/* Header                                                               */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
-        <Link
-          href="/projects/new"
-          className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          <span className="text-lg leading-none">+</span>
-          New Project
-        </Link>
-      </div>
-
+    <ListPageLayout
+      title="Projects"
+      primaryAction={{ label: 'New Project', href: '/projects/new', icon: <span className="text-lg leading-none">+</span> }}
+      filters={filtersNode}
+      pagination={paginationNode}
+    >
       {/* ------------------------------------------------------------------ */}
       {/* Stats bar                                                            */}
       {/* ------------------------------------------------------------------ */}
@@ -243,95 +252,88 @@ export default function ProjectsPage() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Filter pills                                                         */}
+      {/* Mobile card view                                                     */}
       {/* ------------------------------------------------------------------ */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {STATUS_FILTERS.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setStatusFilter(f.value)}
-            className={[
-              'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
-              statusFilter === f.value
-                ? 'bg-primary text-white border-primary'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50',
-            ].join(' ')}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="md:hidden space-y-3">
+        {error && <ErrorBanner message={error} onRetry={fetchProjects} />}
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 animate-pulse">
+              <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-3/4 mb-2" />
+              <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/2" />
+            </div>
+          ))
+        ) : projects.length === 0 ? (
+          <EmptyState
+            icon={<Briefcase className="w-10 h-10" />}
+            title={statusFilter !== 'all'
+              ? `No projects with status "${STATUS_BADGE[statusFilter as ProjectStatus]?.label ?? statusFilter}"`
+              : 'No projects found'}
+            action={statusFilter === 'all' ? { label: 'Create your first project', href: '/projects/new' } : undefined}
+          />
+        ) : (
+          projects.map((project) => (
+            <Link
+              key={project.id}
+              href={`/projects/${project.id}`}
+              className="block bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 hover:border-gray-200 transition-colors"
+            >
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <p className="font-medium text-gray-900 dark:text-gray-100 truncate flex-1">{project.name}</p>
+                <StatusBadge status={project.status} />
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 truncate">
+                {project.client?.company ?? 'No client'}
+              </p>
+              <ProgressBar value={project.progress} />
+            </Link>
+          ))
+        )}
       </div>
 
       {/* ------------------------------------------------------------------ */}
       {/* Table card                                                           */}
       {/* ------------------------------------------------------------------ */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card className="hidden md:block">
         {error && (
-          <div className="px-4 py-3 bg-red-50 border-b border-red-100 text-sm text-red-600">
-            {error} —{' '}
-            <button className="underline" onClick={fetchProjects}>
-              retry
-            </button>
-          </div>
+          <ErrorBanner message={error} onRetry={fetchProjects} className="rounded-none border-0 border-b border-red-100" />
         )}
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Client</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Progress</th>
-                <th className="px-4 py-3">Deadline</th>
-                <th className="px-4 py-3">Members</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Deadline</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Members</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
+                <TableSkeleton rows={8} columns={7} columnWidths={['55%', '40%', '25%', '30%', '30%', '20%', '20%']} />
               ) : projects.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center">
-                    <div className="flex flex-col items-center gap-2 text-gray-400">
-                      <svg
-                        className="w-10 h-10 opacity-40"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                        />
-                      </svg>
-                      <p className="text-sm font-medium">
-                        {statusFilter !== 'all'
-                          ? `No projects with status "${STATUS_BADGE[statusFilter as ProjectStatus]?.label ?? statusFilter}"`
-                          : 'No projects found'}
-                      </p>
-                      {statusFilter === 'all' && (
-                        <Link
-                          href="/projects/new"
-                          className="text-sm text-primary hover:underline"
-                        >
-                          Create your first project
-                        </Link>
-                      )}
-                    </div>
+                  <td colSpan={7} className="px-4 py-8">
+                    <EmptyState
+                      icon={<Briefcase className="w-10 h-10" />}
+                      title={statusFilter !== 'all'
+                        ? `No projects with status "${STATUS_BADGE[statusFilter as ProjectStatus]?.label ?? statusFilter}"`
+                        : 'No projects found'}
+                      action={statusFilter === 'all' ? { label: 'Create your first project', href: '/projects/new' } : undefined}
+                    />
                   </td>
                 </tr>
               ) : (
                 projects.map((project) => (
                   <tr
                     key={project.id}
-                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
+                    className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60 transition-colors"
                   >
-                    <td className="px-4 py-3 font-medium text-gray-900">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                       <Link
                         href={`/projects/${project.id}`}
                         className="hover:text-primary transition-colors"
@@ -339,16 +341,16 @@ export default function ProjectsPage() {
                         {project.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {project.client_id ? (
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+                      {project.clientId ? (
                         <Link
-                          href={`/clients/${project.client_id}`}
+                          href={`/clients/${project.clientId}`}
                           className="hover:text-primary transition-colors"
                         >
-                          {project.client_name ?? project.client_id}
+                          {project.client?.company ?? '—'}
                         </Link>
                       ) : (
-                        <span className="text-gray-300">—</span>
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -357,17 +359,17 @@ export default function ProjectsPage() {
                     <td className="px-4 py-3">
                       <ProgressBar value={project.progress} />
                     </td>
-                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap hidden lg:table-cell">
                       {formatDate(project.deadline)}
                     </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {project.members_count}
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">
+                      {project._count?.members ?? 0}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-3">
                         <Link
                           href={`/projects/${project.id}`}
-                          className="text-xs text-gray-500 hover:text-primary font-medium transition-colors"
+                          className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary font-medium transition-colors"
                         >
                           View
                         </Link>
@@ -380,36 +382,7 @@ export default function ProjectsPage() {
           </table>
         </div>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Pagination                                                         */}
-        {/* ---------------------------------------------------------------- */}
-        {!loading && meta && meta.total > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
-            <p className="text-xs text-gray-500">
-              {meta.total} project{meta.total !== 1 ? 's' : ''} total
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Previous
-              </button>
-              <span className="text-xs text-gray-600 min-w-[80px] text-center">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }

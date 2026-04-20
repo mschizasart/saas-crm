@@ -118,11 +118,11 @@ export default function SalesReportPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Revenue by Month</h2>
+        <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Revenue by Month</h2>
           <div style={{ width: '100%', height: 320 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 rounded animate-pulse" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 rounded animate-pulse" />
             ) : (
               <ResponsiveContainer>
                 <BarChart data={data.byMonth}>
@@ -144,38 +144,38 @@ export default function SalesReportPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Top Clients</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Top Clients</h2>
           {loading || !data ? (
             <div className="space-y-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-8 bg-gray-50 rounded animate-pulse"
+                  className="h-8 bg-gray-50 dark:bg-gray-900 rounded animate-pulse"
                 />
               ))}
             </div>
           ) : data.topClients.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">
+            <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
               No paid invoices in range.
             </p>
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
               {data.topClients.map((c) => (
                 <li
                   key={c.clientId}
                   className="py-2 flex items-center justify-between gap-2"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
                       {c.company}
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
                       {c.invoiceCount} invoice
                       {c.invoiceCount !== 1 ? 's' : ''}
                     </p>
                   </div>
-                  <p className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
                     {formatCurrency(c.totalRevenue)}
                   </p>
                 </li>

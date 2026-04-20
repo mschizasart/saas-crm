@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useModalA11y } from '@/components/ui/use-modal-a11y';
+import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -185,6 +187,13 @@ export default function TicketDetailPage() {
   const [mergeConfirm, setMergeConfirm] = useState<MergeSearchTicket | null>(null);
   const [merging, setMerging] = useState(false);
   const [mergeToast, setMergeToast] = useState(false);
+  const closeMergeModal = useCallback(() => {
+    setMergeOpen(false);
+    setMergeSearch('');
+    setMergeResults([]);
+    setMergeConfirm(null);
+  }, []);
+  const mergeModalRef = useModalA11y(mergeOpen, closeMergeModal);
 
   // Auto-refresh ref
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -387,53 +396,42 @@ export default function TicketDetailPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* ── Breadcrumb ────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 mb-6 text-sm text-gray-500">
-        <Link href="/tickets" className="hover:text-primary transition-colors">Tickets</Link>
-        <span>/</span>
-        <span className="text-gray-900 font-medium truncate max-w-xs">{ticket.subject}</span>
-      </div>
-
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">{ticket.subject}</h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              label={ticket.status}
-              colourClass={STATUS_COLOURS[ticket.status] ?? 'bg-gray-100 text-gray-500'}
-            />
-            <Badge
-              label={ticket.priority}
-              colourClass={PRIORITY_COLOURS[ticket.priority] ?? 'bg-gray-100 text-gray-500'}
-            />
-            {ticket.priority !== 'medium' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 text-violet-700" title="Priority was auto-classified by AI based on ticket content">
-                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-                </svg>
-                AI classified
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <button
-            onClick={() => setMergeOpen(true)}
-            className="px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Merge
-          </button>
-          <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Change Status</label>
+    <DetailPageLayout
+      title={ticket.subject}
+      breadcrumbs={[
+        { label: 'Tickets', href: '/tickets' },
+        { label: ticket.subject },
+      ]}
+      badge={
+        <Badge
+          label={ticket.status}
+          colourClass={STATUS_COLOURS[ticket.status] ?? 'bg-gray-100 text-gray-500'}
+        />
+      }
+      actions={[
+        { label: 'Merge', onClick: () => setMergeOpen(true), variant: 'secondary' },
+      ]}
+    >
+      <div className="flex flex-wrap items-center gap-2 -mt-2">
+        <Badge
+          label={ticket.priority}
+          colourClass={PRIORITY_COLOURS[ticket.priority] ?? 'bg-gray-100 text-gray-500'}
+        />
+        {ticket.priority !== 'medium' && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 text-violet-700" title="Priority was auto-classified by AI based on ticket content">
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+            </svg>
+            AI classified
+          </span>
+        )}
+        <div className="ml-auto">
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Change Status</label>
           <select
             value={ticket.status}
             onChange={handleStatusChange}
             disabled={statusChanging}
-            className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white disabled:opacity-50"
+            className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white dark:bg-gray-900 disabled:opacity-50"
           >
             {TICKET_STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -441,49 +439,48 @@ export default function TicketDetailPage() {
               </option>
             ))}
           </select>
-          </div>
         </div>
       </div>
 
       {/* ── Info row ─────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5 mb-6">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-5 text-sm">
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Client</p>
+            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">Client</p>
             {ticket.client ? (
               <Link href={`/clients/${ticket.client.id}`} className="text-primary hover:underline font-medium">
                 {ticket.client.company}
               </Link>
             ) : (
-              <span className="text-gray-300">—</span>
+              <span className="text-gray-300 dark:text-gray-600">—</span>
             )}
           </div>
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Department</p>
-            <p className="text-gray-700">{ticket.department ?? <span className="text-gray-300">—</span>}</p>
+            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">Department</p>
+            <p className="text-gray-700 dark:text-gray-300">{ticket.department ?? <span className="text-gray-300 dark:text-gray-600">—</span>}</p>
           </div>
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Assigned To</p>
-            <p className="text-gray-700">{ticket.assignedTo?.name ?? <span className="text-gray-300">Unassigned</span>}</p>
+            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">Assigned To</p>
+            <p className="text-gray-700 dark:text-gray-300">{ticket.assignedTo?.name ?? <span className="text-gray-300 dark:text-gray-600">Unassigned</span>}</p>
           </div>
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Created</p>
-            <p className="text-gray-700">{new Date(ticket.createdAt).toLocaleDateString()}</p>
+            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">Created</p>
+            <p className="text-gray-700 dark:text-gray-300">{new Date(ticket.createdAt).toLocaleDateString()}</p>
           </div>
         </div>
       </div>
 
       {/* ── Replies thread ───────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm mb-4">
-        <div className="px-4 py-3 border-b border-gray-100">
-          <h2 className="text-sm font-semibold text-gray-700">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm mb-4">
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
             Replies {ticket.replies?.length ? `(${ticket.replies.length})` : ''}
           </h2>
         </div>
 
         <div className="px-4 py-4 space-y-4 min-h-[120px]">
           {(!ticket.replies || ticket.replies.length === 0) ? (
-            <p className="text-sm text-gray-400 text-center py-6">No replies yet. Be the first to respond.</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">No replies yet. Be the first to respond.</p>
           ) : (
             ticket.replies.map((reply) => (
               <ReplyCard key={reply.id} reply={reply} />
@@ -493,16 +490,16 @@ export default function TicketDetailPage() {
       </div>
 
       {/* ── Reply form ───────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-700">Send Reply</h3>
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Send Reply</h3>
           <div className="flex items-center gap-2">
             {/* AI Draft button */}
             <div className="flex items-center gap-1">
               <select
                 value={aiTone}
                 onChange={(e) => setAiTone(e.target.value as 'professional' | 'friendly' | 'formal')}
-                className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white text-gray-600"
+                className="px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400"
               >
                 <option value="professional">Professional</option>
                 <option value="friendly">Friendly</option>
@@ -537,7 +534,7 @@ export default function TicketDetailPage() {
                   e.target.value = '';
                 }}
                 defaultValue=""
-                className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white text-gray-600"
+                className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400"
               >
                 <option value="" disabled>Insert Predefined Reply</option>
                 {predefinedReplies.map((r) => (
@@ -558,10 +555,10 @@ export default function TicketDetailPage() {
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             placeholder="Type your reply…"
-            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-y"
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-y"
           />
           <div className="mt-3 flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={isInternal}
@@ -591,36 +588,42 @@ export default function TicketDetailPage() {
       {/* ── Merge modal ──────────────────────────────────────────────── */}
       {mergeOpen && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+          <div
+            ref={mergeModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="merge-ticket-modal-title"
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg"
+          >
             {!mergeConfirm ? (
               <>
-                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900">Merge Ticket</h3>
-                  <button onClick={() => { setMergeOpen(false); setMergeSearch(''); setMergeResults([]); }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+                <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                  <h3 id="merge-ticket-modal-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">Merge Ticket</h3>
+                  <button onClick={() => { setMergeOpen(false); setMergeSearch(''); setMergeResults([]); }} aria-label="Close" className="text-gray-400 dark:text-gray-500 hover:text-gray-600 text-xl leading-none">&times;</button>
                 </div>
                 <div className="p-5">
-                  <p className="text-sm text-gray-500 mb-3">Search for a ticket to merge into this one. All replies from the selected ticket will be moved here.</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Search for a ticket to merge into this one. All replies from the selected ticket will be moved here.</p>
                   <input
                     type="text"
                     value={mergeSearch}
                     onChange={(e) => setMergeSearch(e.target.value)}
                     placeholder="Search tickets by subject..."
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                     autoFocus
                   />
                   <div className="mt-3 max-h-60 overflow-y-auto space-y-1">
-                    {mergeSearching && <p className="text-xs text-gray-400 text-center py-3">Searching...</p>}
+                    {mergeSearching && <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-3">Searching...</p>}
                     {!mergeSearching && mergeSearch.trim().length >= 2 && mergeResults.length === 0 && (
-                      <p className="text-xs text-gray-400 text-center py-3">No tickets found</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-3">No tickets found</p>
                     )}
                     {mergeResults.map((t) => (
                       <button
                         key={t.id}
                         onClick={() => setMergeConfirm(t)}
-                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-200"
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors border border-transparent hover:border-gray-200"
                       >
-                        <p className="text-sm font-medium text-gray-900 truncate">{t.subject}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{t.subject}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                           <span className="capitalize">{t.status.replace('_', ' ')}</span> &middot; {new Date(t.createdAt).toLocaleDateString()}
                         </p>
                       </button>
@@ -630,17 +633,17 @@ export default function TicketDetailPage() {
               </>
             ) : (
               <>
-                <div className="px-5 py-4 border-b border-gray-100">
-                  <h3 className="text-lg font-semibold text-gray-900">Confirm Merge</h3>
+                <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+                  <h3 id="merge-ticket-modal-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">Confirm Merge</h3>
                 </div>
                 <div className="p-5">
-                  <p className="text-sm text-gray-700">
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
                     Merge ticket <strong>&ldquo;{mergeConfirm.subject}&rdquo;</strong> into this ticket? All replies will be moved here and the source ticket will be closed.
                   </p>
                   <div className="flex items-center justify-end gap-3 mt-5">
                     <button
                       onClick={() => setMergeConfirm(null)}
-                      className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50"
+                      className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
                     >
                       Cancel
                     </button>
@@ -665,6 +668,6 @@ export default function TicketDetailPage() {
           Tickets merged
         </div>
       )}
-    </div>
+    </DetailPageLayout>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useModalA11y } from './ui/use-modal-a11y';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -92,6 +93,7 @@ export default function SavedItemModal({
 
   const groupInputRef = useRef<HTMLInputElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
+  const containerRef = useModalA11y(open, onClose);
 
   // Load lookup data on mount
   useEffect(() => {
@@ -236,10 +238,16 @@ export default function SavedItemModal({
       onClick={handleBackdropClick}
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto"
     >
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 mt-20 mb-10">
+      <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="saved-item-modal-title"
+        className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 mt-20 mb-10"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 id="saved-item-modal-title" className="text-lg font-semibold text-gray-900">
             {editId ? 'Edit Item' : 'Add New Item'}
           </h2>
           <button

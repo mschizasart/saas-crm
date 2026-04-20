@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 
 interface Contract {
   id: string;
@@ -109,41 +109,36 @@ export default function ContractDetailPage() {
     return { days: diffDays, label: `Expires in ${diffDays} days`, isExpired: false, isWarning: false };
   }
 
-  if (loading) return <div className="max-w-4xl animate-pulse h-96 bg-gray-100 rounded-xl" />;
+  if (loading) return <div className="max-w-4xl animate-pulse h-96 bg-gray-100 dark:bg-gray-800 rounded-xl" />;
   if (error || !c) return <div className="text-red-600">{error ?? 'Not found'}</div>;
 
   const expiry = getDaysUntilExpiry();
 
+  const actions = c.status === 'draft'
+    ? [{ label: busy ? 'Sending...' : 'Send For Signing', onClick: sendForSigning, disabled: busy, variant: 'primary' as const }]
+    : undefined;
+
   return (
-    <div className="max-w-4xl">
-      <div className="mb-4"><Link href="/contracts" className="text-sm text-gray-500 hover:text-primary">&larr; Back to contracts</Link></div>
-
-      <div className="flex items-start justify-between mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{c.subject}</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {c.client?.company ?? c.client?.company_name ?? '—'} &middot; {c.type} &middot; Value: {c.value}
-          </p>
-        </div>
+    <DetailPageLayout
+      title={c.subject}
+      subtitle={`${c.client?.company ?? c.client?.company_name ?? '—'} · ${c.type} · Value: ${c.value}`}
+      breadcrumbs={[
+        { label: 'Contracts', href: '/contracts' },
+        { label: c.subject },
+      ]}
+      badge={
         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">{c.status}</span>
-      </div>
-
-      {c.status === 'draft' && (
-        <div className="mb-6">
-          <button onClick={sendForSigning} disabled={busy} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50">
-            {busy ? 'Sending...' : 'Send For Signing'}
-          </button>
-        </div>
-      )}
-
+      }
+      actions={actions}
+    >
       {c.status === 'pending_signature' && c.publicHash && (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <p className="text-sm text-amber-800 mb-2">Awaiting signature. Share this link with the client:</p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 px-3 py-2 bg-white border border-amber-200 rounded text-xs break-all">
+            <code className="flex-1 px-3 py-2 bg-white dark:bg-gray-900 border border-amber-200 rounded text-xs break-all">
               {typeof window !== 'undefined' ? `${window.location.origin}/contract/${c.publicHash}` : `/contract/${c.publicHash}`}
             </code>
-            <button onClick={copyLink} className="px-3 py-2 bg-white border border-amber-200 rounded text-xs hover:bg-amber-50">
+            <button onClick={copyLink} className="px-3 py-2 bg-white dark:bg-gray-900 border border-amber-200 rounded text-xs hover:bg-amber-50">
               {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
@@ -152,10 +147,10 @@ export default function ContractDetailPage() {
 
       {/* Renewal section */}
       {expiry && (
-        <div className={`mb-6 p-4 rounded-lg border ${expiry.isExpired ? 'bg-red-50 border-red-200' : expiry.isWarning ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
+        <div className={`p-4 rounded-lg border ${expiry.isExpired ? 'bg-red-50 border-red-200' : expiry.isWarning ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">Renewal Status</h3>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Renewal Status</h3>
               <p className={`text-sm mt-1 ${expiry.isExpired ? 'text-red-700' : expiry.isWarning ? 'text-amber-700' : 'text-green-700'}`}>
                 {expiry.label}
                 {expiry.isWarning && (
@@ -176,13 +171,13 @@ export default function ContractDetailPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
         <div className="prose max-w-none text-sm" dangerouslySetInnerHTML={{ __html: renderedContent ?? c.content }} />
       </div>
 
-      <div className="mt-6 text-sm text-gray-500">
+      <div className="mt-6 text-sm text-gray-500 dark:text-gray-400">
         Period: {c.startDate ? new Date(c.startDate).toLocaleDateString() : '—'} &rarr; {c.endDate ? new Date(c.endDate).toLocaleDateString() : '—'}
       </div>
-    </div>
+    </DetailPageLayout>
   );
 }

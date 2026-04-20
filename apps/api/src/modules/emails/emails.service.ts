@@ -167,6 +167,22 @@ export class EmailsService {
     });
   }
 
+  @OnEvent('auth.email_change_requested')
+  async handleEmailChangeRequested(payload: {
+    user: any;
+    token: string;
+    confirmUrl: string;
+  }) {
+    await this.queue({
+      to: payload.user.email,
+      subject: 'Confirm your new email address',
+      html: `<p>Hi ${payload.user.firstName ?? ''},</p>
+<p>Click the link below to confirm your new email address:</p>
+<p><a href="${payload.confirmUrl}">Confirm Email</a></p>
+<p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
+    });
+  }
+
   @OnEvent('organization.registered')
   async handleOrgRegistered(payload: { org: any }) {
     const admin = payload.org.users?.[0];

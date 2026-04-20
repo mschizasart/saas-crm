@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { SettingsPageLayout, SettingsSection } from '@/components/layouts/settings-page-layout';
+import { typography } from '@/lib/ui-tokens';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -76,86 +78,86 @@ export default function TagsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <h1 className="text-2xl font-bold">Tags</h1>
-
-      <form
-        onSubmit={create}
-        className="bg-white p-4 rounded shadow flex gap-2 items-end"
-      >
-        <div className="flex-1">
-          <label className="block text-sm font-medium mb-1">Name</label>
-          <input
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full px-3 py-2 border rounded"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Color</label>
-          <input
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className="h-10 w-14 border rounded"
-          />
-        </div>
-        <button
-          type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded"
+    <SettingsPageLayout title="Tags" description="Create and manage tags used to classify records">
+      <SettingsSection title="Manage tags">
+        <form
+          onSubmit={create}
+          className="flex gap-2 items-end mb-6"
         >
-          Add
-        </button>
-      </form>
+          <div className="flex-1">
+            <label className={`${typography.label} block mb-1`}>Name</label>
+            <input
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 border rounded"
+            />
+          </div>
+          <div>
+            <label className={`${typography.label} block mb-1`}>Color</label>
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="h-10 w-14 border rounded"
+            />
+          </div>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
+          >
+            Add
+          </button>
+        </form>
 
-      <div className="bg-white rounded shadow divide-y">
-        {loading ? (
-          <p className="p-4">Loading…</p>
-        ) : tags.length === 0 ? (
-          <p className="p-4 text-gray-500">No tags yet.</p>
-        ) : (
-          tags.map((t) => (
-            <div
-              key={t.id}
-              className="p-3 flex items-center gap-3"
-            >
-              <span
-                className="inline-block w-4 h-4 rounded"
-                style={{ background: t.color }}
-              />
-              <input
-                defaultValue={t.name}
-                onBlur={(e) => {
-                  if (e.target.value !== t.name) {
-                    update(t.id, { name: e.target.value });
-                  }
-                }}
-                className="flex-1 px-2 py-1 border rounded"
-              />
-              <input
-                type="color"
-                defaultValue={t.color}
-                onBlur={(e) => {
-                  if (e.target.value !== t.color) {
-                    update(t.id, { color: e.target.value });
-                  }
-                }}
-                className="h-8 w-10 border rounded"
-              />
-              <span className="text-xs text-gray-500 w-16 text-right">
-                {t._count?.taggables ?? 0} uses
-              </span>
-              <button
-                onClick={() => remove(t.id)}
-                className="text-red-600 text-sm"
+        <div className="border border-gray-100 dark:border-gray-800 rounded-lg divide-y divide-gray-100 dark:divide-gray-800">
+          {loading ? (
+            <p className="p-4">Loading…</p>
+          ) : tags.length === 0 ? (
+            <p className={`p-4 ${typography.bodyMuted}`}>No tags yet.</p>
+          ) : (
+            tags.map((t) => (
+              <div
+                key={t.id}
+                className="p-3 flex items-center gap-3"
               >
-                Delete
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
+                <span
+                  className="inline-block w-4 h-4 rounded"
+                  style={{ background: t.color }}
+                />
+                <input
+                  defaultValue={t.name}
+                  onBlur={(e) => {
+                    if (e.target.value !== t.name) {
+                      update(t.id, { name: e.target.value });
+                    }
+                  }}
+                  className="flex-1 px-2 py-1 border rounded"
+                />
+                <input
+                  type="color"
+                  defaultValue={t.color}
+                  onBlur={(e) => {
+                    if (e.target.value !== t.color) {
+                      update(t.id, { color: e.target.value });
+                    }
+                  }}
+                  className="h-8 w-10 border rounded"
+                />
+                <span className={`${typography.caption} w-16 text-right`}>
+                  {t._count?.taggables ?? 0} uses
+                </span>
+                <button
+                  onClick={() => remove(t.id)}
+                  className="text-red-600 text-sm"
+                >
+                  Delete
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </SettingsSection>
+    </SettingsPageLayout>
   );
 }

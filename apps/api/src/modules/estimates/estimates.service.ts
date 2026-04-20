@@ -11,16 +11,54 @@ export interface CreateEstimateDto {
   date: string;
   expiryDate?: string;
   currency?: string;
+  // Accept both legacy `notes` and Prisma-native `clientNote`.
+  // The service maps both to the `clientNote` column.
   notes?: string;
+  clientNote?: string;
   terms?: string;
   discount?: number;
   items: Array<{
     description: string;
-    quantity: number;
-    unitPrice: number;
+    longDescription?: string;
+    // Accept both legacy names (quantity/unitPrice/taxRate) and Prisma-native (qty/rate/tax1/tax2).
+    // `taxRate` is a percentage used for totals math; `tax1`/`tax2` are Tax record IDs stored on the line.
+    quantity?: number;
+    unitPrice?: number;
     taxRate?: number;
+    qty?: number;
+    rate?: number;
+    tax1?: string;
+    tax2?: string;
+    unit?: string;
     order?: number;
   }>;
+}
+
+interface NormalizedItem {
+  description: string;
+  longDescription?: string;
+  qty: number;
+  rate: number;
+  tax1?: string;
+  tax2?: string;
+  unit?: string;
+  order?: number;
+  /** Percentage — used only for totals calculation, not stored to Prisma. */
+  taxRate: number;
+}
+
+function normalizeItems(items: CreateEstimateDto['items']): NormalizedItem[] {
+  return items.map((item) => ({
+    description: item.description,
+    longDescription: item.longDescription,
+    qty: Number(item.qty ?? item.quantity ?? 0),
+    rate: Number(item.rate ?? item.unitPrice ?? 0),
+    tax1: item.tax1,
+    tax2: item.tax2,
+    unit: item.unit,
+    order: item.order,
+    taxRate: Number(item.taxRate ?? 0),
+  }));
 }
 
 @Injectable()
@@ -43,25 +81,21 @@ export class EstimatesService {
   }
 
   private calculateTotals(
-    items: Array<{
-      quantity: number;
-      unitPrice: number;
-      taxRate?: number;
-    }>,
+    items: NormalizedItem[],
     discount = 0,
-  ): { subtotal: number; tax: number; discount: number; total: number } {
-    let subtotal = 0;
-    let tax = 0;
+  ): { subTotal: number; totalTax: number; discount: number; total: number } {
+    let subTotal = 0;
+    let totalTax = 0;
 
     for (const item of items) {
-      const lineTotal = item.quantity * item.unitPrice;
+      const lineTotal = item.qty * item.rate;
       const lineTax = lineTotal * ((item.taxRate ?? 0) / 100);
-      subtotal += lineTotal;
-      tax += lineTax;
+      subTotal += lineTotal;
+      totalTax += lineTax;
     }
 
-    const total = subtotal + tax - discount;
-    return { subtotal, tax, discount, total };
+    const total = subTotal + totalTax - discount;
+    return { subTotal, totalTax, discount, total };
   }
 
   // ─── findAll ───────────────────────────────────────────────────────────────
@@ -117,7 +151,6 @@ export class EstimatesService {
         include: {
           client: true,
           items: { orderBy: { order: 'asc' } },
-          creator: { select: { id: true, firstName: true, lastName: true } },
         },
       });
       if (!estimate) throw new NotFoundException('Estimate not found');
@@ -130,7 +163,8 @@ export class EstimatesService {
   async create(orgId: string, dto: CreateEstimateDto, createdBy: string) {
     const estimate = await this.prisma.withOrganization(orgId, async (tx) => {
       const number = await this.generateEstimateNumber(orgId, tx);
-      const totals = this.calculateTotals(dto.items, dto.discount ?? 0);
+      const normalized = normalizeItems(dto.items);
+      const totals = this.calculateTotals(normalized, dto.discount ?? 0);
 
       return tx.estimate.create({
         data: {
@@ -140,22 +174,22 @@ export class EstimatesService {
           date: new Date(dto.date),
           expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
           status: 'draft',
-          subtotal: totals.subtotal,
-          tax: totals.tax,
+          subTotal: totals.subTotal,
+          totalTax: totals.totalTax,
           discount: totals.discount,
           total: totals.total,
-          notes: dto.notes ?? null,
+          clientNote: dto.clientNote ?? dto.notes ?? null,
           terms: dto.terms ?? null,
-          currency: dto.currency ?? 'USD',
-          createdBy,
           items: {
             createMany: {
-              data: dto.items.map((item, index) => ({
+              data: normalized.map((item, index) => ({
                 description: item.description,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice,
-                taxRate: item.taxRate ?? 0,
-                total: item.quantity * item.unitPrice,
+                longDesc: item.longDescription,
+                qty: item.qty,
+                rate: item.rate,
+                tax1: item.tax1,
+                tax2: item.tax2,
+                unit: item.unit,
                 order: item.order ?? index,
               })),
             },
@@ -181,29 +215,35 @@ export class EstimatesService {
     }
 
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const items = dto.items ?? (existing.items as any[]).map((i: any) => ({
+      const rawItems = dto.items ?? (existing.items as any[]).map((i: any) => ({
         description: i.description,
-        quantity: Number(i.quantity),
-        unitPrice: Number(i.unitPrice),
-        taxRate: Number(i.taxRate),
+        longDescription: i.longDesc,
+        qty: Number(i.qty),
+        rate: Number(i.rate),
+        tax1: i.tax1,
+        tax2: i.tax2,
+        unit: i.unit,
         order: i.order,
       }));
+      const normalized = normalizeItems(rawItems as CreateEstimateDto['items']);
 
       const totals = this.calculateTotals(
-        items,
+        normalized,
         dto.discount ?? Number(existing.discount),
       );
 
       if (dto.items) {
         await tx.estimateItem.deleteMany({ where: { estimateId: id } });
         await tx.estimateItem.createMany({
-          data: dto.items.map((item, index) => ({
+          data: normalized.map((item, index) => ({
             estimateId: id,
             description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            taxRate: item.taxRate ?? 0,
-            total: item.quantity * item.unitPrice,
+            longDesc: item.longDescription,
+            qty: item.qty,
+            rate: item.rate,
+            tax1: item.tax1,
+            tax2: item.tax2,
+            unit: item.unit,
             order: item.order ?? index,
           })),
         });
@@ -217,11 +257,12 @@ export class EstimatesService {
           ...(dto.expiryDate !== undefined && {
             expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
           }),
-          ...(dto.notes !== undefined && { notes: dto.notes }),
+          ...((dto.clientNote !== undefined || dto.notes !== undefined) && {
+            clientNote: dto.clientNote ?? dto.notes,
+          }),
           ...(dto.terms !== undefined && { terms: dto.terms }),
-          ...(dto.currency && { currency: dto.currency }),
-          subtotal: totals.subtotal,
-          tax: totals.tax,
+          subTotal: totals.subTotal,
+          totalTax: totals.totalTax,
           discount: totals.discount,
           total: totals.total,
         },
@@ -231,6 +272,40 @@ export class EstimatesService {
         },
       });
     });
+  }
+
+  // ─── updateStatus (generic, for kanban drops) ───────────────────────────
+
+  async updateStatus(
+    orgId: string,
+    id: string,
+    status: string,
+    userId?: string,
+  ) {
+    const allowed = ['draft', 'sent', 'declined', 'accepted', 'expired'];
+    if (!allowed.includes(status)) {
+      throw new BadRequestException(
+        `Invalid estimate status '${status}'. Allowed: ${allowed.join(', ')}`,
+      );
+    }
+
+    const existing = await this.findOne(orgId, id);
+    const previousStatus = existing.status;
+
+    const updated = await this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.estimate.update({ where: { id }, data: { status } });
+    });
+
+    // Log the change without triggering side-effect events (no emails/etc).
+    this.events.emit('estimate.status_changed', {
+      estimate: updated,
+      orgId,
+      previousStatus,
+      newStatus: status,
+      userId,
+    });
+
+    return updated;
   }
 
   // ─── delete ────────────────────────────────────────────────────────────────
@@ -329,14 +404,12 @@ export class EstimatesService {
           date: new Date(),
           dueDate: null,
           status: 'draft',
-          subtotal: estimate.subtotal,
-          tax: estimate.tax,
+          subTotal: estimate.subTotal,
+          totalTax: estimate.totalTax,
           discount: estimate.discount,
           total: estimate.total,
-          notes: estimate.notes ?? null,
+          clientNote: estimate.clientNote ?? null,
           terms: estimate.terms ?? null,
-          currency: (estimate as any).currency ?? 'USD',
-          createdBy,
         },
       });
 
@@ -344,10 +417,12 @@ export class EstimatesService {
         data: (estimate.items as any[]).map((item: any) => ({
           invoiceId: newInvoice.id,
           description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          taxRate: item.taxRate,
-          total: item.total,
+          longDesc: item.longDesc,
+          qty: item.qty,
+          rate: item.rate,
+          tax1: item.tax1,
+          tax2: item.tax2,
+          unit: item.unit,
           order: item.order,
         })),
       });
@@ -390,22 +465,22 @@ export class EstimatesService {
           date: new Date(),
           expiryDate: null,
           status: 'draft',
-          subtotal: source.subtotal,
-          tax: source.tax,
+          subTotal: source.subTotal,
+          totalTax: source.totalTax,
           discount: source.discount,
           total: source.total,
-          notes: source.notes ?? null,
+          clientNote: source.clientNote ?? null,
           terms: source.terms ?? null,
-          currency: (source as any).currency ?? 'USD',
-          createdBy,
           items: {
             createMany: {
               data: (source.items as any[]).map((item: any) => ({
                 description: item.description,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice,
-                taxRate: item.taxRate,
-                total: item.total,
+                longDesc: item.longDesc,
+                qty: item.qty,
+                rate: item.rate,
+                tax1: item.tax1,
+                tax2: item.tax2,
+                unit: item.unit,
                 order: item.order,
               })),
             },

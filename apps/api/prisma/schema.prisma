@@ -145,6 +145,10 @@ model User {
   oauthId        String?
   // Email / notification prefs
   emailNotifications Boolean @default(true)
+  // Email change flow — pending new email awaiting token confirmation
+  pendingEmail        String?
+  pendingEmailToken   String?
+  pendingEmailExpires DateTime?
   // Timestamps
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -160,11 +164,26 @@ model User {
   activityLogs   ActivityLog[]
   clockEntries   ClockEntry[]
   newsfeedPosts  NewsfeedPost[]
+  permissionOverrides UserPermissionOverride[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
   @@index([organizationId, type])
   @@map("users")
+}
+
+model UserPermissionOverride {
+  id             String   @id @default(uuid())
+  userId         String
+  permission     String   // e.g. "invoices.delete"
+  grant          Boolean  // true = add; false = revoke inherited role permission
+  createdAt      DateTime @default(now())
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+  @@index([userId])
+  @@map("user_permission_overrides")
 }
 
 model UserSession {
@@ -294,6 +313,8 @@ model VaultEntry {
 model Currency {
   id             String   @id @default(uuid())
   organizationId String
+  // ISO 4217 code (USD, EUR, …) — used for API/gateway interop
+  code           String?
   name           String
   symbol         String
   symbolPlacement String  @default("before") // "before" | "after"
@@ -340,6 +361,7 @@ model PaymentMode {
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoicePayments InvoicePaymentMode[]
+  payments       Payment[]
 
   @@index([organizationId])
   @@map("payment_modes")
@@ -534,11 +556,16 @@ model Payment {
   note           String?
   paymentDate    DateTime
   gatewayResponse Json?
+  // Refund tracking (additive)
+  refundedAt     DateTime?
+  refundedAmount Decimal? @db.Decimal(15, 2)
+  refundReason   String?
   createdAt      DateTime @default(now())
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice        Invoice      @relation(fields: [invoiceId], references: [id])
   client         Client?      @relation(fields: [clientId], references: [id])
+  paymentMode    PaymentMode? @relation(fields: [paymentModeId], references: [id])
 
   @@index([organizationId])
   @@map("payments")
@@ -582,6 +609,7 @@ model CreditNote {
   total          Decimal  @db.Decimal(15, 2) @default(0)
   totalTax       Decimal  @db.Decimal(15, 2) @default(0)
   remainingAmount Decimal @db.Decimal(15, 2) @default(0)
+  appliedTotal   Decimal  @db.Decimal(15, 2) @default(0)
   clientNote     String?
   adminNote      String?
   hash           String   @unique @default(uuid())
@@ -746,6 +774,7 @@ model ExpenseCategory {
   organizationId String
   name           String
   description    String?
+  color          String?
   createdAt      DateTime @default(now())
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -809,6 +838,10 @@ model ClientSubscription {
   stripeSubId     String?
   nextDueDate     DateTime?
   cancelledAt     DateTime?
+  // Billing interval (additive)
+  interval        String   @default("month") // day | week | month | year
+  intervalCount   Int      @default(1)
+  nextInvoiceAt   DateTime?
   hash            String   @unique @default(uuid())
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -881,6 +914,7 @@ model Milestone {
   description    String?
   dueDate        DateTime?
   completed      Boolean  @default(false)
+  status         String   @default("planned") // planned | in_progress | done | cancelled
   completedAt    DateTime?
   color          String   @default("#6b7280")
   order          Int      @default(0)
@@ -1190,10 +1224,21 @@ model Contract {
   subject        String
   value          Decimal? @db.Decimal(15, 2)
   description    String?
+  // Free-form content (HTML/markdown body) separate from description
+  content        String?
+  // Free-form type label; independent of the typeId FK to ContractType
+  type           String?
+  // Lifecycle state: draft | sent | pending_signature | active | expired | cancelled
+  status         String   @default("draft")
+  createdBy      String?
   startDate      DateTime?
   endDate        DateTime?
   signed         Boolean  @default(false)
   signature      String?  // base64
+  // Newer signing flow (extended signer metadata)
+  signatureData  String?
+  signedByName   String?
+  signedByEmail  String?
   signedAt       DateTime?
   signedName     String?
   signedIp       String?
@@ -1204,7 +1249,7 @@ model Contract {
 
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client         Client?       @relation(fields: [clientId], references: [id])
-  type           ContractType? @relation(fields: [typeId], references: [id])
+  contractType   ContractType? @relation(fields: [typeId], references: [id])
   comments       ContractComment[]
   customFieldValues CustomFieldValue[]
 

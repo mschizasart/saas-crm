@@ -20,7 +20,18 @@ export class CalendarService {
 
   async findAll(
     orgId: string,
-    query: { from?: string; to?: string; userId?: string; type?: string },
+    query: {
+      from?: string;
+      to?: string;
+      userId?: string;
+      type?: string;
+      // Staff-only filter (the controller only passes this for staff users).
+      clientId?: string;
+      // When set, scopes results to events linked to this clientId (portal
+      // users). Events link to tasks/projects/appointments via relatedType +
+      // relatedId, so we resolve the set of matching ids and filter in-memory.
+      contactClientId?: string | null;
+    },
   ) {
     return this.prisma.withOrganization(orgId, async (tx) => {
       const where: any = { organizationId: orgId };
@@ -33,9 +44,49 @@ export class CalendarService {
       if (query.userId) where.userId = query.userId;
       if (query.type) where.type = query.type;
 
-      return tx.event.findMany({
+      const events = await tx.event.findMany({
         where,
         orderBy: { startDate: 'asc' },
+      });
+
+      // Portal user with no linked client → hard-scope to nothing.
+      const isContactScope = query.contactClientId !== undefined;
+      if (isContactScope && !query.contactClientId) return [];
+
+      const scopeClientId = query.contactClientId ?? query.clientId;
+      if (!scopeClientId) return events;
+
+      // Resolve the set of related-entity ids that belong to the target client.
+      // Tasks link to a Project (which has the clientId); Projects/Appointments
+      // have clientId directly on the model.
+      const [projects, tasks, appointments] = await Promise.all([
+        tx.project.findMany({
+          where: { organizationId: orgId, clientId: scopeClientId },
+          select: { id: true },
+        }),
+        tx.task.findMany({
+          where: {
+            organizationId: orgId,
+            project: { clientId: scopeClientId },
+          },
+          select: { id: true },
+        }),
+        (tx as any).appointment.findMany({
+          where: { organizationId: orgId, clientId: scopeClientId },
+          select: { id: true },
+        }),
+      ]);
+
+      const allowed: Record<string, Set<string>> = {
+        project: new Set(projects.map((p: any) => p.id)),
+        task: new Set(tasks.map((t: any) => t.id)),
+        appointment: new Set(appointments.map((a: any) => a.id)),
+      };
+
+      return events.filter((ev: any) => {
+        if (!ev.relatedType || !ev.relatedId) return false;
+        const bucket = allowed[ev.relatedType];
+        return bucket ? bucket.has(ev.relatedId) : false;
       });
     });
   }

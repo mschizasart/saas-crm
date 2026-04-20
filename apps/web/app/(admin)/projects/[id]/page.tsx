@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { FilePreviewModal } from '../../../../components/file-preview-modal';
+import { apiFetch } from '../../../../lib/api';
+import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 
 // ────────────────────────────────────────────────────────────────
 //  Types
@@ -41,8 +42,11 @@ interface Milestone {
   description?: string | null;
   dueDate?: string | null;
   completed: boolean;
+  status?: 'planned' | 'in_progress' | 'done' | 'cancelled' | null;
+  completedAt?: string | null;
   color: string;
   order: number;
+  createdAt?: string;
   tasks?: Task[];
 }
 
@@ -73,6 +77,13 @@ interface Discussion {
   comments?: DiscussionComment[];
 }
 
+interface ProjectNote {
+  id: string;
+  content: string;
+  userId?: string | null;
+  createdAt: string;
+}
+
 interface Project {
   id: string;
   name: string;
@@ -86,21 +97,40 @@ interface Project {
   tasks?: Task[];
   members?: Member[];
   timeEntries?: TimeEntry[];
+  milestones?: Milestone[];
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+type Tab = 'overview' | 'milestones' | 'gantt' | 'discussions' | 'files' | 'notes';
 
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('access_token');
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'milestones', label: 'Milestones' },
+  { key: 'gantt', label: 'Gantt' },
+  { key: 'discussions', label: 'Discussions' },
+  { key: 'files', label: 'Files' },
+  { key: 'notes', label: 'Notes' },
+];
+
+// Kanban columns: planned | in_progress | done. The Milestone model now has
+// a persisted `status` column; we still fall back to `completed` + task state
+// for older rows that pre-date the migration.
+type KanbanStatus = 'planned' | 'in_progress' | 'done';
+const KANBAN_COLUMNS: { key: KanbanStatus; label: string; tint: string }[] = [
+  { key: 'planned', label: 'Planned', tint: 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700' },
+  { key: 'in_progress', label: 'In Progress', tint: 'bg-blue-50 border-blue-200' },
+  { key: 'done', label: 'Done', tint: 'bg-green-50 border-green-200' },
+];
+
+function deriveMilestoneStatus(ms: Milestone): KanbanStatus {
+  if (ms.status === 'planned' || ms.status === 'in_progress' || ms.status === 'done') {
+    return ms.status;
+  }
+  if (ms.completed) return 'done';
+  const hasInProgress = (ms.tasks ?? []).some((t) => t.status === 'in_progress');
+  const hasDone = (ms.tasks ?? []).some((t) => t.status === 'complete');
+  if (hasInProgress || hasDone) return 'in_progress';
+  return 'planned';
 }
-
-function authHeaders(): Record<string, string> {
-  const t = getToken();
-  return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-}
-
-type Tab = 'overview' | 'tasks' | 'milestones' | 'files' | 'discussions' | 'gantt' | 'members' | 'time';
 
 // ────────────────────────────────────────────────────────────────
 //  Helpers
@@ -130,57 +160,47 @@ function statusColor(status: string): string {
   }
 }
 
-function ganttBarColor(status: string, dueDate?: string): string {
-  if (status === 'complete') return 'bg-green-400';
-  if (dueDate && new Date(dueDate) < new Date() && status !== 'complete') return 'bg-red-400';
-  if (status === 'in_progress') return 'bg-blue-400';
-  return 'bg-gray-300';
+// ────────────────────────────────────────────────────────────────
+//  Page (Suspense wrapper because we read search params)
+// ────────────────────────────────────────────────────────────────
+
+export default function ProjectDetailPageWrapper() {
+  return (
+    <Suspense fallback={<div className="max-w-5xl animate-pulse h-96 bg-gray-100 dark:bg-gray-800 rounded-xl" />}>
+      <ProjectDetailPage />
+    </Suspense>
+  );
 }
 
-// ────────────────────────────────────────────────────────────────
-//  Main Component
-// ────────────────────────────────────────────────────────────────
-
-export default function ProjectDetailPage() {
+function ProjectDetailPage() {
   const { id } = useParams() as { id: string };
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const initialTab = (() => {
+    const q = searchParams.get('tab');
+    return TABS.find((t) => t.key === q) ? (q as Tab) : 'overview';
+  })();
+
   const [p, setP] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>('overview');
-  const [cloning, setCloning] = useState(false);
+  const [tab, setTabState] = useState<Tab>(initialTab);
 
-  // Milestones state
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [milestonesLoading, setMilestonesLoading] = useState(false);
-  const [showMilestoneForm, setShowMilestoneForm] = useState(false);
-  const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null);
-  const [msForm, setMsForm] = useState({ name: '', description: '', dueDate: '' });
+  const setTab = useCallback(
+    (next: Tab) => {
+      setTabState(next);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('tab', next);
+      router.replace(`/projects/${id}?${params.toString()}`, { scroll: false });
+    },
+    [id, router, searchParams],
+  );
 
-  // Files state
-  const [files, setFiles] = useState<ProjectFile[]>([]);
-  const [filesLoading, setFilesLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [previewFile, setPreviewFile] = useState<{ url: string; fileName: string; mimeType: string } | null>(null);
-
-  // Discussions state
-  const [discussions, setDiscussions] = useState<Discussion[]>([]);
-  const [discussionsLoading, setDiscussionsLoading] = useState(false);
-  const [showDiscussionForm, setShowDiscussionForm] = useState(false);
-  const [discForm, setDiscForm] = useState({ subject: '', description: '' });
-  const [expandedDiscussion, setExpandedDiscussion] = useState<string | null>(null);
-  const [discussionComments, setDiscussionComments] = useState<Record<string, DiscussionComment[]>>({});
-  const [replyText, setReplyText] = useState<Record<string, string>>({});
-
-  // Gantt state
-  const [ganttTasks, setGanttTasks] = useState<Task[]>([]);
-  const [ganttLoading, setGanttLoading] = useState(false);
-
-  const fetchData = useCallback(async () => {
+  const fetchProject = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/projects/${id}`, { headers: authHeaders() });
+      const res = await apiFetch(`/api/v1/projects/${id}`);
       if (!res.ok) throw new Error(`Failed (${res.status})`);
       const json = await res.json();
       setP(json.data ?? json);
@@ -191,332 +211,38 @@ export default function ProjectDetailPage() {
     }
   }, [id]);
 
-  useEffect(() => { if (id) fetchData(); }, [id, fetchData]);
+  useEffect(() => {
+    if (id) fetchProject();
+  }, [id, fetchProject]);
 
-  // ─── Milestones fetching ─────────────────────────────────────
-
-  const fetchMilestones = useCallback(async () => {
-    setMilestonesLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/projects/${id}/milestones`, { headers: authHeaders() });
-      if (res.ok) {
-        const json = await res.json();
-        setMilestones(Array.isArray(json) ? json : json.data ?? []);
-      }
-    } catch { /* silent */ }
-    finally { setMilestonesLoading(false); }
-  }, [id]);
-
-  useEffect(() => { if (tab === 'milestones') fetchMilestones(); }, [tab, fetchMilestones]);
-
-  async function handleCreateMilestone() {
-    if (!msForm.name.trim()) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/projects/${id}/milestones`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(msForm),
-      });
-      if (res.ok) {
-        setShowMilestoneForm(false);
-        setMsForm({ name: '', description: '', dueDate: '' });
-        fetchMilestones();
-      }
-    } catch { alert('Failed to create milestone'); }
-  }
-
-  async function handleUpdateMilestone() {
-    if (!editingMilestone || !msForm.name.trim()) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/projects/${id}/milestones/${editingMilestone.id}`, {
-        method: 'PATCH',
-        headers: authHeaders(),
-        body: JSON.stringify(msForm),
-      });
-      if (res.ok) {
-        setEditingMilestone(null);
-        setMsForm({ name: '', description: '', dueDate: '' });
-        fetchMilestones();
-      }
-    } catch { alert('Failed to update milestone'); }
-  }
-
-  async function handleDeleteMilestone(milestoneId: string) {
-    if (!confirm('Delete this milestone?')) return;
-    try {
-      await fetch(`${API_BASE}/api/v1/projects/${id}/milestones/${milestoneId}`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      });
-      fetchMilestones();
-    } catch { alert('Failed to delete milestone'); }
-  }
-
-  async function handleToggleMilestone(ms: Milestone) {
-    try {
-      await fetch(`${API_BASE}/api/v1/projects/${id}/milestones/${ms.id}`, {
-        method: 'PATCH',
-        headers: authHeaders(),
-        body: JSON.stringify({ completed: !ms.completed }),
-      });
-      fetchMilestones();
-    } catch { /* silent */ }
-  }
-
-  // ─── Files fetching ──────────────────────────────────────────
-
-  const fetchFiles = useCallback(async () => {
-    setFilesLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/projects/${id}/files`, { headers: authHeaders() });
-      if (res.ok) {
-        const json = await res.json();
-        setFiles(Array.isArray(json) ? json : json.data ?? []);
-      }
-    } catch { /* silent */ }
-    finally { setFilesLoading(false); }
-  }, [id]);
-
-  useEffect(() => { if (tab === 'files') fetchFiles(); }, [tab, fetchFiles]);
-
-  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('folder', `projects/${id}`);
-
-      const res = await fetch(`${API_BASE}/api/v1/storage/upload`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
-        body: formData,
-      });
-      if (!res.ok) throw new Error('Upload failed');
-      const uploaded = await res.json();
-      const data = uploaded.data ?? uploaded;
-
-      // Register file record in project
-      await fetch(`${API_BASE}/api/v1/projects/${id}/files`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          fileName: file.name,
-          fileUrl: data.url ?? data.path ?? '',
-          fileSize: file.size,
-          mimeType: file.type || null,
-        }),
-      });
-      fetchFiles();
-    } catch { alert('File upload failed'); }
-    finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  }
-
-  async function handleDeleteFile(fileId: string) {
-    if (!confirm('Delete this file?')) return;
-    try {
-      await fetch(`${API_BASE}/api/v1/projects/${id}/files/${fileId}`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      });
-      fetchFiles();
-    } catch { alert('Failed to delete file'); }
-  }
-
-  async function handleDownloadFile(file: ProjectFile) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/storage/url?path=${encodeURIComponent(file.fileUrl)}`, {
-        headers: authHeaders(),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const url = json.url ?? json.data?.url;
-        if (url) window.open(url, '_blank');
-      } else {
-        // Fallback to direct URL
-        window.open(file.fileUrl, '_blank');
-      }
-    } catch {
-      window.open(file.fileUrl, '_blank');
-    }
-  }
-
-  async function handlePreviewFile(file: ProjectFile) {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/storage/url?path=${encodeURIComponent(file.fileUrl)}`, {
-        headers: authHeaders(),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const url = json.url ?? json.data?.url ?? file.fileUrl;
-        setPreviewFile({ url, fileName: file.fileName, mimeType: file.mimeType ?? 'application/octet-stream' });
-      } else {
-        setPreviewFile({ url: file.fileUrl, fileName: file.fileName, mimeType: file.mimeType ?? 'application/octet-stream' });
-      }
-    } catch {
-      setPreviewFile({ url: file.fileUrl, fileName: file.fileName, mimeType: file.mimeType ?? 'application/octet-stream' });
-    }
-  }
-
-  // ─── Discussions fetching ────────────────────────────────────
-
-  const fetchDiscussions = useCallback(async () => {
-    setDiscussionsLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/projects/${id}/discussions`, { headers: authHeaders() });
-      if (res.ok) {
-        const json = await res.json();
-        setDiscussions(Array.isArray(json) ? json : json.data ?? []);
-      }
-    } catch { /* silent */ }
-    finally { setDiscussionsLoading(false); }
-  }, [id]);
-
-  useEffect(() => { if (tab === 'discussions') fetchDiscussions(); }, [tab, fetchDiscussions]);
-
-  async function handleCreateDiscussion() {
-    if (!discForm.subject.trim()) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/projects/${id}/discussions`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(discForm),
-      });
-      if (res.ok) {
-        setShowDiscussionForm(false);
-        setDiscForm({ subject: '', description: '' });
-        fetchDiscussions();
-      }
-    } catch { alert('Failed to create discussion'); }
-  }
-
-  async function handleExpandDiscussion(discussionId: string) {
-    if (expandedDiscussion === discussionId) {
-      setExpandedDiscussion(null);
-      return;
-    }
-    setExpandedDiscussion(discussionId);
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/projects/${id}/discussions/${discussionId}`, { headers: authHeaders() });
-      if (res.ok) {
-        const json = await res.json();
-        const disc = json.data ?? json;
-        setDiscussionComments((prev) => ({ ...prev, [discussionId]: disc.comments ?? [] }));
-      }
-    } catch { /* silent */ }
-  }
-
-  async function handleAddComment(discussionId: string) {
-    const text = replyText[discussionId]?.trim();
-    if (!text) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/projects/${id}/discussions/${discussionId}/comments`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ content: text }),
-      });
-      if (res.ok) {
-        setReplyText((prev) => ({ ...prev, [discussionId]: '' }));
-        // Refresh comments
-        handleExpandDiscussion(discussionId);
-        // Also refresh list for updated count
-        fetchDiscussions();
-      }
-    } catch { alert('Failed to add comment'); }
-  }
-
-  // ─── Gantt data ──────────────────────────────────────────────
-
-  const fetchGanttTasks = useCallback(async () => {
-    setGanttLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/tasks?projectId=${id}&limit=200`, { headers: authHeaders() });
-      if (res.ok) {
-        const json = await res.json();
-        const data = json.data ?? json;
-        setGanttTasks(Array.isArray(data) ? data : []);
-      }
-    } catch { /* silent */ }
-    finally { setGanttLoading(false); }
-  }, [id]);
-
-  useEffect(() => { if (tab === 'gantt') fetchGanttTasks(); }, [tab, fetchGanttTasks]);
-
-  // ─── Clone ───────────────────────────────────────────────────
-
-  async function handleClone() {
-    setCloning(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/projects/${id}/clone`, {
-        method: 'POST',
-        headers: authHeaders(),
-      });
-      if (!res.ok) throw new Error(`Clone failed (${res.status})`);
-      const cloned = await res.json();
-      const clonedId = cloned?.data?.id ?? cloned?.id;
-      if (clonedId) {
-        router.push(`/projects/${clonedId}`);
-      } else {
-        router.push('/projects');
-      }
-    } catch {
-      alert('Failed to clone project');
-    } finally {
-      setCloning(false);
-    }
-  }
-
-  if (loading) return <div className="max-w-4xl animate-pulse h-96 bg-gray-100 rounded-xl" />;
+  if (loading) return <div className="max-w-5xl animate-pulse h-96 bg-gray-100 dark:bg-gray-800 rounded-xl" />;
   if (error || !p) return <div className="text-red-600">{error ?? 'Not found'}</div>;
 
-  const allTabs: { key: Tab; label: string }[] = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'tasks', label: 'Tasks' },
-    { key: 'milestones', label: 'Milestones' },
-    { key: 'files', label: 'Files' },
-    { key: 'discussions', label: 'Discussions' },
-    { key: 'gantt', label: 'Gantt' },
-    { key: 'members', label: 'Members' },
-    { key: 'time', label: 'Time Entries' },
-  ];
-
   return (
-    <div className="max-w-5xl">
-      <div className="mb-4"><Link href="/projects" className="text-sm text-gray-500 hover:text-primary">← Back to projects</Link></div>
-
-      <div className="flex items-start justify-between mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{p.name}</h1>
-          <p className="text-sm text-gray-500 mt-1">{p.client?.company ?? p.client?.company_name ?? '—'}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleClone}
-            disabled={cloning}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
-            </svg>
-            {cloning ? 'Cloning...' : 'Clone Project'}
-          </button>
-          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">{p.status}</span>
-        </div>
-      </div>
-
-      {/* ─── Tab Navigation ─────────────────────────────────────── */}
-      <div className="border-b border-gray-200 mb-6">
+    <DetailPageLayout
+      title={p.name}
+      subtitle={p.client?.company ?? p.client?.company_name ?? '—'}
+      breadcrumbs={[
+        { label: 'Projects', href: '/projects' },
+        { label: p.name },
+      ]}
+      badge={
+        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
+          {p.status}
+        </span>
+      }
+    >
+      {/* Tab bar */}
+      <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
         <nav className="flex gap-6 overflow-x-auto">
-          {allTabs.map((t) => (
+          {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                tab === t.key ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-900'
+                tab === t.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100'
               }`}
             >
               {t.label}
@@ -525,478 +251,342 @@ export default function ProjectDetailPage() {
         </nav>
       </div>
 
-      {/* ─── Overview ───────────────────────────────────────────── */}
-      {tab === 'overview' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <Detail label="Start Date">{p.startDate ? new Date(p.startDate).toLocaleDateString() : '—'}</Detail>
-            <Detail label="Deadline">{p.deadline ? new Date(p.deadline).toLocaleDateString() : '—'}</Detail>
-            <Detail label="Billing Type">{p.billingType ?? '—'}</Detail>
-            <Detail label="Estimated Hours">{p.estimatedHours ?? '—'}</Detail>
-            <Detail label="Description" wide>{p.description ?? '—'}</Detail>
-          </dl>
-        </div>
-      )}
+      {tab === 'overview' && <OverviewTab project={p} />}
+      {tab === 'milestones' && <MilestonesTab projectId={id} />}
+      {tab === 'gantt' && <GanttTab projectId={id} project={p} />}
+      {tab === 'discussions' && <DiscussionsTab projectId={id} />}
+      {tab === 'files' && <FilesTab projectId={id} />}
+      {tab === 'notes' && <NotesTab projectId={id} />}
+    </DetailPageLayout>
+  );
+}
 
-      {/* ─── Tasks ──────────────────────────────────────────────── */}
-      {tab === 'tasks' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          {(p.tasks ?? []).length === 0 ? (
-            <div className="py-12 text-center text-sm text-gray-400">No tasks yet</div>
-          ) : (
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
-                <tr>
-                  <th className="px-4 py-3">Task</th>
-                  <th className="px-4 py-3">Assignee</th>
-                  <th className="px-4 py-3">Due</th>
-                  <th className="px-4 py-3">Status</th>
+// ────────────────────────────────────────────────────────────────
+//  Overview (existing content preserved)
+// ────────────────────────────────────────────────────────────────
+
+function OverviewTab({ project: p }: { project: Project }) {
+  return (
+    <div className="space-y-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+          <Detail label="Start Date">
+            {p.startDate ? new Date(p.startDate).toLocaleDateString() : '—'}
+          </Detail>
+          <Detail label="Deadline">
+            {p.deadline ? new Date(p.deadline).toLocaleDateString() : '—'}
+          </Detail>
+          <Detail label="Billing Type">{p.billingType ?? '—'}</Detail>
+          <Detail label="Estimated Hours">{p.estimatedHours ?? '—'}</Detail>
+          <Detail label="Description" wide>
+            {p.description ?? '—'}
+          </Detail>
+        </dl>
+      </div>
+
+      {/* Tasks quick list */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Tasks</h2>
+        </div>
+        {(p.tasks ?? []).length === 0 ? (
+          <div className="py-8 text-center text-sm text-gray-400 dark:text-gray-500">No tasks yet</div>
+        ) : (
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-900 text-left text-xs text-gray-500 dark:text-gray-400 uppercase">
+              <tr>
+                <th className="px-4 py-3">Task</th>
+                <th className="px-4 py-3">Assignee</th>
+                <th className="px-4 py-3">Due</th>
+                <th className="px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(p.tasks ?? []).map((t) => (
+                <tr key={t.id} className="border-t border-gray-100 dark:border-gray-800">
+                  <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{t.name}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{t.assignee?.name ?? '—'}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                    {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300">
+                      <span className={`w-1.5 h-1.5 rounded-full ${statusColor(t.status)}`} />
+                      {t.status}
+                    </span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {(p.tasks ?? []).map((t) => (
-                  <tr key={t.id} className="border-t border-gray-100">
-                    <td className="px-4 py-3 text-gray-900">{t.name}</td>
-                    <td className="px-4 py-3 text-gray-600">{t.assignee?.name ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-600">{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">{t.status}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
 
-      {/* ─── Milestones ─────────────────────────────────────────── */}
-      {tab === 'milestones' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Milestones</h2>
+      {/* Members */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Members</h2>
+        {(p.members ?? []).length === 0 ? (
+          <div className="text-sm text-gray-400 dark:text-gray-500">No members</div>
+        ) : (
+          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+            {(p.members ?? []).map((m) => (
+              <li key={m.id} className="py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{m.name ?? m.email}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{m.email}</p>
+                </div>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{m.role ?? 'member'}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+//  Milestones — Kanban (HTML5 drag & drop)
+// ────────────────────────────────────────────────────────────────
+
+function MilestonesTab({ projectId }: { projectId: string }) {
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ name: '', description: '', dueDate: '' });
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<KanbanStatus | null>(null);
+
+  const fetchMilestones = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/api/v1/projects/${projectId}/milestones`);
+      if (res.ok) {
+        const json = await res.json();
+        setMilestones(Array.isArray(json) ? json : json.data ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchMilestones();
+  }, [fetchMilestones]);
+
+  async function handleCreate() {
+    if (!form.name.trim()) return;
+    const res = await apiFetch(`/api/v1/projects/${projectId}/milestones`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    });
+    if (res.ok) {
+      setShowForm(false);
+      setForm({ name: '', description: '', dueDate: '' });
+      fetchMilestones();
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this milestone?')) return;
+    await apiFetch(`/api/v1/projects/${projectId}/milestones/${id}`, { method: 'DELETE' });
+    fetchMilestones();
+  }
+
+  async function moveTo(milestoneId: string, status: KanbanStatus) {
+    // Persist both `status` (new canonical column) and `completed` (legacy
+    // mirror) so old readers keep working until the migration lands.
+    const completed = status === 'done';
+    const body: Record<string, unknown> = { status, completed };
+    // Optimistic update
+    setMilestones((prev) =>
+      prev.map((m) =>
+        m.id === milestoneId
+          ? { ...m, status, completed }
+          : m,
+      ),
+    );
+    await apiFetch(`/api/v1/projects/${projectId}/milestones/${milestoneId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    fetchMilestones();
+  }
+
+  function onDragStart(e: React.DragEvent, milestoneId: string) {
+    setDraggingId(milestoneId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', milestoneId);
+  }
+
+  function onDragOver(e: React.DragEvent, col: KanbanStatus) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverCol !== col) setDragOverCol(col);
+  }
+
+  function onDrop(e: React.DragEvent, col: KanbanStatus) {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain') || draggingId;
+    setDraggingId(null);
+    setDragOverCol(null);
+    if (!id) return;
+    const ms = milestones.find((m) => m.id === id);
+    if (!ms) return;
+    if (deriveMilestoneStatus(ms) === col) return;
+    moveTo(id, col);
+  }
+
+  const grouped: Record<KanbanStatus, Milestone[]> = {
+    planned: [],
+    in_progress: [],
+    done: [],
+  };
+  for (const ms of milestones) grouped[deriveMilestoneStatus(ms)].push(ms);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Milestones</h2>
+        <button
+          onClick={() => setShowForm(true)}
+          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
+        >
+          + Add Milestone
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <input
+              placeholder="Milestone name"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              className="border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <input
+              type="date"
+              value={form.dueDate}
+              onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+              className="border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <input
+              placeholder="Description (optional)"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              className="border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCreate}
+              className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
+            >
+              Create
+            </button>
             <button
               onClick={() => {
-                setEditingMilestone(null);
-                setMsForm({ name: '', description: '', dueDate: '' });
-                setShowMilestoneForm(true);
+                setShowForm(false);
+                setForm({ name: '', description: '', dueDate: '' });
               }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
+              className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200"
             >
-              + Add Milestone
+              Cancel
             </button>
           </div>
+        </div>
+      )}
 
-          {/* Inline form */}
-          {(showMilestoneForm || editingMilestone) && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input
-                  placeholder="Milestone name"
-                  value={msForm.name}
-                  onChange={(e) => setMsForm({ ...msForm, name: e.target.value })}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
-                <input
-                  type="date"
-                  value={msForm.dueDate}
-                  onChange={(e) => setMsForm({ ...msForm, dueDate: e.target.value })}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
-                <input
-                  placeholder="Description (optional)"
-                  value={msForm.description}
-                  onChange={(e) => setMsForm({ ...msForm, description: e.target.value })}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
+      {loading ? (
+        <div className="animate-pulse h-64 bg-gray-100 dark:bg-gray-800 rounded-xl" />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {KANBAN_COLUMNS.map((col) => (
+            <div
+              key={col.key}
+              onDragOver={(e) => onDragOver(e, col.key)}
+              onDrop={(e) => onDrop(e, col.key)}
+              className={`rounded-xl border ${col.tint} p-3 min-h-[300px] transition-colors ${
+                dragOverCol === col.key ? 'ring-2 ring-primary/40' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3 px-1">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{col.label}</h3>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{grouped[col.key].length}</span>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={editingMilestone ? handleUpdateMilestone : handleCreateMilestone}
-                  className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
-                >
-                  {editingMilestone ? 'Update' : 'Create'}
-                </button>
-                <button
-                  onClick={() => { setShowMilestoneForm(false); setEditingMilestone(null); }}
-                  className="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {milestonesLoading ? (
-            <div className="animate-pulse h-32 bg-gray-100 rounded-xl" />
-          ) : milestones.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-12 text-center text-sm text-gray-400">No milestones yet</div>
-          ) : (
-            <div className="space-y-3">
-              {milestones.map((ms) => {
-                const totalTasks = ms.tasks?.length ?? 0;
-                const doneTasks = ms.tasks?.filter((t) => t.status === 'complete').length ?? 0;
-                const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
-
-                return (
-                  <div key={ms.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3 flex-1">
-                        <button
-                          onClick={() => handleToggleMilestone(ms)}
-                          className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                            ms.completed ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-gray-400'
-                          }`}
-                        >
-                          {ms.completed && (
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </button>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                              style={{ backgroundColor: ms.color }}
-                            />
-                            <h3 className={`text-sm font-semibold ${ms.completed ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{ms.name}</h3>
-                          </div>
-                          {ms.description && <p className="text-xs text-gray-500 mt-0.5 ml-4">{ms.description}</p>}
-                          {ms.dueDate && (
-                            <p className="text-xs text-gray-400 mt-0.5 ml-4">
-                              Due: {new Date(ms.dueDate).toLocaleDateString()}
+              <div className="space-y-2">
+                {grouped[col.key].length === 0 && (
+                  <div className="text-xs text-gray-400 dark:text-gray-500 italic py-4 text-center">Drop here</div>
+                )}
+                {grouped[col.key].map((ms) => {
+                  const totalTasks = ms.tasks?.length ?? 0;
+                  const doneTasks = ms.tasks?.filter((t) => t.status === 'complete').length ?? 0;
+                  const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+                  return (
+                    <div
+                      key={ms.id}
+                      draggable
+                      onDragStart={(e) => onDragStart(e, ms.id)}
+                      onDragEnd={() => {
+                        setDraggingId(null);
+                        setDragOverCol(null);
+                      }}
+                      className={`bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm p-3 cursor-move ${
+                        draggingId === ms.id ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <span
+                          className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
+                          style={{ backgroundColor: ms.color }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ms.name}</h4>
+                          {ms.description && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
+                              {ms.description}
                             </p>
                           )}
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1">
                         <button
-                          onClick={() => {
-                            setEditingMilestone(ms);
-                            setShowMilestoneForm(false);
-                            setMsForm({
-                              name: ms.name,
-                              description: ms.description ?? '',
-                              dueDate: ms.dueDate ? ms.dueDate.substring(0, 10) : '',
-                            });
-                          }}
-                          className="p-1 text-gray-400 hover:text-gray-600"
-                          title="Edit"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => handleDeleteMilestone(ms.id)}
-                          className="p-1 text-gray-400 hover:text-red-500"
+                          onClick={() => handleDelete(ms.id)}
+                          className="text-gray-300 dark:text-gray-600 hover:text-red-500 flex-shrink-0"
                           title="Delete"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                           </svg>
                         </button>
                       </div>
-                    </div>
-
-                    {/* Progress bar */}
-                    <div className="mt-3 ml-8">
-                      <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                        <span>{doneTasks}/{totalTasks} tasks</span>
-                        <span>{pct}%</span>
+                      <div className="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                        <span>
+                          {doneTasks}/{totalTasks} tasks
+                        </span>
+                        {ms.dueDate && <span>{new Date(ms.dueDate).toLocaleDateString()}</span>}
                       </div>
-                      <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-
-                    {/* Tasks under this milestone */}
-                    {totalTasks > 0 && (
-                      <div className="mt-3 ml-8 space-y-1">
-                        {ms.tasks!.map((t) => (
-                          <div key={t.id} className="flex items-center gap-2 text-xs text-gray-600">
-                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusColor(t.status)}`} />
-                            <span className={t.status === 'complete' ? 'line-through text-gray-400' : ''}>{t.name}</span>
-                            {t.dueDate && (
-                              <span className="text-gray-400 ml-auto">{new Date(t.dueDate).toLocaleDateString()}</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─── Files ──────────────────────────────────────────────── */}
-      {tab === 'files' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Files</h2>
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                onChange={handleFileUpload}
-                className="hidden"
-                id="file-upload"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                </svg>
-                {uploading ? 'Uploading...' : 'Upload File'}
-              </button>
-            </div>
-          </div>
-
-          {filesLoading ? (
-            <div className="animate-pulse h-32 bg-gray-100 rounded-xl" />
-          ) : files.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-12 text-center text-sm text-gray-400">No files uploaded yet</div>
-          ) : (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
-                  <tr>
-                    <th className="px-4 py-3">Name</th>
-                    <th className="px-4 py-3">Size</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {files.map((f) => (
-                    <tr key={f.id} className="border-t border-gray-100">
-                      <td className="px-4 py-3 text-gray-900 font-medium">
-                        <button
-                          onClick={() => handlePreviewFile(f)}
-                          className="text-left hover:text-primary transition-colors"
-                        >
-                          {f.fileName}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">{formatBytes(f.fileSize)}</td>
-                      <td className="px-4 py-3 text-gray-600">{new Date(f.createdAt).toLocaleDateString()}</td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => handlePreviewFile(f)}
-                            className="p-1 text-gray-400 hover:text-primary"
-                            title="Preview"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleDownloadFile(f)}
-                            className="p-1 text-gray-400 hover:text-primary"
-                            title="Download"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteFile(f.id)}
-                            className="p-1 text-gray-400 hover:text-red-500"
-                            title="Delete"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                            </svg>
-                          </button>
+                      {totalTasks > 0 && (
+                        <div className="mt-2 w-full h-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-green-500 rounded-full transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─── Discussions ────────────────────────────────────────── */}
-      {tab === 'discussions' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Discussions</h2>
-            <button
-              onClick={() => { setShowDiscussionForm(true); setDiscForm({ subject: '', description: '' }); }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
-            >
-              + New Discussion
-            </button>
-          </div>
-
-          {showDiscussionForm && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
-              <input
-                placeholder="Subject"
-                value={discForm.subject}
-                onChange={(e) => setDiscForm({ ...discForm, subject: e.target.value })}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-              <textarea
-                placeholder="Body (optional)"
-                value={discForm.description}
-                onChange={(e) => setDiscForm({ ...discForm, description: e.target.value })}
-                rows={3}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-              />
-              <div className="flex gap-2">
-                <button onClick={handleCreateDiscussion} className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90">
-                  Create
-                </button>
-                <button onClick={() => setShowDiscussionForm(false)} className="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
-                  Cancel
-                </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          )}
-
-          {discussionsLoading ? (
-            <div className="animate-pulse h-32 bg-gray-100 rounded-xl" />
-          ) : discussions.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-12 text-center text-sm text-gray-400">No discussions yet</div>
-          ) : (
-            <div className="space-y-2">
-              {discussions.map((d) => (
-                <div key={d.id} className="bg-white rounded-xl border border-gray-100 shadow-sm">
-                  <button
-                    onClick={() => handleExpandDiscussion(d.id)}
-                    className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50 transition-colors rounded-xl"
-                  >
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900">{d.subject}</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {new Date(d.createdAt).toLocaleDateString()} · {d._count?.comments ?? 0} replies
-                      </p>
-                    </div>
-                    <svg
-                      className={`w-4 h-4 text-gray-400 transition-transform ${expandedDiscussion === d.id ? 'rotate-180' : ''}`}
-                      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                    </svg>
-                  </button>
-
-                  {expandedDiscussion === d.id && (
-                    <div className="border-t border-gray-100 px-4 py-3 space-y-3">
-                      {d.description && (
-                        <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3">{d.description}</p>
-                      )}
-
-                      {/* Comments */}
-                      <div className="space-y-2">
-                        {(discussionComments[d.id] ?? []).map((c) => (
-                          <div key={c.id} className="pl-4 border-l-2 border-gray-200">
-                            <p className="text-sm text-gray-700">{c.content}</p>
-                            <p className="text-xs text-gray-400 mt-0.5">{new Date(c.createdAt).toLocaleDateString()}</p>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Reply form */}
-                      <div className="flex gap-2">
-                        <input
-                          placeholder="Write a reply..."
-                          value={replyText[d.id] ?? ''}
-                          onChange={(e) => setReplyText((prev) => ({ ...prev, [d.id]: e.target.value }))}
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddComment(d.id); }}
-                          className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                        />
-                        <button
-                          onClick={() => handleAddComment(d.id)}
-                          className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
-                        >
-                          Reply
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─── Gantt Chart ────────────────────────────────────────── */}
-      {tab === 'gantt' && (
-        <GanttChart project={p} tasks={ganttTasks} loading={ganttLoading} />
-      )}
-
-      {/* ─── Members ────────────────────────────────────────────── */}
-      {tab === 'members' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-          {(p.members ?? []).length === 0 ? (
-            <div className="text-sm text-gray-400 text-center py-8">No members</div>
-          ) : (
-            <ul className="divide-y divide-gray-100">
-              {(p.members ?? []).map((m) => (
-                <li key={m.id} className="py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{m.name ?? m.email}</p>
-                    <p className="text-xs text-gray-500">{m.email}</p>
-                  </div>
-                  <span className="text-xs text-gray-500">{m.role ?? 'member'}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* ─── File Preview Modal ──────────────────────────────────── */}
-      {previewFile && (
-        <FilePreviewModal
-          url={previewFile.url}
-          fileName={previewFile.fileName}
-          mimeType={previewFile.mimeType}
-          onClose={() => setPreviewFile(null)}
-        />
-      )}
-
-      {/* ─── Time Entries ───────────────────────────────────────── */}
-      {tab === 'time' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          {(p.timeEntries ?? []).length === 0 ? (
-            <div className="py-12 text-center text-sm text-gray-400">No time entries yet</div>
-          ) : (
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
-                <tr>
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">User</th>
-                  <th className="px-4 py-3">Description</th>
-                  <th className="px-4 py-3 text-right">Hours</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(p.timeEntries ?? []).map((t) => (
-                  <tr key={t.id} className="border-t border-gray-100">
-                    <td className="px-4 py-3">{new Date(t.date).toLocaleDateString()}</td>
-                    <td className="px-4 py-3">{t.user?.name ?? '—'}</td>
-                    <td className="px-4 py-3">{t.description ?? '—'}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{t.hours}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          ))}
         </div>
       )}
     </div>
@@ -1004,118 +594,133 @@ export default function ProjectDetailPage() {
 }
 
 // ────────────────────────────────────────────────────────────────
-//  Gantt Chart Component (CSS-only, no libraries)
+//  Gantt — pure CSS grid (months × milestones)
 // ────────────────────────────────────────────────────────────────
 
-function GanttChart({ project, tasks, loading }: { project: Project; tasks: Task[]; loading: boolean }) {
-  if (loading) return <div className="animate-pulse h-64 bg-gray-100 rounded-xl" />;
+function GanttTab({ projectId, project }: { projectId: string; project: Project }) {
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  if (!project.startDate || !project.deadline) {
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await apiFetch(`/api/v1/projects/${projectId}/milestones`);
+        if (res.ok) {
+          const json = await res.json();
+          const data = Array.isArray(json) ? json : json.data ?? [];
+          if (!cancel) setMilestones(data);
+        }
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [projectId]);
+
+  if (loading) return <div className="animate-pulse h-64 bg-gray-100 dark:bg-gray-800 rounded-xl" />;
+
+  // Compute span: from earliest start / project.startDate to latest due / project.deadline
+  const bars = milestones.map((ms) => {
+    const start = ms.createdAt ? new Date(ms.createdAt) : new Date();
+    const end = ms.dueDate ? new Date(ms.dueDate) : new Date(start.getTime() + 1000 * 60 * 60 * 24 * 7);
+    return { ms, start, end };
+  });
+
+  if (bars.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-12 text-center text-sm text-gray-400">
-        Set project start date and deadline to view Gantt chart
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+        No milestones with dates to display on Gantt chart
       </div>
     );
   }
 
-  const projectStart = new Date(project.startDate);
-  const projectEnd = new Date(project.deadline);
-  const totalDays = Math.max(1, (projectEnd.getTime() - projectStart.getTime()) / (1000 * 60 * 60 * 24));
+  const projectStart = project.startDate ? new Date(project.startDate) : bars.reduce((m, b) => (b.start < m ? b.start : m), bars[0].start);
+  const projectEnd = project.deadline ? new Date(project.deadline) : bars.reduce((m, b) => (b.end > m ? b.end : m), bars[0].end);
 
-  function getPercent(date: Date): number {
-    const days = (date.getTime() - projectStart.getTime()) / (1000 * 60 * 60 * 24);
+  // Normalize to month grid.
+  const gridStart = new Date(projectStart.getFullYear(), projectStart.getMonth(), 1);
+  const gridEnd = new Date(projectEnd.getFullYear(), projectEnd.getMonth() + 1, 0);
+  const totalDays = Math.max(1, (gridEnd.getTime() - gridStart.getTime()) / (1000 * 60 * 60 * 24));
+
+  // Build month columns
+  const months: { label: string; widthPct: number }[] = [];
+  const cursor = new Date(gridStart);
+  while (cursor <= gridEnd) {
+    const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+    const mDays = (monthEnd.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24) + 1;
+    months.push({
+      label: monthStart.toLocaleDateString(undefined, { month: 'short', year: '2-digit' }),
+      widthPct: (mDays / totalDays) * 100,
+    });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  function pct(d: Date): number {
+    const days = (d.getTime() - gridStart.getTime()) / (1000 * 60 * 60 * 24);
     return Math.max(0, Math.min(100, (days / totalDays) * 100));
   }
 
-  // Generate week labels
-  const weeks: { label: string; left: number }[] = [];
-  const cursor = new Date(projectStart);
-  // Align to Monday
-  cursor.setDate(cursor.getDate() - cursor.getDay() + 1);
-  while (cursor <= projectEnd) {
-    const pct = getPercent(new Date(cursor));
-    if (pct >= 0 && pct <= 100) {
-      weeks.push({
-        label: cursor.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-        left: pct,
-      });
-    }
-    cursor.setDate(cursor.getDate() + 7);
-  }
-
-  const todayPct = getPercent(new Date());
-
-  // Filter tasks that have dates
-  const ganttTasks = tasks.filter((t) => t.startDate || t.dueDate);
-
-  if (ganttTasks.length === 0) {
-    return (
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm py-12 text-center text-sm text-gray-400">
-        No tasks with dates to display on Gantt chart
-      </div>
-    );
-  }
+  const todayPct = pct(new Date());
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
         <div className="min-w-[800px]">
-          {/* Header with week labels */}
-          <div className="relative h-8 bg-gray-50 border-b border-gray-200">
-            {weeks.map((w, i) => (
-              <div
-                key={i}
-                className="absolute top-0 h-full border-l border-gray-200 flex items-center"
-                style={{ left: `${Math.max(0, w.left)}%` }}
-              >
-                <span className="text-[10px] text-gray-400 pl-1 whitespace-nowrap">{w.label}</span>
-              </div>
-            ))}
+          {/* Months header */}
+          <div className="flex h-9 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+            <div className="w-48 flex-shrink-0 px-3 flex items-center text-xs font-semibold text-gray-600 dark:text-gray-400 border-r border-gray-200 dark:border-gray-700">
+              Milestone
+            </div>
+            <div className="flex-1 flex">
+              {months.map((m, i) => (
+                <div
+                  key={i}
+                  style={{ width: `${m.widthPct}%` }}
+                  className="border-r border-gray-200 dark:border-gray-700 flex items-center px-2 text-[11px] text-gray-500 dark:text-gray-400"
+                >
+                  {m.label}
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* Task rows */}
+          {/* Rows */}
           <div className="relative">
-            {/* Vertical week lines */}
-            {weeks.map((w, i) => (
-              <div
-                key={i}
-                className="absolute top-0 bottom-0 border-l border-gray-100"
-                style={{ left: `${Math.max(0, w.left)}%` }}
-              />
-            ))}
-
-            {/* Today line */}
-            {todayPct >= 0 && todayPct <= 100 && (
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-red-400 z-10"
-                style={{ left: `${todayPct}%` }}
-                title="Today"
-              />
-            )}
-
-            {ganttTasks.map((task) => {
-              const tStart = task.startDate ? new Date(task.startDate) : task.dueDate ? new Date(task.dueDate) : projectStart;
-              const tEnd = task.dueDate ? new Date(task.dueDate) : task.startDate ? new Date(task.startDate) : projectEnd;
-              const left = getPercent(tStart);
-              const right = getPercent(tEnd);
+            {bars.map(({ ms, start, end }) => {
+              const left = pct(start);
+              const right = pct(end);
               const width = Math.max(1, right - left);
+              const status = deriveMilestoneStatus(ms);
+              const bar =
+                status === 'done'
+                  ? 'bg-green-400'
+                  : ms.dueDate && new Date(ms.dueDate) < new Date() && !ms.completed
+                    ? 'bg-red-400'
+                    : status === 'in_progress'
+                      ? 'bg-blue-400'
+                      : 'bg-gray-300';
 
               return (
-                <div key={task.id} className="flex items-center h-9 border-b border-gray-50 relative">
-                  {/* Task name */}
-                  <div className="w-48 flex-shrink-0 px-3 text-xs text-gray-700 truncate border-r border-gray-100 bg-white z-20 relative">
-                    {task.name}
+                <div key={ms.id} className="flex items-center h-10 border-b border-gray-50 relative">
+                  <div className="w-48 flex-shrink-0 px-3 text-xs text-gray-700 dark:text-gray-300 truncate border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-20">
+                    {ms.name}
                   </div>
-                  {/* Bar area */}
                   <div className="flex-1 relative h-full">
+                    {todayPct >= 0 && todayPct <= 100 && (
+                      <div
+                        className="absolute top-0 bottom-0 w-0.5 bg-red-400/70 z-10"
+                        style={{ left: `${todayPct}%` }}
+                      />
+                    )}
                     <div
-                      className={`absolute top-1.5 h-6 rounded ${ganttBarColor(task.status, task.dueDate)} opacity-80`}
-                      style={{
-                        left: `${left}%`,
-                        width: `${width}%`,
-                        minWidth: '4px',
-                      }}
-                      title={`${task.name} (${task.status})`}
+                      className={`absolute top-2 h-6 rounded ${bar} opacity-90`}
+                      style={{ left: `${left}%`, width: `${width}%`, minWidth: '4px' }}
+                      title={`${ms.name} · ${start.toLocaleDateString()} → ${end.toLocaleDateString()}`}
                     />
                   </div>
                 </div>
@@ -1123,21 +728,20 @@ function GanttChart({ project, tasks, loading }: { project: Project; tasks: Task
             })}
           </div>
 
-          {/* Legend */}
-          <div className="flex items-center gap-4 px-4 py-2 border-t border-gray-100 bg-gray-50">
-            <span className="flex items-center gap-1 text-[10px] text-gray-500">
-              <span className="w-3 h-2 rounded bg-gray-300" /> Not started
+          <div className="flex items-center gap-4 px-4 py-2 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+            <span className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
+              <span className="w-3 h-2 rounded bg-gray-300" /> Planned
             </span>
-            <span className="flex items-center gap-1 text-[10px] text-gray-500">
+            <span className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
               <span className="w-3 h-2 rounded bg-blue-400" /> In progress
             </span>
-            <span className="flex items-center gap-1 text-[10px] text-gray-500">
-              <span className="w-3 h-2 rounded bg-green-400" /> Completed
+            <span className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
+              <span className="w-3 h-2 rounded bg-green-400" /> Done
             </span>
-            <span className="flex items-center gap-1 text-[10px] text-gray-500">
+            <span className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
               <span className="w-3 h-2 rounded bg-red-400" /> Overdue
             </span>
-            <span className="flex items-center gap-1 text-[10px] text-gray-500">
+            <span className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
               <span className="w-3 h-0.5 bg-red-400" /> Today
             </span>
           </div>
@@ -1148,14 +752,530 @@ function GanttChart({ project, tasks, loading }: { project: Project; tasks: Task
 }
 
 // ────────────────────────────────────────────────────────────────
+//  Discussions — threaded-ish list
+// ────────────────────────────────────────────────────────────────
+
+function DiscussionsTab({ projectId }: { projectId: string }) {
+  const [discussions, setDiscussions] = useState<Discussion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ subject: '', description: '' });
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [comments, setComments] = useState<Record<string, DiscussionComment[]>>({});
+  const [replyText, setReplyText] = useState<Record<string, string>>({});
+
+  const fetchList = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/api/v1/projects/${projectId}/discussions`);
+      if (res.ok) {
+        const json = await res.json();
+        setDiscussions(Array.isArray(json) ? json : json.data ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchList();
+  }, [fetchList]);
+
+  async function handleCreate() {
+    if (!form.subject.trim()) return;
+    const res = await apiFetch(`/api/v1/projects/${projectId}/discussions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    });
+    if (res.ok) {
+      setShowForm(false);
+      setForm({ subject: '', description: '' });
+      fetchList();
+    }
+  }
+
+  async function handleExpand(discussionId: string) {
+    if (expanded === discussionId) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(discussionId);
+    const res = await apiFetch(`/api/v1/projects/${projectId}/discussions/${discussionId}`);
+    if (res.ok) {
+      const json = await res.json();
+      const d = json.data ?? json;
+      setComments((prev) => ({ ...prev, [discussionId]: d.comments ?? [] }));
+    }
+  }
+
+  async function handleReply(discussionId: string) {
+    const text = replyText[discussionId]?.trim();
+    if (!text) return;
+    const res = await apiFetch(
+      `/api/v1/projects/${projectId}/discussions/${discussionId}/comments`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text }),
+      },
+    );
+    if (res.ok) {
+      setReplyText((prev) => ({ ...prev, [discussionId]: '' }));
+      handleExpand(discussionId); // refresh
+      fetchList();
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 space-y-3">
+        {!showForm ? (
+          <button
+            onClick={() => setShowForm(true)}
+            className="w-full text-left text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-100"
+          >
+            Start a new discussion…
+          </button>
+        ) : (
+          <>
+            <input
+              placeholder="Subject"
+              value={form.subject}
+              onChange={(e) => setForm({ ...form, subject: e.target.value })}
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <textarea
+              placeholder="Body (optional)"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              rows={3}
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleCreate}
+                className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
+              >
+                Create
+              </button>
+              <button
+                onClick={() => {
+                  setShowForm(false);
+                  setForm({ subject: '', description: '' });
+                }}
+                className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="animate-pulse h-32 bg-gray-100 dark:bg-gray-800 rounded-xl" />
+      ) : discussions.length === 0 ? (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+          No discussions yet
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {discussions.map((d) => (
+            <div key={d.id} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
+              <button
+                onClick={() => handleExpand(d.id)}
+                className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors rounded-xl"
+              >
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{d.subject}</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {new Date(d.createdAt).toLocaleDateString()} · {d._count?.comments ?? 0} replies
+                  </p>
+                </div>
+                <svg
+                  className={`w-4 h-4 text-gray-400 dark:text-gray-500 transition-transform ${
+                    expanded === d.id ? 'rotate-180' : ''
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                </svg>
+              </button>
+
+              {expanded === d.id && (
+                <div className="border-t border-gray-100 dark:border-gray-800 px-4 py-3 space-y-3">
+                  {d.description && (
+                    <p className="text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded-lg p-3">{d.description}</p>
+                  )}
+                  <div className="space-y-2">
+                    {(comments[d.id] ?? []).map((c) => (
+                      <div key={c.id} className="pl-4 border-l-2 border-gray-200 dark:border-gray-700">
+                        <p className="text-sm text-gray-700 dark:text-gray-300">{c.content}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          {new Date(c.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      placeholder="Write a reply..."
+                      value={replyText[d.id] ?? ''}
+                      onChange={(e) =>
+                        setReplyText((prev) => ({ ...prev, [d.id]: e.target.value }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleReply(d.id);
+                      }}
+                      className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                    <button
+                      onClick={() => handleReply(d.id)}
+                      className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
+                    >
+                      Reply
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+//  Files — upload + list
+// ────────────────────────────────────────────────────────────────
+
+function FilesTab({ projectId }: { projectId: string }) {
+  const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<{ url: string; fileName: string; mimeType: string } | null>(
+    null,
+  );
+
+  const fetchFiles = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/api/v1/projects/${projectId}/files`);
+      if (res.ok) {
+        const json = await res.json();
+        setFiles(Array.isArray(json) ? json : json.data ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchFiles();
+  }, [fetchFiles]);
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('folder', `projects/${projectId}`);
+      const up = await apiFetch(`/api/v1/storage/upload`, { method: 'POST', body: form });
+      if (!up.ok) throw new Error('Upload failed');
+      const uploaded = await up.json();
+      const data = uploaded.data ?? uploaded;
+      await apiFetch(`/api/v1/projects/${projectId}/files`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileUrl: data.url ?? data.path ?? '',
+          fileSize: file.size,
+          mimeType: file.type || null,
+        }),
+      });
+      fetchFiles();
+    } catch {
+      alert('File upload failed');
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this file?')) return;
+    await apiFetch(`/api/v1/projects/${projectId}/files/${id}`, { method: 'DELETE' });
+    fetchFiles();
+  }
+
+  async function handleDownload(f: ProjectFile) {
+    try {
+      const res = await apiFetch(`/api/v1/storage/url?path=${encodeURIComponent(f.fileUrl)}`);
+      if (res.ok) {
+        const json = await res.json();
+        const url = json.url ?? json.data?.url;
+        if (url) return window.open(url, '_blank');
+      }
+    } catch {
+      /* ignore */
+    }
+    window.open(f.fileUrl, '_blank');
+  }
+
+  async function handlePreview(f: ProjectFile) {
+    try {
+      const res = await apiFetch(`/api/v1/storage/url?path=${encodeURIComponent(f.fileUrl)}`);
+      if (res.ok) {
+        const json = await res.json();
+        const url = json.url ?? json.data?.url ?? f.fileUrl;
+        setPreview({ url, fileName: f.fileName, mimeType: f.mimeType ?? 'application/octet-stream' });
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    setPreview({ url: f.fileUrl, fileName: f.fileName, mimeType: f.mimeType ?? 'application/octet-stream' });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Files</h2>
+        <div>
+          <input ref={inputRef} type="file" onChange={handleUpload} className="hidden" />
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+          >
+            {uploading ? 'Uploading...' : 'Upload File'}
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="animate-pulse h-32 bg-gray-100 dark:bg-gray-800 rounded-xl" />
+      ) : files.length === 0 ? (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+          No files uploaded yet
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-900 text-left text-xs text-gray-500 dark:text-gray-400 uppercase">
+              <tr>
+                <th className="px-4 py-3">Filename</th>
+                <th className="px-4 py-3">Size</th>
+                <th className="px-4 py-3">Uploaded By</th>
+                <th className="px-4 py-3">Uploaded At</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {files.map((f) => (
+                <tr key={f.id} className="border-t border-gray-100 dark:border-gray-800">
+                  <td className="px-4 py-3 text-gray-900 dark:text-gray-100 font-medium">
+                    <button
+                      onClick={() => handlePreview(f)}
+                      className="text-left hover:text-primary transition-colors"
+                    >
+                      {f.fileName}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{formatBytes(f.fileSize)}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{f.userId ?? '—'}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                    {new Date(f.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => handleDownload(f)}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Download
+                      </button>
+                      <button
+                        onClick={() => handleDelete(f.id)}
+                        className="text-xs text-red-500 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {preview && (
+        <FilePreviewModal
+          url={preview.url}
+          fileName={preview.fileName}
+          mimeType={preview.mimeType}
+          onClose={() => setPreview(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+//  Notes
+// ────────────────────────────────────────────────────────────────
+
+function NotesTab({ projectId }: { projectId: string }) {
+  const [notes, setNotes] = useState<ProjectNote[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [posting, setPosting] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  const fetchNotes = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/api/v1/projects/${projectId}/notes`);
+      if (res.ok) {
+        const json = await res.json();
+        setNotes(Array.isArray(json) ? json : json.data ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchNotes();
+  }, [fetchNotes]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch('/api/v1/auth/me');
+        if (res.ok) {
+          const json = await res.json();
+          const me = json.data ?? json;
+          setCurrentUserId(me?.id ?? null);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, []);
+
+  async function handleCreate() {
+    const content = draft.trim();
+    if (!content) return;
+    setPosting(true);
+    try {
+      const res = await apiFetch(`/api/v1/projects/${projectId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      if (res.ok) {
+        setDraft('');
+        fetchNotes();
+      }
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  async function handleDelete(noteId: string) {
+    if (!confirm('Delete this note?')) return;
+    await apiFetch(`/api/v1/projects/${projectId}/notes/${noteId}`, { method: 'DELETE' });
+    fetchNotes();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 space-y-2">
+        <textarea
+          placeholder="Add a note..."
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={3}
+          className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+        />
+        <div className="flex justify-end">
+          <button
+            onClick={handleCreate}
+            disabled={posting || !draft.trim()}
+            className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+          >
+            {posting ? 'Saving...' : 'Add Note'}
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="animate-pulse h-32 bg-gray-100 dark:bg-gray-800 rounded-xl" />
+      ) : notes.length === 0 ? (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+          No notes yet
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {notes.map((n) => {
+            const canDelete = !n.userId || !currentUserId || n.userId === currentUserId;
+            return (
+              <div
+                key={n.id}
+                className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4"
+              >
+                <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{n.content}</p>
+                <div className="mt-2 flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+                  <span>
+                    {n.userId ? `By ${n.userId}` : 'Anonymous'} ·{' '}
+                    {new Date(n.createdAt).toLocaleString()}
+                  </span>
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(n.id)}
+                      className="text-red-500 hover:underline"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
 //  Detail helper
 // ────────────────────────────────────────────────────────────────
 
-function Detail({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
+function Detail({
+  label,
+  children,
+  wide,
+}: {
+  label: string;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
   return (
     <div className={wide ? 'sm:col-span-2' : ''}>
-      <dt className="text-xs text-gray-500 mb-1">{label}</dt>
-      <dd className="text-gray-900">{children}</dd>
+      <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</dt>
+      <dd className="text-gray-900 dark:text-gray-100">{children}</dd>
     </div>
   );
 }

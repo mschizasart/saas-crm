@@ -1,6 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
+import { inputClass } from '@/components/ui/form-field';
 
 interface Goal {
   id: string;
@@ -11,7 +17,6 @@ interface Goal {
   current: number | string | null;
   startDate: string | null;
   endDate: string | null;
-  status: string;
   achievedAt: string | null;
 }
 
@@ -30,19 +35,18 @@ const GOAL_TYPES = [
   { value: 'tickets_closed', label: 'Tickets Closed' },
 ];
 
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    active: 'bg-blue-100 text-blue-700',
-    achieved: 'bg-green-100 text-green-700',
-    failed: 'bg-red-100 text-red-700',
-    not_started: 'bg-gray-100 text-gray-600',
-  };
+const GOAL_STATUS_VARIANTS: Record<string, BadgeVariant> = {
+  active: 'info',
+  achieved: 'success',
+  failed: 'error',
+  not_started: 'default',
+};
+
+function GoalStatusBadge({ status }: { status: string }) {
   return (
-    <span
-      className={`text-xs font-medium px-2 py-0.5 rounded-full ${colors[status] ?? 'bg-gray-100 text-gray-600'}`}
-    >
+    <Badge variant={GOAL_STATUS_VARIANTS[status] ?? 'default'}>
       {status.replace(/_/g, ' ')}
-    </span>
+    </Badge>
   );
 }
 
@@ -57,40 +61,42 @@ function GoalCard({
   const current = Number(goal.current ?? 0);
   const pct =
     target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+  const status = goal.achievedAt ? 'achieved' : 'active';
 
   return (
-    <div
+    <Card
+      padding="lg"
       onClick={onClick}
-      className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 cursor-pointer hover:shadow-md transition-shadow"
+      className="cursor-pointer hover:shadow-md transition-shadow"
     >
       <div className="flex items-start justify-between mb-3">
-        <h3 className="font-semibold text-gray-900">{goal.name}</h3>
-        <StatusBadge status={goal.status} />
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100">{goal.name}</h3>
+        <GoalStatusBadge status={status} />
       </div>
       {goal.description && (
-        <p className="text-sm text-gray-500 mb-3 line-clamp-2">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 line-clamp-2">
           {goal.description}
         </p>
       )}
       <div className="mb-2">
-        <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+        <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
           <span>
             {current.toLocaleString()} / {target.toLocaleString()}
           </span>
           <span className="font-medium">{pct}%</span>
         </div>
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
           <div
             className="h-full bg-primary rounded-full transition-all"
             style={{ width: `${pct}%` }}
           />
         </div>
       </div>
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-gray-400 dark:text-gray-500">
         {goal.startDate && new Date(goal.startDate).toLocaleDateString()} —{' '}
         {goal.endDate && new Date(goal.endDate).toLocaleDateString()}
       </p>
-    </div>
+    </Card>
   );
 }
 
@@ -203,23 +209,20 @@ export default function GoalsPage() {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Goals</h1>
-        <button
-          onClick={openNew}
-          className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90"
-        >
-          <span className="text-lg leading-none">+</span>New Goal
-        </button>
-      </div>
-
+    <ListPageLayout
+      title="Goals"
+      primaryAction={{ label: 'New Goal', onClick: openNew }}
+    >
       {loading ? (
-        <p className="text-gray-400">Loading...</p>
+        <p className="text-gray-400 dark:text-gray-500">Loading...</p>
       ) : goals.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-10 text-center text-gray-400">
-          No goals yet — create your first one.
-        </div>
+        <Card>
+          <EmptyState
+            title="No goals yet"
+            description="Create your first one to start tracking progress."
+            action={{ label: 'New Goal', onClick: openNew }}
+          />
+        </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {goals.map((g) => (
@@ -234,7 +237,7 @@ export default function GoalsPage() {
           onClick={() => setModalOpen(false)}
         >
           <div
-            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md"
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6 w-full max-w-md"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold mb-4">
@@ -242,29 +245,29 @@ export default function GoalsPage() {
             </h2>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-gray-600">Title</label>
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Title</label>
                 <input
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                  className={inputClass}
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600">Description</label>
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Description</label>
                 <textarea
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={2}
-                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                  className={inputClass}
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Type</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
                   <select
                     value={form.type}
                     onChange={(e) => setForm({ ...form, type: e.target.value })}
-                    className="w-full border border-gray-200 rounded px-2 py-2 text-sm bg-white"
+                    className={inputClass}
                   >
                     {GOAL_TYPES.map((t) => (
                       <option key={t.value} value={t.value}>
@@ -274,77 +277,71 @@ export default function GoalsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Target</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Target</label>
                   <input
                     type="number"
                     value={form.target}
                     onChange={(e) => setForm({ ...form, target: e.target.value })}
-                    className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                    className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Start</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Start</label>
                   <input
                     type="date"
                     value={form.startDate}
                     onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                    className="w-full border border-gray-200 rounded px-2 py-2 text-sm"
+                    className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600">End</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">End</label>
                   <input
                     type="date"
                     value={form.endDate}
                     onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                    className="w-full border border-gray-200 rounded px-2 py-2 text-sm"
+                    className={inputClass}
                   />
                 </div>
               </div>
               {editing && (
                 <div>
-                  <label className="text-xs font-medium text-gray-600">
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
                     Achieved (progress)
                   </label>
                   <input
                     type="number"
                     value={form.achieved}
                     onChange={(e) => setForm({ ...form, achieved: e.target.value })}
-                    className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                    className={inputClass}
                   />
                 </div>
               )}
             </div>
             <div className="flex items-center justify-between mt-6">
               {editing ? (
-                <button
-                  onClick={remove}
-                  className="text-sm text-red-600 hover:text-red-700"
-                >
+                <Button variant="ghost" onClick={remove} className="text-red-600 hover:text-red-700">
                   Delete
-                </button>
+                </Button>
               ) : (
                 <span />
               )}
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 text-sm border border-gray-200 rounded-md hover:bg-gray-50"
-                >
+                <Button variant="secondary" onClick={() => setModalOpen(false)}>
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
                   onClick={save}
                   disabled={!form.title || !form.target || !form.startDate || !form.endDate}
-                  className="px-4 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50"
                 >
                   Save
-                </button>
+                </Button>
               </div>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </ListPageLayout>
   );
 }

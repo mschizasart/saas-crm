@@ -26,6 +26,7 @@ import { renderInvoiceHtml as renderModern } from '../pdf/templates/invoice-mode
 import { renderInvoiceHtml as renderClassic } from '../pdf/templates/invoice-classic.template';
 import { EinvoiceService } from '../einvoice/einvoice.service';
 import { CreditNotesService } from '../credit-notes/credit-notes.service';
+import * as archiver from 'archiver';
 
 @ApiTags('Invoices')
 @Controller({ version: '1', path: 'invoices' })
@@ -112,6 +113,8 @@ export class InvoicesController {
     @Query('search') search?: string,
     @Query('status') status?: string,
     @Query('clientId') clientId?: string,
+    @Query('recurring') recurring?: string,
+    @Query('sortBy') sortBy?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -119,6 +122,8 @@ export class InvoicesController {
       search,
       status,
       clientId,
+      recurring: recurring !== undefined ? recurring === 'true' : undefined,
+      sortBy,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
@@ -251,5 +256,106 @@ export class InvoicesController {
     @Param('id') id: string,
   ) {
     return this.service.cloneToEstimate(org.id, id, user.id);
+  }
+
+  // ─── Bill Expenses to Invoice ─────────────────────────────────────────────
+
+  @Post(':id/bill-expenses')
+  @Permissions('invoices.edit')
+  @ApiOperation({ summary: 'Attach billable expenses as line items to this invoice' })
+  billExpenses(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Body() body: { expenseIds: string[] },
+  ) {
+    return this.service.billExpenses(org.id, id, body?.expenseIds ?? []);
+  }
+
+  // ─── Merge Invoices ───────────────────────────────────────────────────────
+
+  @Post('merge')
+  @Permissions('invoices.create')
+  @ApiOperation({ summary: 'Merge multiple draft invoices into a new draft' })
+  merge(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Body() body: { invoiceIds: string[] },
+  ) {
+    return this.service.merge(org.id, body?.invoiceIds ?? [], user.id);
+  }
+
+  // ─── Bulk PDF Export ──────────────────────────────────────────────────────
+  // Streams a zip of invoice PDFs. Puppeteer can be slow, so this is sequential
+  // rather than parallel — a real-world list of ~20 invoices takes a few
+  // seconds but avoids thrashing the single browser instance.
+
+  @Post('bulk-pdf')
+  @Permissions('invoices.view')
+  @ApiOperation({ summary: 'Download a zip of PDFs for the given invoices' })
+  async bulkPdf(
+    @CurrentOrg() org: any,
+    @Body() body: { invoiceIds: string[] },
+    @Res() res: any,
+  ) {
+    const ids = body?.invoiceIds ?? [];
+    const invoices = await this.service.findManyForBulkPdf(org.id, ids);
+
+    const orgSettings = (org.settings ?? {}) as Record<string, any>;
+    const templateKey = orgSettings.invoiceTemplate || 'default';
+    const templateMap: Record<string, (inv: any, org: any) => string> = {
+      default: renderDefault,
+      modern: renderModern,
+      classic: renderClassic,
+    };
+    const renderFn = templateMap[templateKey] ?? renderDefault;
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `invoices-${ts}.zip`;
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    // Fastify: pipe the archiver stream to the raw response
+    const raw = res.raw ?? res;
+    archive.pipe(raw);
+    archive.on('warning', () => {});
+    archive.on('error', (err: any) => {
+      try { raw.destroy(err); } catch { /* noop */ }
+    });
+
+    for (const inv of invoices as any[]) {
+      try {
+        const html = renderFn(inv, org);
+        const pdf = await this.pdfService.generatePdf(html);
+        archive.append(pdf, { name: `invoice-${inv.number}.pdf` });
+      } catch {
+        // Skip failed PDFs rather than aborting the whole archive
+      }
+    }
+
+    await archive.finalize();
+  }
+
+  // ─── Stop Recurring ───────────────────────────────────────────────────────
+
+  @Post(':id/recurring/stop')
+  @Permissions('invoices.edit')
+  @ApiOperation({ summary: 'Disable recurrence for an invoice' })
+  stopRecurring(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.stopRecurring(org.id, id);
+  }
+
+  // ─── Generate Next Recurring Now ──────────────────────────────────────────
+
+  @Post(':id/recurring/run')
+  @Permissions('invoices.create')
+  @ApiOperation({
+    summary:
+      'Immediately generate the next occurrence of a recurring invoice',
+  })
+  runRecurringNow(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.runRecurringNow(org.id, id);
   }
 }

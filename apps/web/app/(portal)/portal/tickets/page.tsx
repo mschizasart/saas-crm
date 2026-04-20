@@ -48,7 +48,7 @@ export default function PortalTicketsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Support Tickets</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Support Tickets</h1>
         <Link href="/portal/tickets/new" className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90">
           <span className="text-lg leading-none">+</span>New Ticket
         </Link>
@@ -56,10 +56,10 @@ export default function PortalTicketsPage() {
 
       {error && <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 text-sm text-red-600 rounded-lg">{error}</div>}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase">
+            <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
               <th className="px-4 py-3">Subject</th>
               <th className="px-4 py-3">Priority</th>
               <th className="px-4 py-3">Status</th>
@@ -69,26 +69,26 @@ export default function PortalTicketsPage() {
           <tbody>
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (
-                <tr key={i} className="border-b border-gray-100">
+                <tr key={i} className="border-b border-gray-100 dark:border-gray-800">
                   {Array.from({ length: 4 }).map((__, j) => (
-                    <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td>
+                    <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" /></td>
                   ))}
                 </tr>
               ))
             ) : items.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">No tickets yet</td></tr>
+              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">No tickets yet</td></tr>
             ) : items.map((t) => (
-              <tr key={t.id} className="border-b border-gray-100 hover:bg-gray-50/60">
-                <td className="px-4 py-3 font-medium text-gray-900">
+              <tr key={t.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/60">
+                <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                   <Link href={`/tickets/${t.id}`} className="hover:text-primary">{t.subject}</Link>
                 </td>
-                <td className="px-4 py-3 text-gray-600 capitalize">{t.priority}</td>
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-400 capitalize">{t.priority}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[t.status] ?? 'bg-gray-100 text-gray-700'}`}>
                     {t.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-500 text-xs">{t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—'}</td>
+                <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—'}</td>
               </tr>
             ))}
           </tbody>

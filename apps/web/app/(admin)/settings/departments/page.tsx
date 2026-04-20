@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { SettingsPageLayout, SettingsSection } from '@/components/layouts/settings-page-layout';
+import { typography } from '@/lib/ui-tokens';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -99,128 +101,130 @@ export default function DepartmentsPage() {
     } catch { /* ignore */ }
   }
 
-  if (loading) return <div className="p-6 text-sm text-gray-500">Loading...</div>;
+  if (loading) return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading...</div>;
 
   return (
-    <div className="max-w-4xl">
-      <div className="mb-4">
-        <Link href="/settings" className="text-sm text-gray-500 hover:text-primary">&larr; Settings</Link>
-      </div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Departments</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage ticket departments for support routing</p>
-        </div>
-        <button onClick={startNew} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90">
-          + New Department
-        </button>
+    <SettingsPageLayout title="Departments" description="Manage ticket departments for support routing">
+      <div className="mb-[-0.5rem]">
+        <Link href="/settings" className={`${typography.bodyMuted} hover:text-primary`}>&larr; Settings</Link>
       </div>
 
       {message && (
-        <div className="mb-4 px-3 py-2 bg-blue-50 border border-blue-100 text-sm text-blue-700 rounded">{message}</div>
+        <div className="px-3 py-2 bg-blue-50 border border-blue-100 text-sm text-blue-700 rounded">{message}</div>
       )}
 
-      {(showNew || editId) && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">{editId ? 'Edit Department' : 'New Department'}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
-              <input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
-                placeholder="e.g. Technical Support"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-              <input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
-                placeholder="e.g. support@company.com"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Response SLA (hours)</label>
-              <input
-                type="number"
-                min="0"
-                value={form.slaResponseHours}
-                onChange={(e) => setForm({ ...form, slaResponseHours: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
-                placeholder="e.g. 4"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Resolution SLA (hours)</label>
-              <input
-                type="number"
-                min="0"
-                value={form.slaResolutionHours}
-                onChange={(e) => setForm({ ...form, slaResolutionHours: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
-                placeholder="e.g. 24"
-              />
-            </div>
-          </div>
-          <div className="flex gap-2 mt-4">
-            <button
-              onClick={saveItem}
-              disabled={saving || !form.name}
-              className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : editId ? 'Update' : 'Create'}
-            </button>
-            <button
-              onClick={() => { setShowNew(false); setEditId(null); }}
-              className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
-            >
-              Cancel
-            </button>
-          </div>
+      <SettingsSection
+        title="Manage departments"
+        description="Create, edit, or remove departments used for ticket routing"
+      >
+        <div className="flex items-center justify-end mb-4">
+          <button onClick={startNew} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90">
+            + New Department
+          </button>
         </div>
-      )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+        {(showNew || editId) && (
+          <div className="mb-6 p-4 border border-gray-100 dark:border-gray-800 rounded-lg bg-gray-50/40 dark:bg-gray-900/40">
+            <h3 className={`${typography.label} mb-4`}>{editId ? 'Edit Department' : 'New Department'}</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={`${typography.caption} block mb-1`}>Name *</label>
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg"
+                  placeholder="e.g. Technical Support"
+                />
+              </div>
+              <div>
+                <label className={`${typography.caption} block mb-1`}>Email</label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg"
+                  placeholder="e.g. support@company.com"
+                />
+              </div>
+              <div>
+                <label className={`${typography.caption} block mb-1`}>Response SLA (hours)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.slaResponseHours}
+                  onChange={(e) => setForm({ ...form, slaResponseHours: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg"
+                  placeholder="e.g. 4"
+                />
+              </div>
+              <div>
+                <label className={`${typography.caption} block mb-1`}>Resolution SLA (hours)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.slaResolutionHours}
+                  onChange={(e) => setForm({ ...form, slaResolutionHours: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg"
+                  placeholder="e.g. 24"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={saveItem}
+                disabled={saving || !form.name}
+                className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : editId ? 'Update' : 'Create'}
+              </button>
+              <button
+                onClick={() => { setShowNew(false); setEditId(null); }}
+                className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {items.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-400">
+          <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">
             No departments yet. Click "+ New Department" to create one.
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-gray-500 uppercase border-b border-gray-100">
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3 w-28">Response SLA</th>
-                <th className="px-4 py-3 w-28">Resolution SLA</th>
-                <th className="px-4 py-3 w-24">Tickets</th>
-                <th className="px-4 py-3 w-24" />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{item.email || '-'}</td>
-                  <td className="px-4 py-3 text-gray-500">{item.slaResponseHours ? `${item.slaResponseHours}h` : '-'}</td>
-                  <td className="px-4 py-3 text-gray-500">{item.slaResolutionHours ? `${item.slaResolutionHours}h` : '-'}</td>
-                  <td className="px-4 py-3 text-gray-500">{item._count?.tickets ?? 0}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button onClick={() => startEdit(item)} className="text-xs text-primary hover:underline">Edit</button>
-                      <button onClick={() => deleteItem(item.id)} className="text-xs text-red-500 hover:underline">Delete</button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase border-b border-gray-100 dark:border-gray-800">
+                  <th className="px-4 py-3">Name</th>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="px-4 py-3 w-28">Response SLA</th>
+                  <th className="px-4 py-3 w-28">Resolution SLA</th>
+                  <th className="px-4 py-3 w-24">Tickets</th>
+                  <th className="px-4 py-3 w-24" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{item.name}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{item.email || '-'}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{item.slaResponseHours ? `${item.slaResponseHours}h` : '-'}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{item.slaResolutionHours ? `${item.slaResolutionHours}h` : '-'}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{item._count?.tickets ?? 0}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button onClick={() => startEdit(item)} className="text-xs text-primary hover:underline">Edit</button>
+                        <button onClick={() => deleteItem(item.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
-    </div>
+      </SettingsSection>
+    </SettingsPageLayout>
   );
 }

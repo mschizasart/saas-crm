@@ -107,6 +107,18 @@ export class RolesService {
           'invoices.delete',
           'invoices.send',
         ],
+        estimates: [
+          'estimates.view',
+          'estimates.create',
+          'estimates.edit',
+          'estimates.delete',
+        ],
+        proposals: [
+          'proposals.view',
+          'proposals.create',
+          'proposals.edit',
+          'proposals.delete',
+        ],
         leads: [
           'leads.view',
           'leads.create',

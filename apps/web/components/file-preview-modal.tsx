@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useModalA11y } from './ui/use-modal-a11y';
 
 interface FilePreviewModalProps {
   url: string;
@@ -34,6 +35,7 @@ export function FilePreviewModal({
 }: FilePreviewModalProps) {
   const [textContent, setTextContent] = useState<string | null>(null);
   const [textLoading, setTextLoading] = useState(false);
+  const containerRef = useModalA11y(true, onClose);
 
   useEffect(() => {
     if (isText(mimeType)) {
@@ -58,13 +60,17 @@ export function FilePreviewModal({
       className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
     >
       <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="file-preview-modal-title"
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
           <div className="flex items-center gap-3 min-w-0">
-            <h3 className="font-semibold text-gray-900 truncate">{fileName}</h3>
+            <h3 id="file-preview-modal-title" className="font-semibold text-gray-900 truncate">{fileName}</h3>
             <span className="text-xs text-gray-400 flex-shrink-0">{mimeType}</span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -82,9 +88,10 @@ export function FilePreviewModal({
             </a>
             <button
               onClick={onClose}
+              aria-label="Close"
               className="p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>

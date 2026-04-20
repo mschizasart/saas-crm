@@ -55,7 +55,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   };
 
   if (!ready) {
-    return <div className="min-h-screen bg-gray-50" />;
+    return <div className="min-h-screen bg-gray-50 dark:bg-gray-900" />;
   }
 
   if (isLogin) {
@@ -63,7 +63,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
       {/* Sidebar */}
       <aside className="w-60 flex-shrink-0 bg-slate-900 text-slate-100 flex flex-col h-screen overflow-y-auto">
         <div className="flex items-center gap-2 px-4 py-5 border-b border-slate-800">
@@ -112,14 +112,14 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
 
       {/* Main */}
       <div className="flex flex-col flex-1 overflow-hidden">
-        <header className="h-14 bg-white border-b border-gray-100 px-6 flex items-center justify-between flex-shrink-0">
-          <h1 className="text-sm font-semibold text-gray-900">Platform Admin</h1>
+        <header className="h-14 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 px-6 flex items-center justify-between flex-shrink-0">
+          <h1 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Platform Admin</h1>
           <div className="flex items-center gap-3">
             {admin && (
               <>
                 <div className="text-right">
-                  <div className="text-xs font-medium text-gray-900">{admin.name}</div>
-                  <div className="text-[10px] text-gray-500">{admin.email}</div>
+                  <div className="text-xs font-medium text-gray-900 dark:text-gray-100">{admin.name}</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400">{admin.email}</div>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-semibold">
                   {admin.name?.slice(0, 2).toUpperCase() || 'PA'}

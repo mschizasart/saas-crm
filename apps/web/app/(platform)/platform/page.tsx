@@ -59,10 +59,10 @@ function StatCard({
   loading: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{label}</p>
+    <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-5">
+      <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">{label}</p>
       {loading ? (
-        <div className="h-7 w-16 bg-gray-100 animate-pulse rounded" />
+        <div className="h-7 w-16 bg-gray-100 dark:bg-gray-800 animate-pulse rounded" />
       ) : (
         <p className={`text-2xl font-bold ${accent}`}>{value}</p>
       )}
@@ -125,8 +125,8 @@ export default function PlatformDashboardPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Platform Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">Overview of all organizations on the platform.</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Platform Dashboard</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Overview of all organizations on the platform.</p>
       </div>
 
       {error && (
@@ -141,9 +141,9 @@ export default function PlatformDashboardPage() {
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900">Recent Organizations</h2>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">Recent Organizations</h2>
           <Link href="/platform/organizations" className="text-xs font-medium text-indigo-600 hover:underline">
             View all →
           </Link>
@@ -151,7 +151,7 @@ export default function PlatformDashboardPage() {
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
                 <th className="px-4 py-2.5">Name</th>
                 <th className="px-4 py-2.5">Slug</th>
                 <th className="px-4 py-2.5">Status</th>
@@ -163,17 +163,17 @@ export default function PlatformDashboardPage() {
             <tbody>
               {loadingRecent ? (
                 Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} className="border-b border-gray-100 last:border-0">
+                  <tr key={i} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
                     {Array.from({ length: 6 }).map((__, j) => (
                       <td key={j} className="px-4 py-3">
-                        <div className="h-4 bg-gray-100 rounded animate-pulse" />
+                        <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
                       </td>
                     ))}
                   </tr>
                 ))
               ) : recent.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
                     No organizations yet.
                   </td>
                 </tr>
@@ -182,16 +182,16 @@ export default function PlatformDashboardPage() {
                   <tr
                     key={org.id}
                     onClick={() => router.push(`/platform/organizations/${org.id}`)}
-                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors cursor-pointer"
+                    className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60 transition-colors cursor-pointer"
                   >
-                    <td className="px-4 py-3 font-medium text-gray-900">{org.name}</td>
-                    <td className="px-4 py-3 text-gray-500">{org.slug}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{org.name}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{org.slug}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={org.status} />
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-700">{org.userCount}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{org.clientCount}</td>
-                    <td className="px-4 py-3 text-gray-500">
+                    <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{org.userCount}</td>
+                    <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{org.clientCount}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                       {new Date(org.createdAt).toLocaleDateString()}
                     </td>
                   </tr>

@@ -78,8 +78,10 @@ export class LeadsService {
         ];
       }
 
-      if (status) where.status = status;
-      if (assignedToId) where.assignedToId = assignedToId;
+      if (status) {
+        where.status = { is: { name: { equals: status, mode: 'insensitive' } } };
+      }
+      if (assignedToId) where.assignedTo = assignedToId;
 
       const [data, total] = await Promise.all([
         tx.lead.findMany({
@@ -88,9 +90,8 @@ export class LeadsService {
           take: limit,
           orderBy: { createdAt: 'desc' },
           include: {
-            assignedTo: {
-              select: { id: true, firstName: true, lastName: true },
-            },
+            status: { select: { id: true, name: true, color: true } },
+            source: { select: { id: true, name: true } },
             _count: { select: { notes: true } },
           },
         }),
@@ -106,16 +107,10 @@ export class LeadsService {
       const lead = await tx.lead.findFirst({
         where: { id, organizationId: orgId },
         include: {
-          assignedTo: {
-            select: { id: true, firstName: true, lastName: true },
-          },
+          status: { select: { id: true, name: true, color: true } },
+          source: { select: { id: true, name: true } },
           notes: {
             orderBy: { createdAt: 'desc' },
-            include: {
-              addedBy: {
-                select: { id: true, firstName: true, lastName: true },
-              },
-            },
           },
           customFieldValues: { include: { field: true } },
         },
@@ -127,13 +122,100 @@ export class LeadsService {
 
   // ─── Create / Update / Delete ───────────────────────────────
 
+  /**
+   * Translate the public DTO shape (status/source as plain strings,
+   * budget as number, position as string) into the Prisma Lead input
+   * (statusId/sourceId FKs, value as Decimal, position ignored).
+   */
+  private async resolveLeadData(
+    tx: any,
+    orgId: string,
+    dto: Partial<CreateLeadDto>,
+  ): Promise<Record<string, any>> {
+    // Split string-form status/source/budget/position off the DTO so they
+    // don't leak into Prisma via the spread below.
+    const {
+      status,
+      source,
+      budget,
+      position,
+      customFieldValues, // handled by a dedicated endpoint
+      assignedToId,
+      ...rest
+    } = dto;
+
+    const data: Record<string, any> = { ...rest };
+
+    // Lead.assignedTo is a scalar String column on the Lead model
+    if (assignedToId !== undefined) {
+      data.assignedTo = assignedToId;
+    }
+
+    // Resolve status -> statusId (look up or create on the fly)
+    if (status !== undefined && status !== null && status !== '') {
+      const existing = await tx.leadStatus.findFirst({
+        where: {
+          organizationId: orgId,
+          name: { equals: status, mode: 'insensitive' },
+        },
+      });
+      if (existing) {
+        data.statusId = existing.id;
+      } else {
+        const maxPos = await tx.leadStatus.aggregate({
+          where: { organizationId: orgId },
+          _max: { position: true },
+        });
+        const created = await tx.leadStatus.create({
+          data: {
+            organizationId: orgId,
+            name: status,
+            color: '#6b7280',
+            position: (maxPos._max.position ?? -1) + 1,
+          },
+        });
+        data.statusId = created.id;
+      }
+    }
+
+    // Resolve source -> sourceId (look up or create on the fly)
+    if (source !== undefined && source !== null && source !== '') {
+      const existing = await tx.leadSource.findFirst({
+        where: {
+          organizationId: orgId,
+          name: { equals: source, mode: 'insensitive' },
+        },
+      });
+      if (existing) {
+        data.sourceId = existing.id;
+      } else {
+        const created = await tx.leadSource.create({
+          data: { organizationId: orgId, name: source },
+        });
+        data.sourceId = created.id;
+      }
+    }
+
+    // budget -> value (Prisma Decimal accepts plain number / string)
+    if (budget !== undefined && budget !== null && (budget as any) !== '') {
+      const n = typeof budget === 'string' ? Number(budget) : budget;
+      data.value = Number.isFinite(n as number) ? (n as number) : null;
+    }
+
+    // `position` in the DTO is a job title string from the form and has no
+    // safe mapping to the Lead.position Int (kanban order) — ignore it.
+    void position;
+
+    return data;
+  }
+
   async create(orgId: string, dto: CreateLeadDto, createdBy: string) {
     const lead = await this.prisma.withOrganization(orgId, async (tx) => {
+      const data = await this.resolveLeadData(tx, orgId, dto);
       return tx.lead.create({
         data: {
-          ...dto,
+          ...data,
           organizationId: orgId,
-          status: dto.status ?? 'new',
         },
       });
     });
@@ -145,7 +227,8 @@ export class LeadsService {
     const existing = await this.findOne(orgId, id);
 
     const updated = await this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.lead.update({ where: { id }, data: dto });
+      const data = await this.resolveLeadData(tx, orgId, dto);
+      return tx.lead.update({ where: { id }, data });
     });
 
     // Log field-level changes
@@ -160,12 +243,13 @@ export class LeadsService {
       );
     }
 
-    if (dto.status && dto.status !== existing.status) {
+    const previousStatusName = (existing as any).status?.name ?? null;
+    if (dto.status && dto.status !== previousStatusName) {
       if (dto.status === 'won' || dto.status === 'lost') {
         this.events.emit('lead.status_changed', {
           lead: updated,
           orgId,
-          previousStatus: existing.status,
+          previousStatus: previousStatusName,
           newStatus: dto.status,
         });
       }
@@ -193,13 +277,14 @@ export class LeadsService {
     const existing = await this.findOne(orgId, id);
 
     const updated = await this.prisma.withOrganization(orgId, async (tx) => {
-      return tx.lead.update({ where: { id }, data: { status } });
+      const data = await this.resolveLeadData(tx, orgId, { status });
+      return tx.lead.update({ where: { id }, data });
     });
 
     this.events.emit('lead.status_changed', {
       lead: updated,
       orgId,
-      previousStatus: existing.status,
+      previousStatus: (existing as any).status?.name ?? null,
       newStatus: status,
     });
 
@@ -292,10 +377,7 @@ export class LeadsService {
 
     return this.prisma.withOrganization(orgId, async (tx) => {
       return tx.leadNote.create({
-        data: { leadId, note, addedById },
-        include: {
-          addedBy: { select: { id: true, firstName: true, lastName: true } },
-        },
+        data: { leadId, content: note, userId: addedById },
       });
     });
   }
@@ -518,7 +600,7 @@ export class LeadsService {
       throw new BadRequestException('name is required');
     }
 
-    const org = await this.prisma.client.organization.findUnique({
+    const org = await this.prisma.organization.findUnique({
       where: { slug: orgSlug },
     });
     if (!org) {
@@ -526,12 +608,31 @@ export class LeadsService {
     }
 
     // Find the first (default) lead status for this org
-    const defaultStatus = await this.prisma.client.leadStatus.findFirst({
+    const defaultStatus = await this.prisma.leadStatus.findFirst({
       where: { organizationId: org.id },
       orderBy: { position: 'asc' },
     });
 
-    const lead = await this.prisma.client.lead.create({
+    // Resolve optional source string to a LeadSource row
+    let sourceId: string | null = null;
+    if (dto.source) {
+      const existingSource = await this.prisma.leadSource.findFirst({
+        where: {
+          organizationId: org.id,
+          name: { equals: dto.source, mode: 'insensitive' },
+        },
+      });
+      if (existingSource) {
+        sourceId = existingSource.id;
+      } else {
+        const created = await this.prisma.leadSource.create({
+          data: { organizationId: org.id, name: dto.source },
+        });
+        sourceId = created.id;
+      }
+    }
+
+    const lead = await this.prisma.lead.create({
       data: {
         organizationId: org.id,
         name: dto.name,
@@ -540,7 +641,7 @@ export class LeadsService {
         company: dto.company ?? null,
         description: dto.message ?? null,
         statusId: defaultStatus?.id ?? null,
-        status: 'new',
+        sourceId,
       },
     });
 
@@ -560,11 +661,9 @@ export class LeadsService {
           name: true,
           email: true,
           company: true,
-          budget: true,
-          status: true,
-          assignedTo: {
-            select: { id: true, firstName: true, lastName: true },
-          },
+          value: true,
+          assignedTo: true,
+          status: { select: { id: true, name: true, color: true } },
         },
         orderBy: { createdAt: 'asc' },
       });
@@ -580,7 +679,7 @@ export class LeadsService {
       };
 
       for (const lead of leads) {
-        const bucket = lead.status as LeadStatus;
+        const bucket = (lead.status?.name ?? '').toLowerCase() as LeadStatus;
         if (bucket in board) {
           board[bucket].push(lead);
         }

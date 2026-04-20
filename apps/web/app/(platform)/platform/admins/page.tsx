@@ -115,8 +115,8 @@ export default function PlatformAdminsPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Platform Admins</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage super admins for the platform.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Platform Admins</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage super admins for the platform.</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
@@ -132,11 +132,11 @@ export default function PlatformAdminsPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
                 <th className="px-4 py-2.5">Name</th>
                 <th className="px-4 py-2.5">Email</th>
                 <th className="px-4 py-2.5">Created</th>
@@ -146,17 +146,17 @@ export default function PlatformAdminsPage() {
             <tbody>
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => (
-                  <tr key={i} className="border-b border-gray-100 last:border-0">
+                  <tr key={i} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
                     {Array.from({ length: 4 }).map((__, j) => (
                       <td key={j} className="px-4 py-3">
-                        <div className="h-4 bg-gray-100 rounded animate-pulse" />
+                        <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
                       </td>
                     ))}
                   </tr>
                 ))
               ) : admins.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
                     No admins yet.
                   </td>
                 </tr>
@@ -164,11 +164,11 @@ export default function PlatformAdminsPage() {
                 admins.map((a) => (
                   <tr
                     key={a.id}
-                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
+                    className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60 transition-colors"
                   >
-                    <td className="px-4 py-3 font-medium text-gray-900">{a.name}</td>
-                    <td className="px-4 py-3 text-gray-600">{a.email}</td>
-                    <td className="px-4 py-3 text-gray-500">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{a.name}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{a.email}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                       {new Date(a.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -192,12 +192,12 @@ export default function PlatformAdminsPage() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-lg w-full max-w-md">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">Add Platform Admin</h2>
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-lg w-full max-w-md">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900 dark:text-gray-100">Add Platform Admin</h2>
               <button
                 onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                className="text-gray-400 dark:text-gray-500 hover:text-gray-600 text-xl leading-none"
               >
                 ×
               </button>
@@ -209,7 +209,7 @@ export default function PlatformAdminsPage() {
                 </div>
               )}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
                   Name
                 </label>
                 <input
@@ -217,11 +217,11 @@ export default function PlatformAdminsPage() {
                   required
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
                   Email
                 </label>
                 <input
@@ -229,11 +229,11 @@ export default function PlatformAdminsPage() {
                   required
                   value={formEmail}
                   onChange={(e) => setFormEmail(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
                   Password
                 </label>
                 <input
@@ -242,14 +242,14 @@ export default function PlatformAdminsPage() {
                   minLength={8}
                   value={formPassword}
                   onChange={(e) => setFormPassword(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg"
+                  className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg"
                 >
                   Cancel
                 </button>

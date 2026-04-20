@@ -53,21 +53,21 @@ export function StatCard({
   accent?: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+      <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">
         {label}
       </p>
       <p className={`text-2xl font-bold ${accent}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+      {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{sub}</p>}
     </div>
   );
 }
 
 export function SkeletonCard() {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 animate-pulse">
-      <div className="h-3 w-1/2 bg-gray-100 rounded mb-3" />
-      <div className="h-7 w-2/3 bg-gray-100 rounded" />
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5 animate-pulse">
+      <div className="h-3 w-1/2 bg-gray-100 dark:bg-gray-800 rounded mb-3" />
+      <div className="h-7 w-2/3 bg-gray-100 dark:bg-gray-800 rounded" />
     </div>
   );
 }
@@ -92,9 +92,9 @@ export function PageHeader({
   return (
     <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{title}</h1>
         {description && (
-          <p className="text-sm text-gray-500 mt-1">{description}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{description}</p>
         )}
       </div>
       {right}
@@ -117,14 +117,14 @@ export function DateRangeFilter({
         type="date"
         value={from}
         onChange={(e) => onChange({ from: e.target.value, to })}
-        className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+        className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary"
       />
-      <span className="text-xs text-gray-400">to</span>
+      <span className="text-xs text-gray-400 dark:text-gray-500">to</span>
       <input
         type="date"
         value={to}
         onChange={(e) => onChange({ from, to: e.target.value })}
-        className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary"
+        className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary"
       />
     </div>
   );
@@ -205,7 +205,7 @@ export function ExportMenu({
       <button
         type="button"
         onClick={() => downloadExport(resource, 'csv', filter)}
-        className="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 text-xs font-medium hover:bg-gray-50"
+        className="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800"
       >
         Export CSV
       </button>

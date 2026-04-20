@@ -95,13 +95,13 @@ export default function ProposalViewPage() {
     }
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-gray-400">Loading…</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">Loading…</div>;
 
   if (error || !proposal) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="max-w-md text-center">
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Proposal Not Available</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Proposal Not Available</h1>
           <p className="text-sm text-red-600">{error ?? 'Not found'}</p>
         </div>
       </div>
@@ -110,26 +110,26 @@ export default function ProposalViewPage() {
 
   if (done) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
-        <div className="max-w-md text-center bg-white rounded-xl border border-gray-100 shadow-sm p-8">
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Thank you!</h1>
-          <p className="text-sm text-gray-500">Proposal {done}.</p>
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-md text-center bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-8">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Thank you!</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Proposal {done}.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-10 px-4">
       <div className="max-w-3xl mx-auto">
         {proposal.organization?.name && (
-          <p className="text-center text-sm font-medium text-gray-500 mb-2">{proposal.organization.name}</p>
+          <p className="text-center text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">{proposal.organization.name}</p>
         )}
-        <h1 className="text-center text-2xl font-bold text-gray-900 mb-8">{proposal.title}</h1>
+        <h1 className="text-center text-2xl font-bold text-gray-900 dark:text-gray-100 mb-8">{proposal.title}</h1>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 mb-6">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-8 mb-6">
           <div
-            className="prose prose-sm max-w-none text-gray-700"
+            className="prose prose-sm max-w-none text-gray-700 dark:text-gray-300"
             dangerouslySetInnerHTML={{ __html: proposal.content }}
           />
         </div>
@@ -151,38 +151,38 @@ export default function ProposalViewPage() {
           </button>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Comments</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Comments</h2>
           {(!proposal.comments || proposal.comments.length === 0) ? (
-            <p className="text-sm text-gray-400 mb-4">No comments yet.</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">No comments yet.</p>
           ) : (
             <ul className="space-y-3 mb-4">
               {proposal.comments.map((c) => (
-                <li key={c.id} className="border-b border-gray-100 pb-3 last:border-0">
+                <li key={c.id} className="border-b border-gray-100 dark:border-gray-800 pb-3 last:border-0">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-900">{c.addedBy}</span>
-                    <span className="text-xs text-gray-400">{new Date(c.createdAt).toLocaleString()}</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{c.addedBy}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(c.createdAt).toLocaleString()}</span>
                   </div>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{c.content}</p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{c.content}</p>
                 </li>
               ))}
             </ul>
           )}
 
-          <form onSubmit={postComment} className="space-y-3 border-t border-gray-100 pt-4">
+          <form onSubmit={postComment} className="space-y-3 border-t border-gray-100 dark:border-gray-800 pt-4">
             <input
               type="text"
               placeholder="Your name"
               value={commentName}
               onChange={(e) => setCommentName(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             />
             <textarea
               rows={3}
               placeholder="Add a comment…"
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             />
             <button
               type="submit"

@@ -9,11 +9,11 @@ const nextConfig: NextConfig = {
     domains: ['localhost'],
   },
   async rewrites() {
+    // Only /api/v1/* is the backend NestJS API. /api/auth/* belongs to NextAuth.
     return [
       {
-        // Proxy API calls during dev — in production nginx handles this
-        source: '/api/:path*',
-        destination: `${process.env.API_URL || 'http://localhost:3001'}/api/:path*`,
+        source: '/api/v1/:path*',
+        destination: `${process.env.API_URL || 'http://localhost:3001'}/api/v1/:path*`,
       },
     ];
   },

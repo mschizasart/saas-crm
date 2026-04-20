@@ -192,8 +192,8 @@ export default function PlatformPlansPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Subscription Plans</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Subscription Plans</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Manage platform pricing tiers and feature limits.
           </p>
         </div>
@@ -211,11 +211,11 @@ export default function PlatformPlansPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
                 <th className="px-4 py-2.5">Name</th>
                 <th className="px-4 py-2.5">Slug</th>
                 <th className="px-4 py-2.5">Monthly</th>
@@ -231,13 +231,13 @@ export default function PlatformPlansPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
                     Loading…
                   </td>
                 </tr>
               ) : plans.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
                     No plans yet. Create your first plan.
                   </td>
                 </tr>
@@ -245,18 +245,18 @@ export default function PlatformPlansPage() {
                 plans.map((p) => (
                   <tr
                     key={p.id}
-                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
+                    className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60 transition-colors"
                   >
-                    <td className="px-4 py-3 font-medium text-gray-900">{p.name}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.slug}</td>
-                    <td className="px-4 py-3 text-gray-700">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{p.name}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">{p.slug}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
                       {p.currency} {Number(p.monthlyPrice).toFixed(2)}
                     </td>
-                    <td className="px-4 py-3 text-gray-700">
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
                       {p.currency} {Number(p.yearlyPrice).toFixed(2)}
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{p.maxStaff}</td>
-                    <td className="px-4 py-3 text-gray-700">{p.maxClients}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{p.maxStaff}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{p.maxClients}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
@@ -275,19 +275,19 @@ export default function PlatformPlansPage() {
                         {p.public ? 'Yes' : 'No'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{p.order}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{p.order}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => openEdit(p)}
-                          className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-indigo-600"
+                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-indigo-600"
                           title="Edit"
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => remove(p)}
-                          className="p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-red-600"
+                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-red-600"
                           title="Delete"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -309,14 +309,14 @@ export default function PlatformPlansPage() {
             className="flex-1 bg-black/40"
             onClick={() => !busy && setDrawerOpen(false)}
           />
-          <div className="w-full max-w-xl bg-white h-full overflow-y-auto shadow-2xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900">
+          <div className="w-full max-w-xl bg-white dark:bg-gray-900 h-full overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 {editing ? 'Edit Plan' : 'New Plan'}
               </h2>
               <button
                 onClick={() => !busy && setDrawerOpen(false)}
-                className="p-1 rounded hover:bg-gray-100 text-gray-500"
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -451,7 +451,7 @@ export default function PlatformPlansPage() {
                     className={inputCls}
                   />
                 </Field>
-                <label className="flex items-center gap-2 text-sm text-gray-700">
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                   <input
                     type="checkbox"
                     checked={form.active}
@@ -459,7 +459,7 @@ export default function PlatformPlansPage() {
                   />
                   Active
                 </label>
-                <label className="flex items-center gap-2 text-sm text-gray-700">
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                   <input
                     type="checkbox"
                     checked={form.public}
@@ -470,10 +470,10 @@ export default function PlatformPlansPage() {
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
               <button
                 onClick={() => !busy && setDrawerOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-100"
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
               >
                 Cancel
               </button>
@@ -498,7 +498,7 @@ const inputCls =
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+      <span className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
         {label}
       </span>
       {children}

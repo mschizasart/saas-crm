@@ -26,24 +26,6 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 export class ExpensesController {
   constructor(private service: ExpensesService) {}
 
-  // ─── Categories ────────────────────────────────────────────────────────────
-
-  @Get('categories')
-  @ApiOperation({ summary: 'List expense categories' })
-  getCategories(@CurrentOrg() org: any) {
-    return this.service.getCategories(org.id);
-  }
-
-  @Post('categories')
-  @Permissions('settings.edit')
-  @ApiOperation({ summary: 'Create an expense category' })
-  createCategory(
-    @CurrentOrg() org: any,
-    @Body() body: { name: string; color?: string },
-  ) {
-    return this.service.createCategory(org.id, body.name, body.color);
-  }
-
   // ─── Stats ─────────────────────────────────────────────────────────────────
 
   @Get('stats')

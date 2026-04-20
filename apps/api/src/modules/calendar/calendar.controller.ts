@@ -49,12 +49,25 @@ export class CalendarController {
   @ApiOperation({ summary: 'List events in date range' })
   findAll(
     @CurrentOrg() org: any,
+    @CurrentUser() user: any,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('userId') userId?: string,
     @Query('type') type?: string,
+    @Query('clientId') clientId?: string,
   ) {
-    return this.service.findAll(org.id, { from, to, userId, type });
+    // Portal contacts are hard-scoped to their own client. Staff can use the
+    // optional ?clientId= filter to view a specific client's calendar.
+    const contactClientId =
+      user?.type === 'contact' ? (user.clientId ?? null) : undefined;
+    return this.service.findAll(org.id, {
+      from,
+      to,
+      userId,
+      type,
+      clientId: user?.type === 'contact' ? undefined : clientId,
+      contactClientId,
+    });
   }
 
   @Get('events/:id')

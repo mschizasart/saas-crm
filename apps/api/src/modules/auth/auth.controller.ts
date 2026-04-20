@@ -22,6 +22,7 @@ import {
   ResetPasswordDto,
   SetupTwoFaDto,
   RegisterOrganizationDto,
+  PortalRegisterDto,
 } from './dto/auth.dto';
 
 @ApiTags('Auth')
@@ -68,6 +69,14 @@ export class AuthController {
       return { success: false, message: 'Invalid credentials' };
     }
     return this.authService.login(user);
+  }
+
+  @Post('portal/register')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Register a new portal contact under an organization' })
+  async portalRegister(@Body() dto: PortalRegisterDto) {
+    return this.authService.registerPortalContact(dto);
   }
 
   // ─── Token management ──────────────────────────────────────

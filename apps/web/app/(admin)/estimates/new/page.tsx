@@ -4,6 +4,7 @@ import { useState, useEffect, FormEvent, useMemo, useRef, useCallback } from 're
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import SavedItemModal from '../../../../components/saved-item-modal';
+import { ComplexFormPageLayout } from '@/components/layouts/complex-form-page-layout';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -398,14 +399,11 @@ export default function NewEstimatePage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-6xl">
-      <div className="mb-4">
-        <Link href="/estimates" className="text-sm text-gray-500 hover:text-primary">
-          &larr; Back to Estimates
-        </Link>
-      </div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Create New Estimate</h1>
-
+    <ComplexFormPageLayout
+      title="Create New Estimate"
+      backHref="/estimates"
+      backLabel="Back to Estimates"
+    >
       <form onSubmit={(e) => handleSubmit(e)} className="space-y-6">
         {error && (
           <div className="px-4 py-3 bg-red-50 border border-red-200 text-sm text-red-700 rounded-lg">
@@ -421,10 +419,10 @@ export default function NewEstimatePage() {
         {/* ─── Top Section: Two Columns ─────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* LEFT COLUMN */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 space-y-4">
             {/* Customer */}
             <div className="relative">
-              <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
                 Customer <span className="text-red-500">*</span>
               </label>
               <input
@@ -442,7 +440,7 @@ export default function NewEstimatePage() {
                 required={!clientId}
               />
               {showClientDropdown && filteredClients.length > 0 && (
-                <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                   {filteredClients.map((c) => (
                     <button
                       key={c.id}
@@ -463,7 +461,7 @@ export default function NewEstimatePage() {
             {/* Bill To / Ship To */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
                   Bill To
                 </label>
                 <input placeholder="Street" value={billStreet} onChange={(e) => setBillStreet(e.target.value)} className={inputClass + ' mb-1'} />
@@ -477,7 +475,7 @@ export default function NewEstimatePage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
                   Ship To
                 </label>
                 <input placeholder="Street" value={shipStreet} onChange={(e) => setShipStreet(e.target.value)} className={inputClass + ' mb-1'} />
@@ -494,7 +492,7 @@ export default function NewEstimatePage() {
 
             {/* Estimate Number */}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
                 Estimate Number
               </label>
               <div className="flex gap-1">
@@ -525,7 +523,7 @@ export default function NewEstimatePage() {
           </div>
 
           {/* RIGHT COLUMN */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 space-y-4">
             {/* Tags */}
             <Field label="Tags">
               <input value={tags} onChange={(e) => setTags(e.target.value)} className={inputClass} placeholder="Comma-separated tags" />
@@ -545,7 +543,7 @@ export default function NewEstimatePage() {
 
             {/* Discount */}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Discount</label>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">Discount</label>
               <div className="flex gap-1">
                 <input type="number" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} className={inputClass} />
                 <select value={discountType} onChange={(e) => setDiscountType(e.target.value as 'fixed' | 'percent')} className={inputClass + ' w-24 flex-shrink-0'}>
@@ -563,11 +561,11 @@ export default function NewEstimatePage() {
         </div>
 
         {/* ─── Line Items ──────────────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Line Items</h2>
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Line Items</h2>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500">Show quantity as:</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Show quantity as:</span>
               <button
                 type="button"
                 onClick={() => setQuantityLabel(quantityLabel === 'qty' ? 'hours' : 'qty')}
@@ -581,7 +579,7 @@ export default function NewEstimatePage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[800px]">
               <thead>
-                <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b border-gray-200">
+                <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide border-b border-gray-200 dark:border-gray-700">
                   <th className="pb-2 pr-2 w-10">#</th>
                   <th className="pb-2 pr-2">Item</th>
                   <th className="pb-2 pr-2 w-48">Description</th>
@@ -611,7 +609,7 @@ export default function NewEstimatePage() {
                       }}
                       onDragEnd={() => setDragIdx(null)}
                     >
-                      <td className="py-3 pr-2 text-gray-400 cursor-grab select-none"><span className="text-xs">{idx + 1}</span></td>
+                      <td className="py-3 pr-2 text-gray-400 dark:text-gray-500 cursor-grab select-none"><span className="text-xs">{idx + 1}</span></td>
                       <td className="py-3 pr-2 relative">
                         <input
                           value={item.description}
@@ -622,7 +620,7 @@ export default function NewEstimatePage() {
                           placeholder="Search items..."
                         />
                         {activeAutocomplete === idx && suggestions.length > 0 && (
-                          <div className="absolute z-20 left-0 right-2 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          <div className="absolute z-20 left-0 right-2 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                             {suggestions.map((s) => (
                               <button
                                 key={s.id}
@@ -630,8 +628,8 @@ export default function NewEstimatePage() {
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-primary/5 border-b border-gray-50 last:border-0 flex items-center gap-2"
                                 onMouseDown={(e) => { e.preventDefault(); applySavedItem(idx, s); }}
                               >
-                                <span className="font-medium text-gray-900 flex-1">{s.description}</span>
-                                <span className="text-gray-500 text-xs">{Number(s.rate).toFixed(2)}</span>
+                                <span className="font-medium text-gray-900 dark:text-gray-100 flex-1">{s.description}</span>
+                                <span className="text-gray-500 dark:text-gray-400 text-xs">{Number(s.rate).toFixed(2)}</span>
                                 <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${s._source === 'product' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
                                   {s._source === 'product' ? 'Product' : 'Saved'}
                                 </span>
@@ -665,15 +663,15 @@ export default function NewEstimatePage() {
                           {taxes.map((t) => (<option key={t.id} value={t.id}>{t.name} ({Number(t.rate)}%)</option>))}
                         </select>
                       </td>
-                      <td className="py-3 pr-2 text-right tabular-nums font-medium text-gray-900">{lineAmount.toFixed(2)}</td>
+                      <td className="py-3 pr-2 text-right tabular-nums font-medium text-gray-900 dark:text-gray-100">{lineAmount.toFixed(2)}</td>
                       <td className="py-3">
                         <div className="flex items-center gap-0.5">
-                          <button type="button" onClick={() => saveAsItem(idx)} className="text-gray-400 hover:text-primary p-1" title="Save as reusable item">
+                          <button type="button" onClick={() => saveAsItem(idx)} className="text-gray-400 dark:text-gray-500 hover:text-primary p-1" title="Save as reusable item">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                               <path d="M3.75 3A1.75 1.75 0 002 4.75v10.5c0 .966.784 1.75 1.75 1.75h12.5A1.75 1.75 0 0018 15.25v-8.5A1.75 1.75 0 0016.25 5h-4.836a.25.25 0 01-.177-.073L9.823 3.513A1.75 1.75 0 008.586 3H3.75z" />
                             </svg>
                           </button>
-                          <button type="button" onClick={() => removeItem(idx)} className="text-gray-400 hover:text-red-500 p-1 text-lg leading-none" aria-label="Remove">&times;</button>
+                          <button type="button" onClick={() => removeItem(idx)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1 text-lg leading-none" aria-label="Remove">&times;</button>
                         </div>
                       </td>
                     </tr>
@@ -697,7 +695,7 @@ export default function NewEstimatePage() {
               {Object.entries(totals.taxBreakdown).map(([id, t]) => (
                 <TotalRow key={id} label={`${t.name} (${t.rate}%)`} value={t.amount.toFixed(2)} />
               ))}
-              <div className="border-t border-gray-200 mt-2 pt-2">
+              <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
                 <TotalRow label="Total" value={`${totals.total.toFixed(2)} ${currency}`} bold />
               </div>
             </div>
@@ -705,7 +703,7 @@ export default function NewEstimatePage() {
         </div>
 
         {/* ─── Notes & Terms ──────────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Client Note">
             <textarea rows={4} value={clientNote} onChange={(e) => setClientNote(e.target.value)} className={inputClass} placeholder="Visible to the client" />
           </Field>
@@ -716,14 +714,14 @@ export default function NewEstimatePage() {
 
         {/* ─── Bottom Buttons ─────────────────────────────────────────────── */}
         <div className="flex justify-end gap-3 pt-2">
-          <Link href="/estimates" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50">
+          <Link href="/estimates" className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
             Cancel
           </Link>
           <button
             type="button"
             onClick={(e) => handleSubmit(e as any, true)}
             disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 border border-gray-200"
+            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 disabled:opacity-50 border border-gray-200 dark:border-gray-700"
           >
             {saving ? 'Saving...' : 'Save as Draft'}
           </button>
@@ -739,7 +737,7 @@ export default function NewEstimatePage() {
         onSaved={handleSaveItemSaved}
         initialData={saveItemInitialData}
       />
-    </div>
+    </ComplexFormPageLayout>
   );
 }
 
@@ -750,7 +748,7 @@ const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg f
 function Field({ label, required, children, className }: { label: string; required?: boolean; children: React.ReactNode; className?: string }) {
   return (
     <div className={className}>
-      <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">
+      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}

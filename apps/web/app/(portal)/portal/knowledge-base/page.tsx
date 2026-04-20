@@ -54,15 +54,15 @@ export default function PortalKnowledgeBasePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Knowledge Base</h1>
-      <p className="text-sm text-gray-500 mb-6">Browse helpful articles or search for what you need.</p>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Knowledge Base</h1>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Browse helpful articles or search for what you need.</p>
 
       <div className="mb-6">
         <input
           placeholder="Search articles…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full max-w-md px-4 py-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white"
+          className="w-full max-w-md px-4 py-3 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white dark:bg-gray-900"
         />
       </div>
 
@@ -71,20 +71,20 @@ export default function PortalKnowledgeBasePage() {
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-28 bg-gray-100 rounded-xl animate-pulse" />
+            <div key={i} className="h-28 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
           ))}
         </div>
       ) : Object.keys(grouped).length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center text-sm text-gray-400">No articles found</div>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-12 text-center text-sm text-gray-400 dark:text-gray-500">No articles found</div>
       ) : (
         Object.entries(grouped).map(([groupName, arts]) => (
           <section key={groupName} className="mb-8">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{groupName}</h2>
+            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">{groupName}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {arts.map((a) => (
-                <Link key={a.id} href={`/knowledge-base/${a.slug}`} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow">
-                  <h3 className="font-semibold text-gray-900 mb-1">{a.title}</h3>
-                  {a.excerpt && <p className="text-sm text-gray-600 line-clamp-2">{a.excerpt}</p>}
+                <Link key={a.id} href={`/knowledge-base/${a.slug}`} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 hover:shadow-md transition-shadow">
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">{a.title}</h3>
+                  {a.excerpt && <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{a.excerpt}</p>}
                 </Link>
               ))}
             </div>

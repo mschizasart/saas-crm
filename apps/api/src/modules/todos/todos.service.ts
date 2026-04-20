@@ -30,8 +30,8 @@ export class TodosService {
     });
   }
 
-  private async ownedTodo(tx: any, userId: string, id: string) {
-    const todo = await tx.todo.findUnique({ where: { id } });
+  private async ownedTodo(tx: any, userId: string, orgId: string, id: string) {
+    const todo = await tx.todo.findFirst({ where: { id, organizationId: orgId } });
     if (!todo || todo.userId !== userId) {
       throw new NotFoundException('Todo not found');
     }
@@ -40,7 +40,7 @@ export class TodosService {
 
   async toggle(userId: string, orgId: string, id: string) {
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const todo = await this.ownedTodo(tx, userId, id);
+      const todo = await this.ownedTodo(tx, userId, orgId, id);
       return tx.todo.update({
         where: { id },
         data: { completed: !todo.completed },
@@ -50,7 +50,7 @@ export class TodosService {
 
   async update(userId: string, orgId: string, id: string, content: string) {
     return this.prisma.withOrganization(orgId, async (tx) => {
-      await this.ownedTodo(tx, userId, id);
+      await this.ownedTodo(tx, userId, orgId, id);
       return tx.todo.update({
         where: { id },
         data: { description: content },
@@ -60,7 +60,7 @@ export class TodosService {
 
   async delete(userId: string, orgId: string, id: string) {
     await this.prisma.withOrganization(orgId, async (tx) => {
-      await this.ownedTodo(tx, userId, id);
+      await this.ownedTodo(tx, userId, orgId, id);
       await tx.todo.delete({ where: { id } });
     });
   }

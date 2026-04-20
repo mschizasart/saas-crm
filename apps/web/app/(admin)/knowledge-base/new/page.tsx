@@ -56,10 +56,10 @@ export default function NewArticlePage() {
 
   return (
     <div className="max-w-3xl">
-      <div className="mb-4"><Link href="/knowledge-base" className="text-sm text-gray-500 hover:text-primary">← Back</Link></div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">New Article</h1>
+      <div className="mb-4"><Link href="/knowledge-base" className="text-sm text-gray-500 dark:text-gray-400 hover:text-primary">← Back</Link></div>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">New Article</h1>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
+      <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 space-y-4">
         {error && <div className="px-3 py-2 bg-red-50 border border-red-100 text-sm text-red-600 rounded">{error}</div>}
 
         <Field label="Title" required>
@@ -79,13 +79,13 @@ export default function NewArticlePage() {
           <textarea required rows={15} value={content} onChange={(e) => setContent(e.target.value)} className={inputClass} />
         </Field>
 
-        <label className="flex items-center gap-2 text-sm text-gray-700">
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
           Active (visible to clients)
         </label>
 
-        <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
-          <Link href="/knowledge-base" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Cancel</Link>
+        <div className="flex justify-end gap-2 pt-4 border-t border-gray-100 dark:border-gray-800">
+          <Link href="/knowledge-base" className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Cancel</Link>
           <button type="submit" disabled={saving} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50">
             {saving ? 'Saving…' : 'Create Article'}
           </button>
@@ -100,7 +100,7 @@ const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg f
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">
+      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}

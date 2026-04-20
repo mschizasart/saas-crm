@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -50,7 +51,53 @@ export class ExpensesService {
           name,
           color: color ?? null,
         },
+        include: {
+          _count: { select: { expenses: true } },
+        },
       });
+    });
+  }
+
+  async updateCategory(
+    orgId: string,
+    id: string,
+    data: { name?: string; color?: string | null },
+  ) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.expenseCategory.findFirst({
+        where: { id, organizationId: orgId },
+      });
+      if (!existing) throw new NotFoundException('Category not found');
+
+      return tx.expenseCategory.update({
+        where: { id },
+        data: {
+          ...(data.name !== undefined && { name: data.name }),
+          ...(data.color !== undefined && { color: data.color }),
+        },
+        include: {
+          _count: { select: { expenses: true } },
+        },
+      });
+    });
+  }
+
+  async deleteCategory(orgId: string, id: string) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.expenseCategory.findFirst({
+        where: { id, organizationId: orgId },
+        include: { _count: { select: { expenses: true } } },
+      });
+      if (!existing) throw new NotFoundException('Category not found');
+
+      if (existing._count.expenses > 0) {
+        throw new ConflictException(
+          'Cannot delete a category that has expenses linked to it',
+        );
+      }
+
+      await tx.expenseCategory.delete({ where: { id } });
+      return { success: true };
     });
   }
 

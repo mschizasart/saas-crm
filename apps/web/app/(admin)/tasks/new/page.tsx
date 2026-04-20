@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { FormPageLayout } from '@/components/layouts/form-page-layout';
+import { Button } from '@/components/ui/button';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -59,39 +61,55 @@ export default function NewTaskPage() {
   }
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">New Task</h1>
-      <form onSubmit={submit} className="space-y-4 bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+    <FormPageLayout
+      title="New Task"
+      onSubmit={submit}
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => router.back()}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? 'Saving...' : 'Create Task'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
         {error && (
           <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2">
             {error}
           </div>
         )}
         <div>
-          <label className="text-sm font-medium text-gray-700">Name</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
           <input
             required
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+            className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm mt-1"
           />
         </div>
         <div>
-          <label className="text-sm font-medium text-gray-700">Description</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
           <textarea
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             rows={4}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+            className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm mt-1"
           />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-sm font-medium text-gray-700">Status</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
             <select
               value={form.status}
               onChange={(e) => setForm({ ...form, status: e.target.value })}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 bg-white"
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm mt-1 bg-white dark:bg-gray-900"
             >
               <option value="not_started">Not started</option>
               <option value="in_progress">In progress</option>
@@ -101,11 +119,11 @@ export default function NewTaskPage() {
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Priority</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Priority</label>
             <select
               value={form.priority}
               onChange={(e) => setForm({ ...form, priority: e.target.value })}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 bg-white"
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm mt-1 bg-white dark:bg-gray-900"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -114,51 +132,35 @@ export default function NewTaskPage() {
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Start date</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Start date</label>
             <input
               type="date"
               value={form.startDate}
               onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm mt-1"
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Due date</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Due date</label>
             <input
               type="date"
               value={form.dueDate}
               onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm mt-1"
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Estimated hours</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Estimated hours</label>
             <input
               type="number"
               step="0.25"
               value={form.estimatedHours}
               onChange={(e) => setForm({ ...form, estimatedHours: e.target.value })}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm mt-1"
             />
           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Create Task'}
-          </button>
-        </div>
-      </form>
-    </div>
+      </div>
+    </FormPageLayout>
   );
 }

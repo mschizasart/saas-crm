@@ -22,6 +22,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PdfService } from '../pdf/pdf.service';
 import { renderEstimateHtml } from '../pdf/templates/estimate.template';
+import { ActivityLogService } from '../activity-log/activity-log.service';
 
 @ApiTags('Estimates')
 @Controller({ version: '1', path: 'estimates' })
@@ -31,6 +32,7 @@ export class EstimatesController {
   constructor(
     private service: EstimatesService,
     private pdfService: PdfService,
+    private activityLog: ActivityLogService,
   ) {}
 
   // ─── Download PDF ──────────────────────────────────────────────────────────
@@ -118,6 +120,42 @@ export class EstimatesController {
     @Body() dto: Partial<CreateEstimateDto>,
   ) {
     return this.service.update(org.id, id, dto);
+  }
+
+  // ─── Update Status (generic, used by pipeline/kanban) ─────────────────────
+
+  @Patch(':id/status')
+  @Permissions('estimates.edit')
+  @ApiOperation({
+    summary:
+      'Generic status change — used by the kanban pipeline. No side-effects beyond persisting the new status.',
+  })
+  async updateStatus(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() body: { status: string },
+  ) {
+    const updated = await this.service.updateStatus(
+      org.id,
+      id,
+      body.status,
+      user?.id,
+    );
+    // Activity log entry (best-effort — never fail the status change).
+    try {
+      await this.activityLog.log(org.id, {
+        userId: user?.id,
+        action: 'estimate.status_changed',
+        entityType: 'estimate',
+        entityId: id,
+        description: `Estimate ${(updated as any).number ?? id} status → ${body.status}`,
+        metadata: { newStatus: body.status },
+      });
+    } catch {
+      // non-fatal
+    }
+    return updated;
   }
 
   // ─── Delete ────────────────────────────────────────────────────────────────

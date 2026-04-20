@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -46,6 +47,37 @@ export interface CreateInvoiceDto {
     unit?: string;
     order?: number;
   }>;
+}
+
+// ─── Date helpers ───────────────────────────────────────────────────────────
+function computeNextRecurrenceDate(
+  from: Date,
+  type: string | null | undefined,
+  every: number,
+): Date {
+  const d = new Date(from);
+  const step = Math.max(1, every || 1);
+  switch ((type || 'month').toLowerCase()) {
+    case 'day':
+      d.setDate(d.getDate() + step);
+      break;
+    case 'week':
+      d.setDate(d.getDate() + 7 * step);
+      break;
+    case 'quarterly':
+      d.setMonth(d.getMonth() + 3 * step);
+      break;
+    case 'year':
+    case 'yearly':
+      d.setFullYear(d.getFullYear() + step);
+      break;
+    case 'month':
+    case 'monthly':
+    default:
+      d.setMonth(d.getMonth() + step);
+      break;
+  }
+  return d;
 }
 
 // ─── Status transition map ──────────────────────────────────────────────────
@@ -109,17 +141,28 @@ export class InvoicesService {
       search?: string;
       status?: string;
       clientId?: string;
+      recurring?: boolean;
+      sortBy?: string;
       page?: number;
       limit?: number;
     },
   ) {
-    const { search, status, clientId, page = 1, limit = 20 } = query;
+    const {
+      search,
+      status,
+      clientId,
+      recurring,
+      sortBy,
+      page = 1,
+      limit = 20,
+    } = query;
     const skip = (page - 1) * limit;
 
     return this.prisma.withOrganization(orgId, async (tx) => {
       const where: any = { organizationId: orgId };
       if (status) where.status = status;
       if (clientId) where.clientId = clientId;
+      if (recurring !== undefined) where.isRecurring = recurring;
       if (search) {
         where.OR = [
           { number: { contains: search, mode: 'insensitive' } },
@@ -127,12 +170,18 @@ export class InvoicesService {
         ];
       }
 
+      // Postgres sorts NULLs last for asc by default when using nulls: 'last'
+      const orderBy: any =
+        sortBy === 'nextRecurringDate'
+          ? [{ nextRecurringDate: { sort: 'asc', nulls: 'last' } }]
+          : { createdAt: 'desc' };
+
       const [data, total] = await Promise.all([
         tx.invoice.findMany({
           where,
           skip,
           take: limit,
-          orderBy: { createdAt: 'desc' },
+          orderBy,
           include: {
             client: { select: { id: true, company: true } },
             _count: { select: { payments: true } },
@@ -143,6 +192,127 @@ export class InvoicesService {
 
       return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
     });
+  }
+
+  // ─── stopRecurring ─────────────────────────────────────────────────────────
+
+  async stopRecurring(orgId: string, id: string) {
+    await this.findOne(orgId, id);
+    const updated = await this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.invoice.update({
+        where: { id },
+        data: { isRecurring: false },
+      });
+    });
+    this.events.emit('invoice.recurring_stopped', { id, orgId });
+    return updated;
+  }
+
+  // ─── runRecurringNow ───────────────────────────────────────────────────────
+  // Immediately generate the next occurrence of a recurring invoice, bypassing
+  // the scheduler. Mirrors the logic in recurring-invoices.processor.ts.
+
+  async runRecurringNow(orgId: string, id: string) {
+    const source = await this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.invoice.findFirst({
+        where: { id, organizationId: orgId },
+        include: { items: true },
+      });
+    });
+    if (!source) throw new NotFoundException('Invoice not found');
+    if (!(source as any).isRecurring) {
+      throw new BadRequestException('Invoice is not set as recurring');
+    }
+
+    const src: any = source;
+    const cyclesCompleted = src.totalCyclesCompleted ?? 0;
+    if (src.totalCycles != null && cyclesCompleted >= src.totalCycles) {
+      await this.prisma.withOrganization(orgId, async (tx) => {
+        await tx.invoice.update({
+          where: { id },
+          data: { isRecurring: false },
+        });
+      });
+      throw new BadRequestException(
+        'Recurring cycle limit already reached; recurrence disabled',
+      );
+    }
+
+    const duplicate = await this.prisma.withOrganization(orgId, async (tx) => {
+      const count = await tx.invoice.count({
+        where: { organizationId: orgId },
+      });
+      const number = `INV-${String(count + 1).padStart(4, '0')}`;
+
+      const newInvoice = await tx.invoice.create({
+        data: {
+          organizationId: orgId,
+          clientId: src.clientId,
+          currencyId: src.currencyId,
+          number,
+          date: new Date(),
+          dueDate: src.dueDate
+            ? new Date(
+                Date.now() +
+                  (new Date(src.dueDate).getTime() -
+                    new Date(src.date).getTime()),
+              )
+            : null,
+          status: 'draft',
+          subTotal: src.subTotal,
+          discount: src.discount,
+          discountType: src.discountType,
+          adjustment: src.adjustment,
+          total: src.total,
+          totalTax: src.totalTax,
+          clientNote: src.clientNote,
+          adminNote: src.adminNote,
+          terms: src.terms,
+          allowedPaymentModes: src.allowedPaymentModes ?? [],
+          isRecurring: false,
+          recurringFromInvoiceId: src.id,
+          items: {
+            createMany: {
+              data: (src.items ?? []).map((item: any) => ({
+                description: item.description,
+                longDesc: item.longDesc,
+                qty: item.qty,
+                rate: item.rate,
+                tax1: item.tax1,
+                tax2: item.tax2,
+                unit: item.unit ?? null,
+                order: item.order,
+              })),
+            },
+          },
+        },
+      });
+
+      // Advance recurrence tracking on source
+      const next = computeNextRecurrenceDate(
+        new Date(),
+        src.recurringType,
+        src.recurringEvery ?? 1,
+      );
+      await tx.invoice.update({
+        where: { id },
+        data: {
+          lastRecurringDate: new Date(),
+          nextRecurringDate: next,
+          totalCyclesCompleted: cyclesCompleted + 1,
+        },
+      });
+
+      return newInvoice;
+    });
+
+    this.events.emit('invoice.created', {
+      invoice: duplicate,
+      orgId,
+      recurringFromInvoiceId: id,
+    });
+
+    return duplicate;
   }
 
   // ─── findOne ───────────────────────────────────────────────────────────────
@@ -625,6 +795,220 @@ export class InvoicesService {
     });
 
     return estimate;
+  }
+
+  // ─── billExpenses ─────────────────────────────────────────────────────────
+  // Attach a set of billable, not-yet-invoiced expenses to this invoice:
+  //   - creates an InvoiceItem per expense (desc, qty=1, rate=amount, tax1)
+  //   - flips the expense's invoiced flag and invoiceId FK
+  // Totals are recomputed so the invoice stays consistent.
+
+  async billExpenses(orgId: string, invoiceId: string, expenseIds: string[]) {
+    if (!Array.isArray(expenseIds) || expenseIds.length === 0) {
+      throw new BadRequestException('expenseIds is required');
+    }
+
+    const invoice = await this.findOne(orgId, invoiceId);
+    if (invoice.status !== 'draft') {
+      throw new BadRequestException('Only draft invoices can be edited');
+    }
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const expenses = await tx.expense.findMany({
+        where: {
+          id: { in: expenseIds },
+          organizationId: orgId,
+          billable: true,
+          invoiced: false,
+          ...(invoice.clientId ? { clientId: invoice.clientId } : {}),
+        },
+      });
+
+      if (expenses.length === 0) {
+        throw new BadRequestException('No eligible billable expenses found');
+      }
+
+      const existingItems = await tx.invoiceItem.findMany({
+        where: { invoiceId },
+        orderBy: { order: 'desc' },
+        take: 1,
+      });
+      const startOrder =
+        existingItems.length > 0 ? (existingItems[0].order ?? 0) + 1 : 0;
+
+      await tx.invoiceItem.createMany({
+        data: expenses.map((e: any, i: number) => ({
+          invoiceId,
+          description: e.name,
+          qty: 1,
+          rate: Number(e.amount ?? 0),
+          tax1: e.tax ?? null,
+          order: startOrder + i,
+        })),
+      });
+
+      await tx.expense.updateMany({
+        where: { id: { in: expenses.map((e: any) => e.id) } },
+        data: { invoiced: true, invoiceId },
+      });
+
+      // Recompute invoice totals from all items
+      const items = await tx.invoiceItem.findMany({ where: { invoiceId } });
+      const totals = this.calculateTotals(
+        items.map((it: any) => ({
+          quantity: Number(it.qty ?? 0),
+          unitPrice: Number(it.rate ?? 0),
+          taxRate: 0,
+        })),
+        Number(invoice.discount ?? 0),
+      );
+
+      return tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          subTotal: totals.subtotal,
+          totalTax: totals.tax,
+          total: totals.total,
+        },
+        include: {
+          client: { select: { id: true, company: true } },
+          items: { orderBy: { order: 'asc' } },
+        },
+      });
+    });
+  }
+
+  // ─── merge ────────────────────────────────────────────────────────────────
+  // Merge N draft invoices (same client + currency) into a single new draft.
+  // Line items are unioned; sources are cancelled with an admin note tagging
+  // the resulting invoice number.
+
+  async merge(orgId: string, invoiceIds: string[], createdBy: string) {
+    if (!Array.isArray(invoiceIds) || invoiceIds.length < 2) {
+      throw new BadRequestException('At least two invoiceIds are required');
+    }
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const sources = await tx.invoice.findMany({
+        where: { id: { in: invoiceIds }, organizationId: orgId },
+        include: { items: { orderBy: { order: 'asc' } } },
+      });
+
+      if (sources.length !== invoiceIds.length) {
+        throw new NotFoundException('One or more invoices not found');
+      }
+
+      const clientIds = new Set(sources.map((s: any) => s.clientId));
+      const currencyIds = new Set(sources.map((s: any) => s.currencyId ?? ''));
+      if (clientIds.size !== 1) {
+        throw new ConflictException('All invoices must share the same client');
+      }
+      if (currencyIds.size !== 1) {
+        throw new ConflictException('All invoices must share the same currency');
+      }
+      if (!sources.every((s: any) => s.status === 'draft')) {
+        throw new ConflictException('All invoices must be in draft status');
+      }
+
+      const first: any = sources[0];
+      const number = await this.generateInvoiceNumber(orgId, tx);
+
+      // Union of items (ordered by source invoice order then item order)
+      let running = 0;
+      const allItems: any[] = [];
+      for (const src of sources as any[]) {
+        for (const it of src.items ?? []) {
+          allItems.push({
+            description: it.description,
+            longDesc: it.longDesc ?? null,
+            qty: Number(it.qty ?? 0),
+            rate: Number(it.rate ?? 0),
+            tax1: it.tax1 ?? null,
+            tax2: it.tax2 ?? null,
+            unit: it.unit ?? null,
+            order: running++,
+          });
+        }
+      }
+
+      const totals = this.calculateTotals(
+        allItems.map((i) => ({
+          quantity: i.qty,
+          unitPrice: i.rate,
+          taxRate: 0,
+        })),
+        0,
+      );
+
+      const merged = await tx.invoice.create({
+        data: {
+          organizationId: orgId,
+          clientId: first.clientId,
+          currencyId: first.currencyId,
+          number,
+          date: new Date(),
+          status: 'draft',
+          subTotal: totals.subtotal,
+          totalTax: totals.tax,
+          discount: 0,
+          discountType: first.discountType ?? 'fixed',
+          total: totals.total,
+          terms: first.terms ?? null,
+          clientNote: first.clientNote ?? null,
+          adminNote: `Merged from: ${sources.map((s: any) => s.number).join(', ')}`,
+          allowedPaymentModes: first.allowedPaymentModes ?? [],
+          items: {
+            createMany: { data: allItems },
+          },
+        },
+        include: {
+          client: { select: { id: true, company: true } },
+          items: { orderBy: { order: 'asc' } },
+        },
+      });
+
+      for (const src of sources as any[]) {
+        await tx.invoice.update({
+          where: { id: src.id },
+          data: {
+            status: 'cancelled',
+            adminNote: [src.adminNote, `Merged into ${merged.number}`]
+              .filter(Boolean)
+              .join('\n'),
+            cancelledAt: new Date(),
+          },
+        });
+      }
+
+      this.events.emit('invoice.created', {
+        invoice: merged,
+        orgId,
+        createdBy,
+        mergedFrom: invoiceIds,
+      });
+
+      return merged;
+    });
+  }
+
+  // ─── findManyForPdf ───────────────────────────────────────────────────────
+  // Loads invoices (id + number + client/items/organization) for bulk PDF
+  // generation. Scoped to the org so we can't cross-leak.
+
+  async findManyForBulkPdf(orgId: string, ids: string[]) {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestException('invoiceIds required');
+    }
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.invoice.findMany({
+        where: { id: { in: ids }, organizationId: orgId },
+        include: {
+          client: true,
+          items: { orderBy: { order: 'asc' } },
+          payments: { orderBy: { paymentDate: 'desc' } },
+        },
+      });
+    });
   }
 
   // ─── getStats ─────────────────────────────────────────────────────────────

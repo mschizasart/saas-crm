@@ -1,6 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { inputClass } from '@/components/ui/form-field';
 
 interface Todo {
   id: string;
@@ -91,41 +95,36 @@ export default function TodosPage() {
   }
 
   return (
-    <div className="max-w-xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">My Todos</h1>
-
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+    <ListPageLayout title="My Todos" className="max-w-xl">
+      <Card padding="md">
         <div className="flex gap-2 mb-4">
           <input
+            aria-label="New todo"
             type="text"
             placeholder="Add a todo..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && add()}
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            className={`${inputClass} flex-1`}
           />
-          <button
-            onClick={add}
-            className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90"
-          >
-            Add
-          </button>
+          <Button onClick={add}>Add</Button>
         </div>
 
         {loading ? (
-          <p className="text-sm text-gray-400 py-4 text-center">Loading...</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">Loading...</p>
         ) : todos.length === 0 ? (
-          <p className="text-sm text-gray-400 py-4 text-center">
+          <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
             No todos yet — add one above.
           </p>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
             {todos.map((todo) => (
               <li
                 key={todo.id}
                 className="flex items-center gap-3 py-2 group"
               >
                 <input
+                  aria-label={`Toggle ${todo.description}`}
                   type="checkbox"
                   checked={todo.completed}
                   onChange={() => toggle(todo.id)}
@@ -133,6 +132,7 @@ export default function TodosPage() {
                 />
                 {editingId === todo.id ? (
                   <input
+                    aria-label="Edit todo"
                     autoFocus
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
@@ -141,7 +141,7 @@ export default function TodosPage() {
                       if (e.key === 'Enter') saveEdit(todo.id);
                       if (e.key === 'Escape') setEditingId(null);
                     }}
-                    className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm"
+                    className="flex-1 border border-gray-200 dark:border-gray-700 rounded px-2 py-1 text-sm"
                   />
                 ) : (
                   <span
@@ -161,7 +161,7 @@ export default function TodosPage() {
                 )}
                 <button
                   onClick={() => remove(todo.id)}
-                  className="text-xs text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="text-xs text-gray-400 dark:text-gray-500 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   Delete
                 </button>
@@ -169,7 +169,7 @@ export default function TodosPage() {
             ))}
           </ul>
         )}
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }

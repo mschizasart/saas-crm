@@ -244,17 +244,31 @@ export class ClientsService {
 
   // ─── Statement ─────────────────────────────────────────────
 
-  async getStatement(orgId: string, clientId: string) {
+  async getStatement(
+    orgId: string,
+    clientId: string,
+    options?: { from?: Date; to?: Date },
+  ) {
     await this.findOne(orgId, clientId);
+    const dateFilter: any = {};
+    if (options?.from) dateFilter.gte = options.from;
+    if (options?.to) dateFilter.lte = options.to;
+    const hasDateFilter = Object.keys(dateFilter).length > 0;
+
     return this.prisma.withOrganization(orgId, async (tx) => {
+      const invoiceWhere: any = { clientId, organizationId: orgId };
+      if (hasDateFilter) invoiceWhere.date = dateFilter;
+      const paymentWhere: any = { clientId, organizationId: orgId };
+      if (hasDateFilter) paymentWhere.paymentDate = dateFilter;
+
       const [invoices, payments] = await Promise.all([
         tx.invoice.findMany({
-          where: { clientId, organizationId: orgId },
+          where: invoiceWhere,
           select: { id: true, number: true, date: true, total: true, status: true },
           orderBy: { date: 'desc' },
         }),
         tx.payment.findMany({
-          where: { clientId, organizationId: orgId },
+          where: paymentWhere,
           select: { id: true, amount: true, paymentDate: true, transactionId: true },
           orderBy: { paymentDate: 'desc' },
         }),

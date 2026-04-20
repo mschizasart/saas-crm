@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Spinner } from '@/components/ui/spinner';
+import { inputClass } from '@/components/ui/form-field';
 
 interface PostUser {
   id: string;
@@ -29,15 +31,7 @@ interface FeedResponse {
   totalPages: number;
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -67,10 +61,6 @@ function initials(first: string, last: string): string {
   return `${(first || '')[0] ?? ''}${(last || '')[0] ?? ''}`.toUpperCase();
 }
 
-// ---------------------------------------------------------------------------
-// Get current user id from JWT (simple base64 decode)
-// ---------------------------------------------------------------------------
-
 function getCurrentUserId(): string | null {
   const token = getToken();
   if (!token) return null;
@@ -93,10 +83,6 @@ function getIsAdmin(): boolean {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
 export default function NewsfeedPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [page, setPage] = useState(1);
@@ -108,8 +94,6 @@ export default function NewsfeedPage() {
 
   const currentUserId = typeof window !== 'undefined' ? getCurrentUserId() : null;
   const isAdmin = typeof window !== 'undefined' ? getIsAdmin() : false;
-
-  // ── Fetch posts ───────────────────────────────────────────────────────────
 
   const fetchPosts = useCallback(async (p: number, silent = false) => {
     if (!silent) setLoading(true);
@@ -132,16 +116,12 @@ export default function NewsfeedPage() {
     fetchPosts(page);
   }, [page, fetchPosts]);
 
-  // ── Auto-refresh every 30s ────────────────────────────────────────────────
-
   useEffect(() => {
     intervalRef.current = setInterval(() => fetchPosts(page, true), 30_000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [page, fetchPosts]);
-
-  // ── Create post ───────────────────────────────────────────────────────────
 
   async function handlePost(e: React.FormEvent) {
     e.preventDefault();
@@ -164,8 +144,6 @@ export default function NewsfeedPage() {
     }
   }
 
-  // ── Like ──────────────────────────────────────────────────────────────────
-
   async function handleLike(postId: string) {
     try {
       const res = await fetch(`${API_BASE}/api/v1/newsfeed/${postId}/like`, {
@@ -180,8 +158,6 @@ export default function NewsfeedPage() {
       /* ignore */
     }
   }
-
-  // ── Delete ────────────────────────────────────────────────────────────────
 
   async function handleDelete(postId: string) {
     if (!confirm('Delete this post?')) return;
@@ -198,57 +174,43 @@ export default function NewsfeedPage() {
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Newsfeed</h1>
-
-      {/* ── Post input ────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
+    <ListPageLayout title="Newsfeed" className="max-w-2xl mx-auto">
+      <Card padding="lg" className="mb-6">
         <form onSubmit={handlePost}>
           <textarea
+            aria-label="New post"
             rows={3}
             value={postContent}
             onChange={(e) => setPostContent(e.target.value)}
             placeholder="What's on your mind?"
-            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-y"
+            className={`${inputClass} resize-y`}
           />
           <div className="mt-3 flex justify-end">
-            <button
+            <Button
               type="submit"
+              variant="primary"
               disabled={posting || !postContent.trim()}
-              className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              loading={posting}
             >
               {posting ? 'Posting...' : 'Post'}
-            </button>
+            </Button>
           </div>
         </form>
-      </div>
+      </Card>
 
-      {/* ── Feed ──────────────────────────────────────────────────────── */}
       {loading ? (
         <div className="flex justify-center items-center py-24">
-          <svg
-            className="animate-spin h-7 w-7 text-primary"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            aria-label="Loading"
-          >
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
+          <Spinner size="lg" label="Loading" />
         </div>
       ) : posts.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-10 text-center">
-          <p className="text-gray-400 text-sm">No posts yet. Be the first to share an update!</p>
-        </div>
+        <Card>
+          <EmptyState title="No posts yet" description="Be the first to share an update!" />
+        </Card>
       ) : (
         <div className="space-y-4">
           {posts.map((post) => (
-            <div key={post.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-              {/* Author row */}
+            <Card key={post.id} padding="lg">
               <div className="flex items-center gap-3 mb-3">
                 {post.user.avatar ? (
                   <img
@@ -262,23 +224,21 @@ export default function NewsfeedPage() {
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                     {post.user.firstName} {post.user.lastName}
                   </p>
-                  <p className="text-xs text-gray-400">{relativeTime(post.createdAt)}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">{relativeTime(post.createdAt)}</p>
                 </div>
               </div>
 
-              {/* Content */}
-              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed mb-3">
+              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed mb-3">
                 {post.content}
               </p>
 
-              {/* Actions */}
               <div className="flex items-center gap-4 pt-2 border-t border-gray-50">
                 <button
                   onClick={() => handleLike(post.id)}
-                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-500 transition-colors"
+                  className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 transition-colors"
                 >
                   <span>&#10084;&#65039;</span>
                   <span>{post.likes > 0 ? post.likes : ''}</span>
@@ -287,29 +247,25 @@ export default function NewsfeedPage() {
                 {(post.user.id === currentUserId || isAdmin) && (
                   <button
                     onClick={() => handleDelete(post.id)}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-500 transition-colors"
+                    className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 transition-colors"
                   >
                     <span>&#128465;&#65039;</span>
                     <span>Delete</span>
                   </button>
                 )}
               </div>
-            </div>
+            </Card>
           ))}
 
-          {/* ── Load more ─────────────────────────────────────────────── */}
           {page < totalPages && (
             <div className="flex justify-center pt-2 pb-4">
-              <button
-                onClick={() => setPage((p) => p + 1)}
-                className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
+              <Button variant="secondary" onClick={() => setPage((p) => p + 1)}>
                 Load more
-              </button>
+              </Button>
             </div>
           )}
         </div>
       )}
-    </div>
+    </ListPageLayout>
   );
 }

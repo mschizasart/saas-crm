@@ -1,7 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { ErrorBanner } from '@/components/ui/error-banner';
+import { inputClass } from '@/components/ui/form-field';
 
 interface Article {
   id: string;
@@ -63,39 +68,45 @@ export default function KnowledgeBasePage() {
     return () => clearTimeout(t);
   }, [fetchArticles]);
 
+  const filtersNode = (
+    <div className="flex gap-3">
+      <input
+        aria-label="Search articles"
+        placeholder="Search articles…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className={`${inputClass} flex-1 max-w-sm`}
+      />
+      <select
+        aria-label="Filter by group"
+        value={groupId}
+        onChange={(e) => setGroupId(e.target.value)}
+        className={`${inputClass} w-auto`}
+      >
+        <option value="">All groups</option>
+        {groups.map((g) => (
+          <option key={g.id} value={g.id}>{g.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Knowledge Base</h1>
-        <Link href="/knowledge-base/new" className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90">
-          <span className="text-lg leading-none">+</span>New Article
-        </Link>
-      </div>
+    <ListPageLayout
+      title="Knowledge Base"
+      primaryAction={{ label: 'New Article', href: '/knowledge-base/new' }}
+      filters={filtersNode}
+    >
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error} onRetry={fetchArticles} onDismiss={() => setError(null)} />
+        </div>
+      )}
 
-      <div className="flex gap-3 mb-4">
-        <input
-          placeholder="Search articles…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 max-w-sm px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white"
-        />
-        <select
-          value={groupId}
-          onChange={(e) => setGroupId(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white"
-        >
-          <option value="">All groups</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>{g.name}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        {error && <div className="px-4 py-3 bg-red-50 text-sm text-red-600">{error}</div>}
+      <Card>
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase">
+            <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
               <th className="px-4 py-3">Title</th>
               <th className="px-4 py-3">Group</th>
               <th className="px-4 py-3">Active</th>
@@ -104,30 +115,24 @@ export default function KnowledgeBasePage() {
           </thead>
           <tbody>
             {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="border-b border-gray-100">
-                  {Array.from({ length: 4 }).map((__, j) => (
-                    <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td>
-                  ))}
-                </tr>
-              ))
+              <TableSkeleton rows={5} columns={4} />
             ) : articles.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">No articles</td></tr>
+              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">No articles</td></tr>
             ) : articles.map((a) => (
-              <tr key={a.id} className="border-b border-gray-100 hover:bg-gray-50/60">
-                <td className="px-4 py-3 font-medium text-gray-900">{a.title}</td>
-                <td className="px-4 py-3 text-gray-600">{a.group?.name ?? '—'}</td>
+              <tr key={a.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/60">
+                <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{a.title}</td>
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{a.group?.name ?? '—'}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${a.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                  <Badge variant={a.active ? 'success' : 'muted'}>
                     {a.active ? 'Active' : 'Draft'}
-                  </span>
+                  </Badge>
                 </td>
-                <td className="px-4 py-3 text-gray-500 text-xs">{a.updatedAt ? new Date(a.updatedAt).toLocaleDateString() : '—'}</td>
+                <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{a.updatedAt ? new Date(a.updatedAt).toLocaleDateString() : '—'}</td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }

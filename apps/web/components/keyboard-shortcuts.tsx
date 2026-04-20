@@ -33,6 +33,7 @@ export function KeyboardShortcuts() {
   const [showHelp, setShowHelp] = useState(false);
   const bufferRef = useRef<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const clearBuffer = useCallback(() => {
     bufferRef.current = null;
@@ -102,6 +103,40 @@ export function KeyboardShortcuts() {
     };
   }, [router, showHelp, clearBuffer]);
 
+  // Focus trap + scroll lock + focus restore for the help dialog.
+  // ESC is already handled in the main handler above, so we don't duplicate it here.
+  useEffect(() => {
+    if (!showHelp) return;
+    const prev = document.activeElement as HTMLElement | null;
+    const selectors =
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    const first = panelRef.current?.querySelector<HTMLElement>(selectors);
+    first?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const focusables =
+        panelRef.current?.querySelectorAll<HTMLElement>(selectors);
+      if (!focusables || focusables.length === 0) return;
+      const firstEl = focusables[0];
+      const lastEl = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === firstEl) {
+        lastEl.focus();
+        e.preventDefault();
+      } else if (!e.shiftKey && document.activeElement === lastEl) {
+        firstEl.focus();
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      prev?.focus?.();
+    };
+  }, [showHelp]);
+
   if (!showHelp) return null;
 
   // Group shortcuts by first key
@@ -115,16 +150,21 @@ export function KeyboardShortcuts() {
       onClick={() => setShowHelp(false)}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="keyboard-shortcuts-title"
         className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Keyboard Shortcuts</h2>
+          <h2 id="keyboard-shortcuts-title" className="text-lg font-semibold text-gray-900">Keyboard Shortcuts</h2>
           <button
             onClick={() => setShowHelp(false)}
+            aria-label="Close"
             className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>

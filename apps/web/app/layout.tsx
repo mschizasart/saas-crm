@@ -18,6 +18,19 @@ export const metadata: Metadata = {
   },
 };
 
+// Runs before React hydrates — avoids a light-mode flash for dark-mode users.
+const NO_FLASH_THEME_SCRIPT = `
+(function() {
+  try {
+    var stored = localStorage.getItem('theme');
+    var isDark =
+      stored === 'dark' ||
+      (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (isDark) document.documentElement.classList.add('dark');
+  } catch (e) { /* ignore */ }
+})();
+`;
+
 export default function RootLayout({
   children,
 }: {
@@ -25,6 +38,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{ __html: NO_FLASH_THEME_SCRIPT }}
+        />
+      </head>
       <body className={inter.className}>
         <Providers>
           {children}

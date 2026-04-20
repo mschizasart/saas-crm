@@ -2,6 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { CheckSquare } from 'lucide-react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { inputClass } from '@/components/ui/form-field';
 
 interface Task {
   id: string;
@@ -31,20 +38,21 @@ const STATUSES = [
   'complete',
 ];
 
+type BadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info' | 'muted';
+
+const STATUS_VARIANTS: Record<string, BadgeVariant> = {
+  not_started: 'default',
+  in_progress: 'info',
+  testing: 'warning',
+  awaiting_feedback: 'info',
+  complete: 'success',
+};
+
 function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    not_started: 'bg-gray-100 text-gray-600',
-    in_progress: 'bg-blue-100 text-blue-700',
-    testing: 'bg-yellow-100 text-yellow-700',
-    awaiting_feedback: 'bg-purple-100 text-purple-700',
-    complete: 'bg-green-100 text-green-700',
-  };
   return (
-    <span
-      className={`text-xs font-medium px-2 py-0.5 rounded-full ${colors[status] ?? 'bg-gray-100 text-gray-500'}`}
-    >
+    <Badge variant={STATUS_VARIANTS[status] ?? 'muted'}>
       {status.replace(/_/g, ' ')}
-    </span>
+    </Badge>
   );
 }
 
@@ -84,31 +92,15 @@ export default function TasksPage() {
     fetchTasks();
   }, [fetchTasks]);
 
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Tasks</h1>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/tasks/kanban"
-            className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Kanban
-          </Link>
-          <Link
-            href="/tasks/new"
-            className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90"
-          >
-            <span className="text-lg leading-none">+</span>New Task
-          </Link>
-        </div>
-      </div>
-
-      <div className="flex gap-2 mb-4 border-b border-gray-200">
+  const filtersNode = (
+    <>
+      <div className="flex gap-2 mb-4 border-b border-gray-200 dark:border-gray-700" role="tablist" aria-label="Tasks view">
         {(['all', 'my'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
+            role="tab"
+            aria-selected={tab === t}
             className={[
               'px-4 py-2 text-sm font-medium -mb-px border-b-2',
               tab === t
@@ -122,18 +114,20 @@ export default function TasksPage() {
       </div>
 
       {tab === 'all' && (
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2">
           <input
             type="text"
             placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            aria-label="Search tasks"
+            className={`${inputClass} max-w-xs`}
           />
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+            aria-label="Filter by status"
+            className={`${inputClass} max-w-xs`}
           >
             {STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -145,15 +139,25 @@ export default function TasksPage() {
             type="date"
             value={dueBefore}
             onChange={(e) => setDueBefore(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            aria-label="Due before"
+            className={`${inputClass} max-w-xs`}
           />
         </div>
       )}
+    </>
+  );
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+  return (
+    <ListPageLayout
+      title="Tasks"
+      secondaryActions={[{ label: 'Kanban', href: '/tasks/kanban' }]}
+      primaryAction={{ label: 'New Task', href: '/tasks/new', icon: <span className="text-lg leading-none">+</span> }}
+      filters={filtersNode}
+    >
+      <Card>
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase">
+            <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Project</th>
               <th className="px-4 py-3">Status</th>
@@ -164,41 +168,41 @@ export default function TasksPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
-                  Loading...
-                </td>
-              </tr>
+              <TableSkeleton rows={6} columns={6} columnWidths={['50%', '40%', '25%', '20%', '25%', '40%']} />
             ) : tasks.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
-                  No tasks found
+                <td colSpan={6} className="px-4 py-8">
+                  <EmptyState
+                    icon={<CheckSquare className="w-10 h-10" />}
+                    title="No tasks found"
+                    action={{ label: 'Create your first task', href: '/tasks/new' }}
+                  />
                 </td>
               </tr>
             ) : (
               tasks.map((t) => (
                 <tr
                   key={t.id}
-                  className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60"
+                  className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60"
                 >
                   <td className="px-4 py-3 font-medium">
                     <Link href={`/tasks/${t.id}`} className="hover:text-primary">
                       {t.name}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                     {t.project?.name ?? '—'}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={t.status} />
                   </td>
-                  <td className="px-4 py-3 text-gray-500 capitalize">
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 capitalize">
                     {t.priority}
                   </td>
-                  <td className="px-4 py-3 text-gray-500">
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                     {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '—'}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">
                     {t.assignments?.length
                       ? t.assignments
                           .map((a) =>
@@ -215,7 +219,7 @@ export default function TasksPage() {
             )}
           </tbody>
         </table>
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }

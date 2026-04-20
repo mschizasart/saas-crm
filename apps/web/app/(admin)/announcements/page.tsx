@@ -1,6 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { inputClass } from '@/components/ui/form-field';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -86,115 +91,109 @@ export default function AnnouncementsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <h1 className="text-2xl font-bold">Announcements</h1>
-
-      <form
-        onSubmit={create}
-        className="bg-white p-4 rounded shadow space-y-3"
-      >
-        <input
-          required
-          placeholder="Title"
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          className="w-full px-3 py-2 border rounded"
-        />
-        <textarea
-          required
-          placeholder="Message"
-          value={form.message}
-          onChange={(e) => setForm({ ...form, message: e.target.value })}
-          className="w-full px-3 py-2 border rounded"
-          rows={3}
-        />
-        <input
-          placeholder="Link (optional)"
-          value={form.link}
-          onChange={(e) => setForm({ ...form, link: e.target.value })}
-          className="w-full px-3 py-2 border rounded"
-        />
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={form.showToStaff}
-              onChange={(e) =>
-                setForm({ ...form, showToStaff: e.target.checked })
-              }
-            />
-            Show to staff
-          </label>
-          <label className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={form.showToClients}
-              onChange={(e) =>
-                setForm({ ...form, showToClients: e.target.checked })
-              }
-            />
-            Show to clients
-          </label>
-          <label className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={form.dismissible}
-              onChange={(e) =>
-                setForm({ ...form, dismissible: e.target.checked })
-              }
-            />
-            Dismissible
-          </label>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Expires at</label>
+    <ListPageLayout title="Announcements" className="max-w-3xl">
+      <Card padding="md">
+        <form onSubmit={create} className="space-y-3">
           <input
-            type="datetime-local"
-            value={form.expiresAt}
-            onChange={(e) => setForm({ ...form, expiresAt: e.target.value })}
-            className="px-3 py-2 border rounded"
+            aria-label="Title"
+            required
+            placeholder="Title"
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            className={inputClass}
           />
-        </div>
-        <button
-          type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded"
-        >
-          Add Announcement
-        </button>
-      </form>
+          <textarea
+            aria-label="Message"
+            required
+            placeholder="Message"
+            value={form.message}
+            onChange={(e) => setForm({ ...form, message: e.target.value })}
+            className={inputClass}
+            rows={3}
+          />
+          <input
+            aria-label="Link"
+            placeholder="Link (optional)"
+            value={form.link}
+            onChange={(e) => setForm({ ...form, link: e.target.value })}
+            className={inputClass}
+          />
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-1 text-sm">
+              <input
+                type="checkbox"
+                checked={form.showToStaff}
+                onChange={(e) =>
+                  setForm({ ...form, showToStaff: e.target.checked })
+                }
+              />
+              Show to staff
+            </label>
+            <label className="flex items-center gap-1 text-sm">
+              <input
+                type="checkbox"
+                checked={form.showToClients}
+                onChange={(e) =>
+                  setForm({ ...form, showToClients: e.target.checked })
+                }
+              />
+              Show to clients
+            </label>
+            <label className="flex items-center gap-1 text-sm">
+              <input
+                type="checkbox"
+                checked={form.dismissible}
+                onChange={(e) =>
+                  setForm({ ...form, dismissible: e.target.checked })
+                }
+              />
+              Dismissible
+            </label>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Expires at</label>
+            <input
+              type="datetime-local"
+              value={form.expiresAt}
+              onChange={(e) => setForm({ ...form, expiresAt: e.target.value })}
+              className={inputClass}
+            />
+          </div>
+          <Button type="submit">Add Announcement</Button>
+        </form>
+      </Card>
 
-      <div className="bg-white rounded shadow divide-y">
+      <Card>
         {loading ? (
           <p className="p-4">Loading…</p>
         ) : items.length === 0 ? (
-          <p className="p-4 text-gray-500">No announcements.</p>
+          <EmptyState title="No announcements" description="Publish one above." />
         ) : (
-          items.map((a) => (
-            <div
-              key={a.id}
-              className="p-4 flex items-start justify-between"
-            >
-              <div>
-                <h3 className="font-semibold">{a.title}</h3>
-                <p className="text-sm text-gray-600">{a.message}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {a.showToStaff ? 'Staff' : ''}
-                  {a.showToStaff && a.showToClients ? ' + ' : ''}
-                  {a.showToClients ? 'Clients' : ''}
-                  {a.expiresAt &&
-                    ` · expires ${new Date(a.expiresAt).toLocaleDateString()}`}
-                </p>
-              </div>
-              <button
-                onClick={() => remove(a.id)}
-                className="text-red-600 text-sm"
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {items.map((a) => (
+              <div
+                key={a.id}
+                className="p-4 flex items-start justify-between"
               >
-                Delete
-              </button>
-            </div>
-          ))
+                <div>
+                  <h3 className="font-semibold">{a.title}</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">{a.message}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {a.showToStaff ? 'Staff' : ''}
+                    {a.showToStaff && a.showToClients ? ' + ' : ''}
+                    {a.showToClients ? 'Clients' : ''}
+                    {a.expiresAt &&
+                      ` · expires ${new Date(a.expiresAt).toLocaleDateString()}`}
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => remove(a.id)} className="text-red-600 hover:text-red-700">
+                  Delete
+                </Button>
+              </div>
+            ))}
+          </div>
         )}
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }

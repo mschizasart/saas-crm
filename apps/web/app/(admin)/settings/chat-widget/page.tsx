@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { SettingsPageLayout, SettingsSection } from '@/components/layouts/settings-page-layout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -76,11 +77,8 @@ export default function ChatWidgetSettingsPage() {
   }
 
   return (
-    <div className="max-w-3xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Live Chat Widget</h1>
-
-      {/* Enable toggle */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
+    <SettingsPageLayout title="Live Chat Widget" description="Configure the embeddable chat widget for your public site">
+      <SettingsSection title="Status">
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
@@ -89,98 +87,93 @@ export default function ChatWidgetSettingsPage() {
             className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary/30"
           />
           <div>
-            <span className="text-sm font-medium text-gray-700">Enable Live Chat Widget</span>
-            <p className="text-xs text-gray-500">Allow visitors to chat with your team in real-time</p>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Enable Live Chat Widget</span>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Allow visitors to chat with your team in real-time</p>
           </div>
         </label>
-      </div>
+      </SettingsSection>
 
-      {/* Customization */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
-        <h2 className="text-sm font-semibold text-gray-800 mb-4">Customization</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Primary Color</label>
-            <div className="flex items-center gap-3">
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="h-10 w-16 rounded border border-gray-200 cursor-pointer"
-              />
-              <input
-                type="text"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="px-3 py-2 text-sm border border-gray-200 rounded-lg w-32 focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Welcome Message</label>
-            <input
-              type="text"
-              value={welcome}
-              onChange={(e) => setWelcome(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Position</label>
-            <select
-              value={position}
-              onChange={(e) => setPosition(e.target.value as 'right' | 'left')}
-              className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-            >
-              <option value="right">Bottom Right</option>
-              <option value="left">Bottom Left</option>
-            </select>
-          </div>
+      <SettingsSection
+        title="Customization"
+        footer={
           <button
             onClick={saveSettings}
             className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
           >
             Save Settings
           </button>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Primary Color</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="h-10 w-16 rounded border border-gray-200 dark:border-gray-700 cursor-pointer"
+              />
+              <input
+                type="text"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg w-32 focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Welcome Message</label>
+            <input
+              type="text"
+              value={welcome}
+              onChange={(e) => setWelcome(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Position</label>
+            <select
+              value={position}
+              onChange={(e) => setPosition(e.target.value as 'right' | 'left')}
+              className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="right">Bottom Right</option>
+              <option value="left">Bottom Left</option>
+            </select>
+          </div>
         </div>
-      </div>
+      </SettingsSection>
 
-      {/* Embed code */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-800">Embed Code</h2>
+      <SettingsSection title="Embed Code" description="Paste this code before the closing </body> tag on your website.">
+        <div className="flex items-center justify-end mb-3">
           <button
             onClick={copySnippet}
-            className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-3 py-1.5 text-xs font-medium border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             {copied ? 'Copied!' : 'Copy to Clipboard'}
           </button>
         </div>
-        <p className="text-xs text-gray-500 mb-3">
-          Paste this code before the closing <code>&lt;/body&gt;</code> tag on your website.
-        </p>
-        <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-xs text-gray-700 overflow-x-auto whitespace-pre-wrap">
+        <pre className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 text-xs text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre-wrap">
           {snippet}
         </pre>
-      </div>
+      </SettingsSection>
 
-      {/* Preview */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-        <h2 className="text-sm font-semibold text-gray-800 mb-4">Preview</h2>
-        <div className="relative bg-gray-100 rounded-lg h-[420px] overflow-hidden">
+      <SettingsSection title="Preview">
+        <div className="relative bg-gray-100 dark:bg-gray-800 rounded-lg h-[420px] overflow-hidden">
           {/* Simulated chat panel */}
           <div
-            className="absolute bottom-4 w-[300px] h-[360px] bg-white rounded-2xl shadow-xl flex flex-col overflow-hidden"
+            className="absolute bottom-4 w-[300px] h-[360px] bg-white dark:bg-gray-900 rounded-2xl shadow-xl flex flex-col overflow-hidden"
             style={{ [position]: '16px' }}
           >
             <div className="px-4 py-3 text-white font-semibold text-sm" style={{ background: color }}>
               Chat with us
             </div>
-            <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
+            <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
               {welcome}
             </div>
             <div className="flex-1 p-3 space-y-2">
-              <div className="text-xs bg-gray-100 text-gray-700 px-3 py-2 rounded-xl self-start max-w-[80%] w-fit">
+              <div className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-xl self-start max-w-[80%] w-fit">
                 Hello! Need help with my account
               </div>
               <div
@@ -190,8 +183,8 @@ export default function ChatWidgetSettingsPage() {
                 Hi there! I would be happy to help.
               </div>
             </div>
-            <div className="flex gap-2 p-3 border-t border-gray-200">
-              <div className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-400">
+            <div className="flex gap-2 p-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-400 dark:text-gray-500">
                 Type a message...
               </div>
               <div className="px-3 py-2 text-white text-xs rounded-lg font-medium" style={{ background: color }}>
@@ -209,7 +202,7 @@ export default function ChatWidgetSettingsPage() {
             </svg>
           </div>
         </div>
-      </div>
-    </div>
+      </SettingsSection>
+    </SettingsPageLayout>
   );
 }

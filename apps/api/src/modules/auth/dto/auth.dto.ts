@@ -82,3 +82,31 @@ export class RegisterOrganizationDto {
   @IsString()
   currency?: string;
 }
+
+export class PortalRegisterDto {
+  @ApiProperty({ example: 'acme' })
+  @IsString()
+  organizationSlug: string;
+
+  @ApiProperty()
+  @IsEmail()
+  email: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(8)
+  password: string;
+
+  @ApiProperty()
+  @IsString()
+  firstName: string;
+
+  @ApiProperty()
+  @IsString()
+  lastName: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+}

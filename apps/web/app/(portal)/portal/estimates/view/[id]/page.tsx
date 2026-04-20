@@ -111,7 +111,7 @@ export default function EstimateViewPage() {
     }
   }
 
-  if (loading) return <div className="max-w-3xl mx-auto py-10 text-sm text-gray-400 text-center">Loading…</div>;
+  if (loading) return <div className="max-w-3xl mx-auto py-10 text-sm text-gray-400 dark:text-gray-500 text-center">Loading…</div>;
 
   if (error || !estimate) {
     return (
@@ -133,40 +133,40 @@ export default function EstimateViewPage() {
       )}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-900">Estimate {estimate.number}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Estimate {estimate.number}</h1>
           <StatusBadge status={estimate.status} />
         </div>
         <button
           onClick={downloadPdf}
-          className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50"
+          className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
         >
           Download PDF
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 mb-6">
         <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
           <div>
-            <dt className="text-xs font-semibold text-gray-400 uppercase">Date</dt>
-            <dd className="text-gray-900 mt-1">{new Date(estimate.date).toLocaleDateString()}</dd>
+            <dt className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Date</dt>
+            <dd className="text-gray-900 dark:text-gray-100 mt-1">{new Date(estimate.date).toLocaleDateString()}</dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold text-gray-400 uppercase">Expiry</dt>
-            <dd className="text-gray-900 mt-1">
+            <dt className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Expiry</dt>
+            <dd className="text-gray-900 dark:text-gray-100 mt-1">
               {estimate.expiryDate ? new Date(estimate.expiryDate).toLocaleDateString() : '—'}
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold text-gray-400 uppercase">Client</dt>
-            <dd className="text-gray-900 mt-1">{estimate.client?.company ?? '—'}</dd>
+            <dt className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Client</dt>
+            <dd className="text-gray-900 dark:text-gray-100 mt-1">{estimate.client?.company ?? '—'}</dd>
           </div>
         </dl>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden mb-6">
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
               <th className="px-4 py-3">Description</th>
               <th className="px-4 py-3 text-right">Qty</th>
               <th className="px-4 py-3 text-right">Unit Price</th>
@@ -175,25 +175,25 @@ export default function EstimateViewPage() {
           </thead>
           <tbody>
             {estimate.items.map((it) => (
-              <tr key={it.id} className="border-b border-gray-100 last:border-0">
-                <td className="px-4 py-3 text-gray-900">{it.description}</td>
-                <td className="px-4 py-3 text-right text-gray-500">{Number(it.quantity)}</td>
-                <td className="px-4 py-3 text-right text-gray-500">{Number(it.unitPrice).toFixed(2)}</td>
-                <td className="px-4 py-3 text-right font-medium text-gray-900">{Number(it.total).toFixed(2)}</td>
+              <tr key={it.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
+                <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{it.description}</td>
+                <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">{Number(it.quantity)}</td>
+                <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">{Number(it.unitPrice).toFixed(2)}</td>
+                <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-gray-100">{Number(it.total).toFixed(2)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <div className="border-t border-gray-100 p-4 text-sm space-y-1 max-w-xs ml-auto">
+        <div className="border-t border-gray-100 dark:border-gray-800 p-4 text-sm space-y-1 max-w-xs ml-auto">
           <div className="flex justify-between">
-            <span className="text-gray-500">Subtotal</span>
+            <span className="text-gray-500 dark:text-gray-400">Subtotal</span>
             <span className="font-medium">{Number(estimate.subtotal).toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">Tax</span>
+            <span className="text-gray-500 dark:text-gray-400">Tax</span>
             <span className="font-medium">{Number(estimate.taxTotal).toFixed(2)}</span>
           </div>
-          <div className="flex justify-between text-base font-semibold border-t border-gray-100 pt-2 mt-2">
+          <div className="flex justify-between text-base font-semibold border-t border-gray-100 dark:border-gray-800 pt-2 mt-2">
             <span>Total</span>
             <span>{Number(estimate.total).toFixed(2)} {estimate.currency}</span>
           </div>

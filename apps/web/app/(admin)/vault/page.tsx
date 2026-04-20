@@ -1,6 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PasswordInput } from '@/components/ui/password-input';
+import { inputClass } from '@/components/ui/form-field';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -30,7 +36,6 @@ export default function VaultPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [showForm, setShowForm] = useState(false);
   const [revealed, setRevealed] = useState<{
     id: string;
     password: string;
@@ -44,7 +49,6 @@ export default function VaultPage() {
     notes: '',
     clientId: '',
   });
-  const [showPassword, setShowPassword] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,100 +125,90 @@ export default function VaultPage() {
     load();
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Password Vault</h1>
-        <button
-          onClick={() => setShowNew((v) => !v)}
-          className="px-4 py-2 bg-blue-600 text-white rounded"
-        >
-          {showNew ? 'Cancel' : '+ New Entry'}
-        </button>
-      </div>
+  const filtersNode = (
+    <input
+      aria-label="Search vault"
+      placeholder="Search…"
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      className={`${inputClass} max-w-md`}
+    />
+  );
 
+  return (
+    <ListPageLayout
+      title="Password Vault"
+      primaryAction={{
+        label: showNew ? 'Cancel' : 'New Entry',
+        onClick: () => setShowNew((v) => !v),
+        variant: showNew ? 'secondary' : 'primary',
+      }}
+      filters={filtersNode}
+    >
       {showNew && (
-        <form
-          onSubmit={create}
-          className="bg-white p-4 rounded shadow space-y-3 max-w-xl"
-        >
-          <input
-            required
-            placeholder="Title"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full px-3 py-2 border rounded"
-          />
-          <select
-            required
-            value={form.clientId}
-            onChange={(e) => setForm({ ...form, clientId: e.target.value })}
-            className="w-full px-3 py-2 border rounded"
-          >
-            <option value="">Select client…</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.company}
-              </option>
-            ))}
-          </select>
-          <input
-            placeholder="Username"
-            value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
-            className="w-full px-3 py-2 border rounded"
-          />
-          <div className="relative">
+        <Card padding="md" className="max-w-xl">
+          <form onSubmit={create} className="space-y-3">
             <input
-              type={showPassword ? 'text' : 'password'}
+              aria-label="Title"
+              required
+              placeholder="Title"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              className={inputClass}
+            />
+            <select
+              aria-label="Client"
+              required
+              value={form.clientId}
+              onChange={(e) => setForm({ ...form, clientId: e.target.value })}
+              className={inputClass}
+            >
+              <option value="">Select client…</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.company}
+                </option>
+              ))}
+            </select>
+            <input
+              aria-label="Username"
+              placeholder="Username"
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              className={inputClass}
+            />
+            <PasswordInput
+              aria-label="Password"
               placeholder="Password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className="w-full px-3 py-2 border rounded pr-16"
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-2 top-2 text-sm text-blue-600"
-            >
-              {showPassword ? 'Hide' : 'Show'}
-            </button>
-          </div>
-          <input
-            placeholder="URL"
-            value={form.url}
-            onChange={(e) => setForm({ ...form, url: e.target.value })}
-            className="w-full px-3 py-2 border rounded"
-          />
-          <textarea
-            placeholder="Notes"
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            className="w-full px-3 py-2 border rounded"
-            rows={2}
-          />
-          <button
-            type="submit"
-            className="px-4 py-2 bg-blue-600 text-white rounded"
-          >
-            Save
-          </button>
-        </form>
+            <input
+              aria-label="URL"
+              placeholder="URL"
+              value={form.url}
+              onChange={(e) => setForm({ ...form, url: e.target.value })}
+              className={inputClass}
+            />
+            <textarea
+              aria-label="Notes"
+              placeholder="Notes"
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              className={inputClass}
+              rows={2}
+            />
+            <Button type="submit">Save</Button>
+          </form>
+        </Card>
       )}
-
-      <input
-        placeholder="Search…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="px-3 py-2 border rounded w-full max-w-md"
-      />
 
       {loading ? (
         <p>Loading…</p>
       ) : (
-        <div className="bg-white rounded shadow overflow-hidden">
+        <Card>
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
                 <th className="px-4 py-2 text-left">Title</th>
                 <th className="px-4 py-2 text-left">Client</th>
@@ -236,7 +230,7 @@ export default function VaultPage() {
                         href={e.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-blue-600 hover:underline"
+                        className="text-primary hover:underline"
                       >
                         {e.url}
                       </a>
@@ -252,7 +246,7 @@ export default function VaultPage() {
                     ) : e.hasPassword ? (
                       <button
                         onClick={() => reveal(e.id)}
-                        className="text-blue-600 hover:underline"
+                        className="text-primary hover:underline"
                       >
                         Reveal
                       </button>
@@ -272,15 +266,15 @@ export default function VaultPage() {
               ))}
               {entries.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-gray-500">
-                    No vault entries.
+                  <td colSpan={6}>
+                    <EmptyState title="No vault entries" />
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </div>
+        </Card>
       )}
-    </div>
+    </ListPageLayout>
   );
 }

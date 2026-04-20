@@ -51,7 +51,9 @@ export class PrismaService
     fn: (tx: Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>) => Promise<T>,
   ): Promise<T> {
     return this.$transaction(async (tx) => {
-      await tx.$executeRaw`SET LOCAL app.current_organization_id = ${organizationId}`;
+      // set_config(name, value, is_local) — is_local=true scopes to current txn.
+      // Equivalent to SET LOCAL, but accepts parameters (SET LOCAL does not).
+      await tx.$executeRaw`SELECT set_config('app.current_organization_id', ${organizationId}, true)`;
       return fn(tx);
     });
   }

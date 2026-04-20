@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { Users } from 'lucide-react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorBanner } from '@/components/ui/error-banner';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,8 +28,21 @@ interface Lead {
   company: string | null;
   budget: number | null;
   currency: string | null;
-  assigned_to: string | null; // full name — we'll derive initials
-  status: LeadStatus;
+  assignedTo?: { id: string; firstName: string; lastName: string } | null;
+  /**
+   * The API returns `status` as a relation object `{ id, name, color }`.
+   * Some older code paths pass a raw string ('new' | 'contacted' | …).
+   * Accept either and normalize via `leadStatusKey()` before use.
+   */
+  status: LeadStatus | { id: string; name: string; color?: string } | null;
+}
+
+function leadStatusKey(lead: Lead): LeadStatus {
+  const raw = lead.status;
+  if (!raw) return 'new';
+  const name = typeof raw === 'string' ? raw : raw.name;
+  const key = name.toLowerCase() as LeadStatus;
+  return COLUMNS.some((c) => c.status === key) ? key : 'new';
 }
 
 type KanbanBoard = Record<LeadStatus, Lead[]>;
@@ -98,19 +117,20 @@ interface LeadCardProps {
 }
 
 function LeadCard({ lead, onDragStart }: LeadCardProps) {
-  const style = STATUS_STYLES[lead.status];
+  const statusKey = leadStatusKey(lead);
+  const style = STATUS_STYLES[statusKey];
 
   return (
     <div
       draggable
-      onDragStart={(e) => onDragStart(e, lead.id, lead.status)}
-      className="group bg-white border border-gray-100 rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md hover:border-gray-200 transition-all select-none"
+      onDragStart={(e) => onDragStart(e, lead.id, statusKey)}
+      className="group bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md hover:border-gray-200 transition-all select-none"
     >
       {/* Name + link */}
       <div className="flex items-start justify-between gap-2 mb-1">
         <Link
           href={`/leads/${lead.id}`}
-          className="text-sm font-medium text-gray-900 hover:text-primary leading-snug line-clamp-2"
+          className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary leading-snug line-clamp-2"
           onClick={(e) => e.stopPropagation()}
         >
           {lead.name}
@@ -119,31 +139,31 @@ function LeadCard({ lead, onDragStart }: LeadCardProps) {
           className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${style.badge}`}
         >
           <span className={`w-1.5 h-1.5 rounded-full mr-1 ${style.dot}`} />
-          {COLUMNS.find((c) => c.status === lead.status)?.label}
+          {COLUMNS.find((c) => c.status === statusKey)?.label}
         </span>
       </div>
 
       {/* Company */}
       {lead.company && (
-        <p className="text-xs text-gray-400 mb-2 truncate">{lead.company}</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-2 truncate">{lead.company}</p>
       )}
 
       {/* Footer: budget + avatar */}
       <div className="flex items-center justify-between mt-2">
         {lead.budget != null ? (
-          <span className="text-xs font-semibold text-gray-700">
+          <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
             {formatBudget(lead.budget, lead.currency)}
           </span>
         ) : (
           <span />
         )}
 
-        {lead.assigned_to && (
+        {lead.assignedTo && (
           <div
-            title={lead.assigned_to}
+            title={`${lead.assignedTo.firstName} ${lead.assignedTo.lastName}`}
             className="w-6 h-6 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center"
           >
-            {initials(lead.assigned_to)}
+            {initials(`${lead.assignedTo.firstName} ${lead.assignedTo.lastName}`)}
           </div>
         )}
       </div>
@@ -188,8 +208,8 @@ function KanbanColumn({
         ].join(' ')}
       >
         <div className="flex items-center justify-between px-3 py-2.5">
-          <span className="text-sm font-semibold text-gray-700">{label}</span>
-          <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5 font-medium">
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{label}</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-0.5 font-medium">
             {leads.length}
           </span>
         </div>
@@ -210,7 +230,7 @@ function KanbanColumn({
         ))}
 
         {leads.length === 0 && !isDragOver && (
-          <div className="flex items-center justify-center h-20 text-xs text-gray-300 border-2 border-dashed border-gray-100 rounded-lg">
+          <div className="flex items-center justify-center h-20 text-xs text-gray-300 dark:text-gray-600 border-2 border-dashed border-gray-100 dark:border-gray-800 rounded-lg">
             Drop here
           </div>
         )}
@@ -226,16 +246,16 @@ function KanbanColumn({
 function SkeletonColumn({ label }: { label: string }) {
   return (
     <div className="flex flex-col min-w-[220px] w-[220px] flex-shrink-0">
-      <div className="bg-white rounded-xl border border-gray-100 border-t-4 border-t-gray-200 shadow-sm mb-2 px-3 py-2.5 flex items-center justify-between">
-        <span className="text-sm font-semibold text-gray-300">{label}</span>
-        <span className="text-xs text-gray-300 bg-gray-50 rounded-full px-2 py-0.5">—</span>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 border-t-4 border-t-gray-200 shadow-sm mb-2 px-3 py-2.5 flex items-center justify-between">
+        <span className="text-sm font-semibold text-gray-300 dark:text-gray-600">{label}</span>
+        <span className="text-xs text-gray-300 dark:text-gray-600 bg-gray-50 dark:bg-gray-900 rounded-full px-2 py-0.5">—</span>
       </div>
       <div className="flex flex-col gap-2 p-1.5">
         {Array.from({ length: Math.floor(Math.random() * 2) + 1 }).map((_, i) => (
-          <div key={i} className="bg-white border border-gray-100 rounded-lg p-3 shadow-sm animate-pulse">
-            <div className="h-3.5 bg-gray-100 rounded w-3/4 mb-2" />
-            <div className="h-3 bg-gray-100 rounded w-1/2 mb-3" />
-            <div className="h-3 bg-gray-100 rounded w-1/4" />
+          <div key={i} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-lg p-3 shadow-sm animate-pulse">
+            <div className="h-3.5 bg-gray-100 dark:bg-gray-800 rounded w-3/4 mb-2" />
+            <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/2 mb-3" />
+            <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/4" />
           </div>
         ))}
       </div>
@@ -421,61 +441,46 @@ export default function LeadsPage() {
     window.location.reload();
   };
 
-  return (
-    <div className="flex flex-col h-full min-h-0">
-      {/* ------------------------------------------------------------------ */}
-      {/* Header                                                               */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 flex-shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
-          {!loading && (
-            <p className="text-sm text-gray-500 mt-0.5">
-              {totalLeads} lead{totalLeads !== 1 ? 's' : ''} in pipeline
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
-            <button
-              onClick={() => setView('kanban')}
-              className={`px-3 py-2 text-xs font-medium transition-colors ${
-                view === 'kanban' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              Kanban
-            </button>
-            <button
-              onClick={() => setView('list')}
-              className={`px-3 py-2 text-xs font-medium transition-colors ${
-                view === 'list' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              List
-            </button>
-          </div>
-          <Link
-            href="/leads/import"
-            className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Import CSV
-          </Link>
-          <Link
-            href="/leads/new"
-            className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            <span className="text-lg leading-none">+</span>
-            New Lead
-          </Link>
-        </div>
-      </div>
+  const filtersNode = (
+    <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden" role="tablist" aria-label="View switcher">
+      <button
+        onClick={() => setView('kanban')}
+        role="tab"
+        aria-selected={view === 'kanban'}
+        className={`px-3 py-2 text-xs font-medium transition-colors ${
+          view === 'kanban' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        Kanban
+      </button>
+      <button
+        onClick={() => setView('list')}
+        role="tab"
+        aria-selected={view === 'list'}
+        className={`px-3 py-2 text-xs font-medium transition-colors ${
+          view === 'list' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        List
+      </button>
+    </div>
+  );
 
+  return (
+    <ListPageLayout
+      title="Leads"
+      subtitle={!loading ? `${totalLeads} lead${totalLeads !== 1 ? 's' : ''} in pipeline` : undefined}
+      secondaryActions={[{ label: 'Import CSV', href: '/leads/import' }]}
+      primaryAction={{ label: 'New Lead', href: '/leads/new', icon: <span className="text-lg leading-none">+</span> }}
+      filters={filtersNode}
+      fullHeight={view === 'kanban'}
+    >
       {/* ------------------------------------------------------------------ */}
       {/* Error banner                                                         */}
       {/* ------------------------------------------------------------------ */}
       {error && (
-        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600 flex-shrink-0">
-          {error}
+        <div className="mb-4 flex-shrink-0">
+          <ErrorBanner message={error} />
         </div>
       )}
 
@@ -505,83 +510,142 @@ export default function LeadsPage() {
       )}
 
       {/* ------------------------------------------------------------------ */}
+      {/* List view — mobile cards                                             */}
+      {/* ------------------------------------------------------------------ */}
+      {view === 'list' && (
+        <div className="md:hidden space-y-3">
+          {loading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 animate-pulse">
+                <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-3/4 mb-2" />
+                <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/2" />
+              </div>
+            ))
+          ) : allLeads.length === 0 ? (
+            <EmptyState
+              icon={<Users className="w-10 h-10" />}
+              title="No leads found"
+              action={{ label: 'Add your first lead', href: '/leads/new' }}
+            />
+          ) : (
+            allLeads.map((lead) => {
+              const statusKey = leadStatusKey(lead);
+              const style = STATUS_STYLES[statusKey];
+              return (
+                <Link
+                  key={lead.id}
+                  href={`/leads/${lead.id}`}
+                  className="block bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 hover:border-gray-200 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className="font-medium text-gray-900 dark:text-gray-100 truncate flex-1">{lead.name}</p>
+                    <span
+                      className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${style.badge}`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full mr-1 ${style.dot}`} />
+                      {COLUMNS.find((c) => c.status === statusKey)?.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span className="truncate">{lead.company ?? 'No company'}</span>
+                    {lead.budget != null && (
+                      <span className="font-semibold text-gray-700 dark:text-gray-300 ml-2">
+                        {formatBudget(lead.budget, lead.currency)}
+                      </span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
       {/* List view                                                            */}
       {/* ------------------------------------------------------------------ */}
       {view === 'list' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <Card className="hidden md:block">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                   <th className="px-4 py-3 w-10">
                     <input
                       type="checkbox"
                       checked={allLeads.length > 0 && selected.size === allLeads.length}
                       onChange={toggleAll}
+                      aria-label="Select all leads"
                       className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
                     />
                   </th>
                   <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Company</th>
+                  <th className="px-4 py-3 hidden lg:table-cell">Company</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Budget</th>
-                  <th className="px-4 py-3">Assigned To</th>
+                  <th className="px-4 py-3 hidden lg:table-cell">Assigned To</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
+                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400 dark:text-gray-500">
                       Loading...
                     </td>
                   </tr>
                 ) : allLeads.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
-                      No leads found
+                    <td colSpan={7} className="px-4 py-8">
+                      <EmptyState
+                        icon={<Users className="w-10 h-10" />}
+                        title="No leads found"
+                        action={{ label: 'Add your first lead', href: '/leads/new' }}
+                      />
                     </td>
                   </tr>
                 ) : (
                   allLeads.map((lead) => {
-                    const style = STATUS_STYLES[lead.status];
+                    const statusKey = leadStatusKey(lead);
+                    const style = STATUS_STYLES[statusKey];
                     return (
                       <tr
                         key={lead.id}
-                        className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
+                        className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60 transition-colors"
                       >
                         <td className="px-4 py-3">
                           <input
                             type="checkbox"
                             checked={selected.has(lead.id)}
                             onChange={() => toggleSelect(lead.id)}
+                            aria-label={`Select ${lead.name}`}
                             className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
                           />
                         </td>
-                        <td className="px-4 py-3 font-medium text-gray-900">
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                           <Link href={`/leads/${lead.id}`} className="hover:text-primary">
                             {lead.name}
                           </Link>
                         </td>
-                        <td className="px-4 py-3 text-gray-500">{lead.company ?? '—'}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">{lead.company ?? '—'}</td>
                         <td className="px-4 py-3">
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${style.badge}`}
                           >
                             <span className={`w-1.5 h-1.5 rounded-full mr-1 ${style.dot}`} />
-                            {COLUMNS.find((c) => c.status === lead.status)?.label}
+                            {COLUMNS.find((c) => c.status === statusKey)?.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-gray-600">
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
                           {lead.budget != null
                             ? formatBudget(lead.budget, lead.currency)
                             : '—'}
                         </td>
-                        <td className="px-4 py-3 text-gray-500">{lead.assigned_to ?? '—'}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">{lead.assignedTo ? `${lead.assignedTo.firstName} ${lead.assignedTo.lastName}` : '—'}</td>
                         <td className="px-4 py-3 text-right">
                           <Link
                             href={`/leads/${lead.id}`}
-                            className="text-xs text-gray-500 hover:text-primary font-medium"
+                            className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary font-medium"
                           >
                             View
                           </Link>
@@ -593,7 +657,7 @@ export default function LeadsPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Bulk action bar */}
@@ -601,19 +665,16 @@ export default function LeadsPage() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 text-sm">
           <span className="font-medium">{selected.size} selected</span>
           <div className="w-px h-5 bg-gray-600" />
-          <button
-            onClick={bulkDeleteLeads}
-            disabled={bulkLoading}
-            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium disabled:opacity-50 transition-colors"
-          >
+          <Button variant="destructive" size="sm" onClick={bulkDeleteLeads} disabled={bulkLoading}>
             Delete
-          </button>
+          </Button>
           <select
             onChange={(e) => {
               if (e.target.value) bulkChangeStatus(e.target.value as LeadStatus);
             }}
             disabled={bulkLoading}
             defaultValue=""
+            aria-label="Change status for selected leads"
             className="px-3 py-1.5 rounded-lg bg-gray-700 text-white text-xs font-medium border-none cursor-pointer disabled:opacity-50"
           >
             <option value="" disabled>Change Status</option>
@@ -623,12 +684,12 @@ export default function LeadsPage() {
           </select>
           <button
             onClick={() => setSelected(new Set())}
-            className="ml-2 text-gray-400 hover:text-white text-xs transition-colors"
+            className="ml-2 text-gray-400 dark:text-gray-500 hover:text-white text-xs transition-colors"
           >
             Cancel
           </button>
         </div>
       )}
-    </div>
+    </ListPageLayout>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useModalA11y } from './ui/use-modal-a11y';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -44,6 +45,8 @@ export function GlobalSearch() {
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const closeSearch = useCallback(() => setOpen(false), []);
+  const containerRef = useModalA11y(open, closeSearch);
 
   // Keyboard shortcut: Cmd+K / Ctrl+K
   useEffect(() => {
@@ -140,7 +143,13 @@ export function GlobalSearch() {
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-lg bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden dark:bg-[rgb(30,30,40)] dark:border-[rgb(50,50,65)]">
+      <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Global search"
+        className="relative w-full max-w-lg bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden dark:bg-[rgb(30,30,40)] dark:border-[rgb(50,50,65)]"
+      >
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-[rgb(50,50,65)]">
           <svg

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { SettingsPageLayout, SettingsSection } from '@/components/layouts/settings-page-layout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 const getToken = () =>
@@ -134,23 +135,17 @@ export default function GdprPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8">
-      <h1 className="text-2xl font-bold">GDPR Tools</h1>
-
+    <SettingsPageLayout title="GDPR Tools" description="Exports, anonymization and deletion tools for compliance workflows">
       {message && (
         <div className="p-3 rounded bg-blue-50 text-blue-900 text-sm">
           {message}
         </div>
       )}
 
-      {/* ─── Export Data ───────────────────────────────── */}
-      <section className="border rounded-lg p-5 space-y-4">
-        <h2 className="text-lg font-semibold">Export Data</h2>
-        <p className="text-sm text-gray-600">
-          Download a full JSON export of all data associated with a client
-          or a staff user (right of access).
-        </p>
-
+      <SettingsSection
+        title="Export Data"
+        description="Download a full JSON export of all data associated with a client or a staff user (right of access)."
+      >
         <div className="space-y-2">
           <label className="block text-sm font-medium">Client</label>
           <div className="flex gap-2">
@@ -200,22 +195,20 @@ export default function GdprPage() {
             </button>
           </div>
         </div>
-      </section>
+      </SettingsSection>
 
-      {/* ─── Data Retention Report ─────────────────────── */}
-      <section className="border rounded-lg p-5 space-y-3">
-        <h2 className="text-lg font-semibold">Data Retention Report</h2>
+      <SettingsSection title="Data Retention Report">
         {report ? (
           <div className="grid grid-cols-2 gap-3 text-sm">
             {Object.entries(report.counts ?? {}).map(([k, v]: any) => (
               <div key={k} className="flex justify-between border-b py-1">
-                <span className="text-gray-600">{k}</span>
+                <span className="text-gray-600 dark:text-gray-400">{k}</span>
                 <span className="font-medium">{String(v)}</span>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-gray-500">Loading…</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
         )}
         <button
           className="text-sm text-blue-600 underline"
@@ -223,84 +216,75 @@ export default function GdprPage() {
         >
           Refresh
         </button>
-      </section>
+      </SettingsSection>
 
-      {/* ─── Anonymize User ────────────────────────────── */}
-      <section className="border rounded-lg p-5 space-y-3 border-orange-300">
-        <h2 className="text-lg font-semibold text-orange-700">
-          Anonymize User
-        </h2>
-        <p className="text-sm text-gray-600">
-          Replaces the user's email, name and phone with anonymized values,
-          kills their sessions, and deactivates the account — while
-          preserving historical records (invoices, tickets, audit trail).
-        </p>
-        <select
-          className="border rounded px-3 py-2 w-full"
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-        >
-          <option value="">Select a user…</option>
-          {staff.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.firstName} {s.lastName} ({s.email})
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-2 text-sm">
+      <SettingsSection
+        title="Anonymize User"
+        description="Replaces the user's email, name and phone with anonymized values, kills their sessions, and deactivates the account — while preserving historical records (invoices, tickets, audit trail)."
+      >
+        <div className="space-y-3">
+          <select
+            className="border rounded px-3 py-2 w-full"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+          >
+            <option value="">Select a user…</option>
+            {staff.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.firstName} {s.lastName} ({s.email})
+              </option>
+            ))}
+          </select>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={anonymizeConfirm}
+              onChange={(e) => setAnonymizeConfirm(e.target.checked)}
+            />
+            I understand this action cannot be undone.
+          </label>
+          <button
+            className="px-4 py-2 bg-orange-600 text-white rounded disabled:opacity-50"
+            onClick={anonymize}
+            disabled={busy || !userId || !anonymizeConfirm}
+          >
+            Anonymize user
+          </button>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Delete Client (complete)"
+        description="Permanently deletes the client and every associated record: contacts, vault entries, subscriptions, and more. Invoices, contracts and tickets are preserved but their client reference is removed."
+      >
+        <div className="space-y-3">
+          <select
+            className="border rounded px-3 py-2 w-full"
+            value={deleteClientId}
+            onChange={(e) => setDeleteClientId(e.target.value)}
+          >
+            <option value="">Select a client…</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.company}
+              </option>
+            ))}
+          </select>
           <input
-            type="checkbox"
-            checked={anonymizeConfirm}
-            onChange={(e) => setAnonymizeConfirm(e.target.checked)}
+            className="border rounded px-3 py-2 w-full"
+            placeholder='Type "DELETE" to confirm'
+            value={deleteConfirm}
+            onChange={(e) => setDeleteConfirm(e.target.value)}
           />
-          I understand this action cannot be undone.
-        </label>
-        <button
-          className="px-4 py-2 bg-orange-600 text-white rounded disabled:opacity-50"
-          onClick={anonymize}
-          disabled={busy || !userId || !anonymizeConfirm}
-        >
-          Anonymize user
-        </button>
-      </section>
-
-      {/* ─── Delete Client ─────────────────────────────── */}
-      <section className="border rounded-lg p-5 space-y-3 border-red-300">
-        <h2 className="text-lg font-semibold text-red-700">
-          Delete Client (complete)
-        </h2>
-        <p className="text-sm text-gray-600">
-          Permanently deletes the client and every associated record:
-          contacts, vault entries, subscriptions, and more. Invoices,
-          contracts and tickets are preserved but their client reference
-          is removed.
-        </p>
-        <select
-          className="border rounded px-3 py-2 w-full"
-          value={deleteClientId}
-          onChange={(e) => setDeleteClientId(e.target.value)}
-        >
-          <option value="">Select a client…</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.company}
-            </option>
-          ))}
-        </select>
-        <input
-          className="border rounded px-3 py-2 w-full"
-          placeholder='Type "DELETE" to confirm'
-          value={deleteConfirm}
-          onChange={(e) => setDeleteConfirm(e.target.value)}
-        />
-        <button
-          className="px-4 py-2 bg-red-600 text-white rounded disabled:opacity-50"
-          onClick={deleteClient}
-          disabled={busy || !deleteClientId || deleteConfirm !== 'DELETE'}
-        >
-          Permanently delete client
-        </button>
-      </section>
-    </div>
+          <button
+            className="px-4 py-2 bg-red-600 text-white rounded disabled:opacity-50"
+            onClick={deleteClient}
+            disabled={busy || !deleteClientId || deleteConfirm !== 'DELETE'}
+          >
+            Permanently delete client
+          </button>
+        </div>
+      </SettingsSection>
+    </SettingsPageLayout>
   );
 }

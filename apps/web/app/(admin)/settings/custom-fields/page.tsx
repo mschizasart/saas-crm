@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { SettingsPageLayout, SettingsSection } from '@/components/layouts/settings-page-layout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 const getToken = () =>
@@ -73,96 +74,96 @@ export default function CustomFieldsPage() {
   };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Custom Fields</h1>
-        <button
-          onClick={() => {
-            setEditing(null);
-            setShowModal(true);
-          }}
-          className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90"
-        >
-          + New Field
-        </button>
-      </div>
-
-      <div className="border-b border-gray-200 mb-6 flex gap-2 overflow-x-auto">
-        {MODULES.map((m) => (
+    <SettingsPageLayout title="Custom Fields" description="Add extra fields to records for any module">
+      <SettingsSection title="Fields" description={`Manage custom fields for ${module}`}>
+        <div className="flex items-center justify-between mb-4 gap-4">
+          <div className="border-b border-gray-200 dark:border-gray-700 flex gap-2 overflow-x-auto flex-1">
+            {MODULES.map((m) => (
+              <button
+                key={m}
+                onClick={() => setModule(m)}
+                className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
+                  module === m
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
           <button
-            key={m}
-            onClick={() => setModule(m)}
-            className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
-              module === m
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-800'
-            }`}
+            onClick={() => {
+              setEditing(null);
+              setShowModal(true);
+            }}
+            className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 flex-shrink-0"
           >
-            {m}
+            + New Field
           </button>
-        ))}
-      </div>
+        </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-100">
-            <tr className="text-left text-xs font-semibold text-gray-500 uppercase">
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Required</th>
-              <th className="px-4 py-3">Order</th>
-              <th className="px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
-                  Loading…
-                </td>
+        <div className="overflow-hidden border border-gray-100 dark:border-gray-800 rounded-lg">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
+              <tr className="text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Required</th>
+                <th className="px-4 py-3">Order</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
-            ) : fields.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
-                  No custom fields for {module}
-                </td>
-              </tr>
-            ) : (
-              fields.map((f) => (
-                <tr key={f.id} className="border-b border-gray-100 last:border-0">
-                  <td className="px-4 py-3 font-medium text-gray-900">{f.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{f.type}</td>
-                  <td className="px-4 py-3">
-                    {f.required && (
-                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
-                        Required
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500">{f.order}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => {
-                        setEditing(f);
-                        setShowModal(true);
-                      }}
-                      className="text-xs text-gray-500 hover:text-primary mr-3"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => remove(f.id)}
-                      className="text-xs text-red-600 hover:underline"
-                    >
-                      Delete
-                    </button>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
+                    Loading…
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : fields.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">
+                    No custom fields for {module}
+                  </td>
+                </tr>
+              ) : (
+                fields.map((f) => (
+                  <tr key={f.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{f.name}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{f.type}</td>
+                    <td className="px-4 py-3">
+                      {f.required && (
+                        <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                          Required
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{f.order}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => {
+                          setEditing(f);
+                          setShowModal(true);
+                        }}
+                        className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary mr-3"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => remove(f.id)}
+                        className="text-xs text-red-600 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </SettingsSection>
 
       {showModal && (
         <FieldModal
@@ -175,7 +176,7 @@ export default function CustomFieldsPage() {
           }}
         />
       )}
-    </div>
+    </SettingsPageLayout>
   );
 }
 
@@ -234,25 +235,25 @@ function FieldModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-lg max-w-md w-full p-6">
         <h2 className="text-lg font-semibold mb-4">
           {editing ? 'Edit' : 'New'} Custom Field
         </h2>
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Name</label>
+            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Type</label>
+            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Type</label>
             <select
               value={fieldType}
               onChange={(e) => setFieldType(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
             >
               {FIELD_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -263,14 +264,14 @@ function FieldModal({
           </div>
           {fieldType === 'select' && (
             <div>
-              <label className="block text-xs text-gray-600 mb-1">
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
                 Options (one per line)
               </label>
               <textarea
                 value={optionsText}
                 onChange={(e) => setOptionsText(e.target.value)}
                 rows={4}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
               />
             </div>
           )}
@@ -293,19 +294,19 @@ function FieldModal({
             </label>
           </div>
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Order</label>
+            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Order</label>
             <input
               type="number"
               value={order}
               onChange={(e) => setOrder(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
             />
           </div>
         </div>
         <div className="mt-6 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50"
+            className="px-4 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
           >
             Cancel
           </button>

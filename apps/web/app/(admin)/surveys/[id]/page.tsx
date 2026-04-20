@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -29,7 +30,7 @@ function getToken() {
 function Bar({ value, max }: { value: number; max: number }) {
   const pct = max ? Math.round((value / max) * 100) : 0;
   return (
-    <div className="h-3 bg-gray-100 rounded overflow-hidden w-full">
+    <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded overflow-hidden w-full">
       <div
         className="h-full bg-blue-500"
         style={{ width: `${pct}%` }}
@@ -59,30 +60,33 @@ export default function SurveyDetailPage() {
   if (!survey || !results) return <p>Loading…</p>;
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold">{survey.name}</h1>
-        {survey.description && (
-          <p className="text-gray-600">{survey.description}</p>
-        )}
-        <p className="text-sm text-gray-500 mt-2">
-          {results.totalSubmissions} submission(s)
-        </p>
-        <a
-          className="text-sm text-blue-600 hover:underline"
-          href={`/survey/${survey.hash}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Public link
-        </a>
-      </div>
-
+    <DetailPageLayout
+      title={survey.name}
+      subtitle={survey.description || undefined}
+      breadcrumbs={[
+        { label: 'Surveys', href: '/surveys' },
+        { label: survey.name },
+      ]}
+    >
       <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {results.totalSubmissions} submission(s)
+          </p>
+          <a
+            className="text-sm text-blue-600 hover:underline"
+            href={`/survey/${survey.hash}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Public link
+          </a>
+        </div>
+
         {results.questions.map((q) => (
-          <div key={q.questionId} className="bg-white p-4 rounded shadow">
+          <div key={q.questionId} className="bg-white dark:bg-gray-900 p-4 rounded shadow">
             <h3 className="font-semibold">{q.question}</h3>
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
               {q.totalAnswers} answer(s)
             </p>
 
@@ -139,6 +143,6 @@ export default function SurveyDetailPage() {
           </div>
         ))}
       </div>
-    </div>
+    </DetailPageLayout>
   );
 }

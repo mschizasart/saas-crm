@@ -115,8 +115,8 @@ export default function OrganizationsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Organizations</h1>
-        <p className="text-sm text-gray-500 mt-1">Manage all organizations on the platform.</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Organizations</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage all organizations on the platform.</p>
       </div>
 
       {/* Filters */}
@@ -126,9 +126,9 @@ export default function OrganizationsPage() {
           placeholder="Search by name or slug..."
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 w-64"
+          className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 w-64"
         />
-        <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-100 p-1">
+        <div className="flex items-center gap-1 bg-white dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800 p-1">
           {TABS.map((tab) => (
             <button
               key={tab.key || 'all'}
@@ -154,11 +154,11 @@ export default function OrganizationsPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
                 <th className="px-4 py-2.5">Name</th>
                 <th className="px-4 py-2.5">Slug</th>
                 <th className="px-4 py-2.5">Status</th>
@@ -174,17 +174,17 @@ export default function OrganizationsPage() {
             <tbody>
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i} className="border-b border-gray-100 last:border-0">
+                  <tr key={i} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
                     {Array.from({ length: 10 }).map((__, j) => (
                       <td key={j} className="px-4 py-3">
-                        <div className="h-4 bg-gray-100 rounded animate-pulse" />
+                        <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
                       </td>
                     ))}
                   </tr>
                 ))
               ) : orgs.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-sm text-gray-400">
+                  <td colSpan={10} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
                     No organizations found.
                   </td>
                 </tr>
@@ -192,21 +192,21 @@ export default function OrganizationsPage() {
                 orgs.map((org) => (
                   <tr
                     key={org.id}
-                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
+                    className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60 transition-colors"
                   >
-                    <td className="px-4 py-3 font-medium text-gray-900">{org.name}</td>
-                    <td className="px-4 py-3 text-gray-500">{org.slug}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{org.name}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{org.slug}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={org.status} />
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{org.plan ?? '—'}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{org.userCount}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{org.clientCount}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{org.invoiceCount}</td>
-                    <td className="px-4 py-3 text-gray-500">
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{org.plan ?? '—'}</td>
+                    <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{org.userCount}</td>
+                    <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{org.clientCount}</td>
+                    <td className="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{org.invoiceCount}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                       {org.trialEndsAt ? new Date(org.trialEndsAt).toLocaleDateString() : '—'}
                     </td>
-                    <td className="px-4 py-3 text-gray-500">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                       {new Date(org.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3">
@@ -225,7 +225,7 @@ export default function OrganizationsPage() {
         </div>
 
         {!loading && orgs.length > 0 && (
-          <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+          <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
             <span>
               Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}
             </span>
@@ -233,7 +233,7 @@ export default function OrganizationsPage() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-3 py-1.5 rounded-md border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Prev
               </button>
@@ -243,7 +243,7 @@ export default function OrganizationsPage() {
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="px-3 py-1.5 rounded-md border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Next
               </button>

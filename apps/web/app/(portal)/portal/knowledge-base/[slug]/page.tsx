@@ -41,15 +41,15 @@ export default function PortalArticlePage() {
     })();
   }, [slug]);
 
-  if (loading) return <div className="animate-pulse h-96 bg-gray-100 rounded-xl" />;
+  if (loading) return <div className="animate-pulse h-96 bg-gray-100 dark:bg-gray-800 rounded-xl" />;
   if (error || !article) return <div className="text-red-600">{error ?? 'Not found'}</div>;
 
   return (
     <article className="max-w-3xl mx-auto">
-      <div className="mb-4"><Link href="/portal/knowledge-base" className="text-sm text-gray-500 hover:text-primary">← Back to knowledge base</Link></div>
-      <h1 className="text-3xl font-bold text-gray-900 mb-2">{article.title}</h1>
-      {article.group && <p className="text-sm text-gray-500 mb-6">in {article.group.name}</p>}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8">
+      <div className="mb-4"><Link href="/portal/knowledge-base" className="text-sm text-gray-500 dark:text-gray-400 hover:text-primary">← Back to knowledge base</Link></div>
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">{article.title}</h1>
+      {article.group && <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">in {article.group.name}</p>}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-8">
         <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: article.content }} />
       </div>
     </article>

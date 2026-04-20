@@ -3,9 +3,13 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../database/prisma.service';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 
 export interface CreateUserDto {
   email: string;
@@ -39,7 +43,11 @@ export interface UpdateProfileDto {
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private config: ConfigService,
+    private events: EventEmitter2,
+  ) {}
 
   // ─── List staff ────────────────────────────────────────────
 
@@ -287,5 +295,276 @@ export class UsersService {
       data: { dashboardLayout: layout },
       select: { id: true, dashboardLayout: true },
     });
+  }
+
+  // ─── Email change flow ─────────────────────────────────────
+
+  async requestEmailChange(userId: string, newEmail: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        organizationId: user.organizationId,
+        email: newEmail,
+        NOT: { id: userId },
+      },
+    });
+    if (existing) {
+      throw new ConflictException('Email is already taken in this organization.');
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          pendingEmail: newEmail,
+          pendingEmailToken: token,
+          pendingEmailExpires: expires,
+        } as any,
+      });
+    } catch (err: any) {
+      // Surface a friendly 503 if the migration hasn't been applied yet.
+      throw new ServiceUnavailableException(
+        'Email change not yet enabled — database migration required',
+      );
+    }
+
+    const appUrl = this.config.get('APP_URL') ?? process.env.APP_URL ?? '';
+    const confirmUrl = `${appUrl}/portal/confirm-email?token=${token}`;
+    this.events.emit('auth.email_change_requested', {
+      user: { ...user, email: newEmail },
+      token,
+      confirmUrl,
+    });
+
+    return { message: 'Confirmation email sent to the new address.' };
+  }
+
+  // ─── Permission catalogue ──────────────────────────────────────────────
+
+  /**
+   * Canonical list of every permission string the app recognises.
+   * Shape: `{ modules: { [group]: string[] } }` to match the
+   * existing roles controller response. Kept in-sync with the
+   * `@Permissions(...)` decorators sprinkled across controllers.
+   */
+  getPermissionsCatalog() {
+    return {
+      modules: {
+        clients: [
+          'clients.view',
+          'clients.create',
+          'clients.edit',
+          'clients.delete',
+        ],
+        leads: [
+          'leads.view',
+          'leads.create',
+          'leads.edit',
+          'leads.delete',
+        ],
+        invoices: [
+          'invoices.view',
+          'invoices.create',
+          'invoices.edit',
+          'invoices.delete',
+          'invoices.send',
+        ],
+        estimates: [
+          'estimates.view',
+          'estimates.create',
+          'estimates.edit',
+          'estimates.delete',
+          'estimates.send',
+        ],
+        proposals: [
+          'proposals.view',
+          'proposals.create',
+          'proposals.edit',
+          'proposals.delete',
+          'proposals.send',
+        ],
+        projects: [
+          'projects.view',
+          'projects.create',
+          'projects.edit',
+          'projects.delete',
+        ],
+        tasks: [
+          'tasks.view',
+          'tasks.create',
+          'tasks.edit',
+          'tasks.delete',
+        ],
+        tickets: [
+          'tickets.view',
+          'tickets.create',
+          'tickets.edit',
+          'tickets.delete',
+          'tickets.assign',
+        ],
+        contracts: [
+          'contracts.view',
+          'contracts.create',
+          'contracts.edit',
+          'contracts.delete',
+        ],
+        expenses: [
+          'expenses.view',
+          'expenses.create',
+          'expenses.edit',
+          'expenses.delete',
+        ],
+        payments: ['payments.view', 'payments.create'],
+        users: [
+          'users.view',
+          'users.create',
+          'users.edit',
+          'users.delete',
+        ],
+        reports: ['reports.view'],
+        settings: ['settings.edit'],
+      },
+    };
+  }
+
+  private flattenCatalog(): string[] {
+    const catalog = this.getPermissionsCatalog();
+    return Object.values(catalog.modules).flat();
+  }
+
+  private rolePermissionStrings(
+    rolePermissions: any,
+  ): string[] {
+    const out: string[] = [];
+    if (!rolePermissions || typeof rolePermissions !== 'object') return out;
+    for (const [resource, actions] of Object.entries(rolePermissions)) {
+      if (!actions || typeof actions !== 'object') continue;
+      for (const [action, on] of Object.entries(actions as Record<string, any>)) {
+        if (on === true) out.push(`${resource}.${action}`);
+      }
+    }
+    return out;
+  }
+
+  async getEffectivePermissions(orgId: string, userId: string) {
+    // Load the user + role. This uses the same tenant-scoped pattern as
+    // findOne but also includes the full role.permissions json.
+    const user = await this.prisma.withOrganization(orgId, async (tx) => {
+      return tx.user.findFirst({
+        where: { id: userId, organizationId: orgId, type: 'staff' },
+        include: { role: { select: { id: true, name: true, permissions: true } } },
+      });
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const rolePermissions = this.rolePermissionStrings(
+      (user.role as any)?.permissions,
+    );
+
+    let overrides: Array<{ permission: string; grant: boolean }> = [];
+    try {
+      overrides = await (this.prisma as any).userPermissionOverride.findMany({
+        where: { userId },
+        select: { permission: true, grant: true },
+        orderBy: { permission: 'asc' },
+      });
+    } catch {
+      // Table likely doesn't exist yet — migration pending. Fall back.
+      overrides = [];
+    }
+
+    // Compute the effective set: start from role, apply overrides.
+    const eff = new Set(rolePermissions);
+    for (const o of overrides) {
+      if (o.grant) eff.add(o.permission);
+      else eff.delete(o.permission);
+    }
+
+    return {
+      rolePermissions,
+      overrides,
+      effective: Array.from(eff).sort(),
+    };
+  }
+
+  async replacePermissionOverrides(
+    orgId: string,
+    userId: string,
+    overrides: Array<{ permission: string; grant: boolean }>,
+  ) {
+    // Validate user belongs to org
+    await this.findOne(orgId, userId);
+
+    // Filter out invalid entries (unknown permission strings silently drop).
+    const catalog = new Set(this.flattenCatalog());
+    const clean = overrides.filter(
+      (o) =>
+        o &&
+        typeof o.permission === 'string' &&
+        catalog.has(o.permission) &&
+        typeof o.grant === 'boolean',
+    );
+
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      await tx.userPermissionOverride.deleteMany({ where: { userId } });
+      if (clean.length > 0) {
+        await tx.userPermissionOverride.createMany({
+          data: clean.map((o) => ({
+            userId,
+            permission: o.permission,
+            grant: o.grant,
+          })),
+        });
+      }
+    });
+
+    return this.getEffectivePermissions(orgId, userId);
+  }
+
+  // ─── Email change flow (continued) ─────────────────────────
+
+  async confirmEmailChange(token: string) {
+    let user: any;
+    try {
+      user = await (this.prisma.user as any).findFirst({
+        where: { pendingEmailToken: token },
+      });
+    } catch (err: any) {
+      throw new ServiceUnavailableException(
+        'Email change not yet enabled — database migration required',
+      );
+    }
+
+    if (!user) throw new BadRequestException('Invalid or expired token');
+    const expires = user.pendingEmailExpires;
+    if (!expires || new Date(expires) < new Date()) {
+      throw new BadRequestException('Invalid or expired token');
+    }
+    if (!user.pendingEmail) {
+      throw new BadRequestException('No pending email to confirm');
+    }
+
+    try {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          email: user.pendingEmail,
+          pendingEmail: null,
+          pendingEmailToken: null,
+          pendingEmailExpires: null,
+        } as any,
+      });
+    } catch (err: any) {
+      throw new ServiceUnavailableException(
+        'Email change not yet enabled — database migration required',
+      );
+    }
+
+    return { message: 'Email updated successfully.' };
   }
 }

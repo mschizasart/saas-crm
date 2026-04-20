@@ -86,28 +86,28 @@ export default function PortalInvoiceDetailPage() {
     })();
   }, [id]);
 
-  if (loading) return <div className="animate-pulse h-96 bg-gray-100 rounded-xl" />;
+  if (loading) return <div className="animate-pulse h-96 bg-gray-100 dark:bg-gray-800 rounded-xl" />;
   if (error || !inv) return <div className="text-red-600">{error ?? 'Not found'}</div>;
 
   const balance = inv.total - (inv.amountPaid ?? 0);
 
   return (
     <div>
-      <div className="mb-4"><Link href="/portal/invoices" className="text-sm text-gray-500 hover:text-primary">← Back to invoices</Link></div>
+      <div className="mb-4"><Link href="/portal/invoices" className="text-sm text-gray-500 dark:text-gray-400 hover:text-primary">← Back to invoices</Link></div>
 
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Invoice {inv.number}</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Invoice {inv.number}</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Issued {inv.date ? new Date(inv.date).toLocaleDateString() : '—'} · Due {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : '—'}
           </p>
         </div>
         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">{inv.status}</span>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+          <thead className="bg-gray-50 dark:bg-gray-900 text-left text-xs text-gray-500 dark:text-gray-400 uppercase">
             <tr>
               <th className="px-4 py-3">Description</th>
               <th className="px-4 py-3 w-20 text-right">Qty</th>
@@ -117,7 +117,7 @@ export default function PortalInvoiceDetailPage() {
           </thead>
           <tbody>
             {inv.items.map((it, i) => (
-              <tr key={it.id ?? i} className="border-t border-gray-100">
+              <tr key={it.id ?? i} className="border-t border-gray-100 dark:border-gray-800">
                 <td className="px-4 py-3">{it.description}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{it.quantity}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{it.unitPrice.toFixed(2)}</td>
@@ -127,12 +127,12 @@ export default function PortalInvoiceDetailPage() {
           </tbody>
         </table>
 
-        <div className="flex justify-end p-4 border-t border-gray-100 bg-gray-50/50">
+        <div className="flex justify-end p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
           <div className="w-64 text-sm space-y-1">
             <Row label="Subtotal" value={inv.subtotal?.toFixed?.(2) ?? inv.subtotal} />
             <Row label="Tax" value={inv.tax?.toFixed?.(2) ?? inv.tax} />
             <Row label="Discount" value={`-${inv.discount?.toFixed?.(2) ?? inv.discount}`} />
-            <div className="border-t border-gray-200 mt-2 pt-2">
+            <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
               <Row label="Total" value={`${inv.total?.toFixed?.(2) ?? inv.total} ${inv.currency}`} bold />
               {inv.amountPaid != null && inv.amountPaid > 0 && (
                 <Row label="Paid" value={inv.amountPaid.toFixed(2)} />
@@ -147,11 +147,11 @@ export default function PortalInvoiceDetailPage() {
         <div className="mt-6 flex flex-col items-end gap-2">
           {payError && <p className="text-xs text-red-600">{payError}</p>}
           <div className="flex items-center justify-end gap-3">
-            <button className="px-4 py-2 border border-gray-200 text-sm rounded-lg hover:bg-gray-50">Download PDF</button>
+            <button className="px-4 py-2 border border-gray-200 dark:border-gray-700 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Download PDF</button>
             <select
               value={gateway}
               onChange={(e) => setGateway(e.target.value as 'stripe' | 'paypal' | 'mollie')}
-              className="px-3 py-2 border border-gray-200 text-sm rounded-lg bg-white"
+              className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-sm rounded-lg bg-white dark:bg-gray-900"
               disabled={paying}
             >
               <option value="stripe">Stripe</option>
@@ -170,9 +170,9 @@ export default function PortalInvoiceDetailPage() {
       )}
 
       {inv.notes && (
-        <div className="mt-6 bg-white rounded-xl border border-gray-100 p-4">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Notes</h3>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{inv.notes}</p>
+        <div className="mt-6 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-4">
+          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Notes</h3>
+          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{inv.notes}</p>
         </div>
       )}
     </div>

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { PageHeader } from '@/components/ui/page-header';
+import { ErrorBanner } from '@/components/ui/error-banner';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -87,12 +89,12 @@ function TaskCard({
     <div
       draggable
       onDragStart={(e) => onDragStart(e, task.id, task.status as TaskStatus)}
-      className="group bg-white border border-gray-100 rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md hover:border-gray-200 transition-all select-none"
+      className="group bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md hover:border-gray-200 transition-all select-none"
     >
       <div className="flex items-start justify-between gap-2 mb-1">
         <Link
           href={`/tasks/${task.id}`}
-          className="text-sm font-medium text-gray-900 hover:text-primary leading-snug line-clamp-2"
+          className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary leading-snug line-clamp-2"
           onClick={(e) => e.stopPropagation()}
         >
           {task.name}
@@ -108,7 +110,7 @@ function TaskCard({
           {task.priority}
         </span>
         {task.dueDate && (
-          <span className="text-[10px] text-gray-400">{formatDate(task.dueDate)}</span>
+          <span className="text-[10px] text-gray-400 dark:text-gray-500">{formatDate(task.dueDate)}</span>
         )}
       </div>
 
@@ -161,8 +163,8 @@ function KanbanColumn({
         ].join(' ')}
       >
         <div className="flex items-center justify-between px-3 py-2.5">
-          <span className="text-sm font-semibold text-gray-700">{label}</span>
-          <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5 font-medium">
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{label}</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-0.5 font-medium">
             {tasks.length}
           </span>
         </div>
@@ -182,7 +184,7 @@ function KanbanColumn({
         ))}
 
         {tasks.length === 0 && !isDragOver && (
-          <div className="flex items-center justify-center h-20 text-xs text-gray-300 border-2 border-dashed border-gray-100 rounded-lg">
+          <div className="flex items-center justify-center h-20 text-xs text-gray-300 dark:text-gray-600 border-2 border-dashed border-gray-100 dark:border-gray-800 rounded-lg">
             Drop here
           </div>
         )}
@@ -316,35 +318,17 @@ export default function TasksKanbanPage() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 flex-shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Tasks - Kanban</h1>
-          {!loading && (
-            <p className="text-sm text-gray-500 mt-0.5">
-              {totalTasks} task{totalTasks !== 1 ? 's' : ''}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/tasks"
-            className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            List View
-          </Link>
-          <Link
-            href="/tasks/new"
-            className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            <span className="text-lg leading-none">+</span>
-            New Task
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Tasks - Kanban"
+        subtitle={!loading ? `${totalTasks} task${totalTasks !== 1 ? 's' : ''}` : undefined}
+        primaryAction={{ label: 'New Task', href: '/tasks/new' }}
+        secondaryActions={[{ label: 'List View', href: '/tasks' }]}
+        className="flex-shrink-0"
+      />
 
       {error && (
-        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600 flex-shrink-0">
-          {error}
+        <div className="mb-4 flex-shrink-0">
+          <ErrorBanner message={error} />
         </div>
       )}
 
@@ -353,15 +337,15 @@ export default function TasksKanbanPage() {
           {loading
             ? COLUMNS.map((col) => (
                 <div key={col.status} className="flex flex-col min-w-[240px] w-[240px] flex-shrink-0">
-                  <div className="bg-white rounded-xl border border-gray-100 border-t-4 border-t-gray-200 shadow-sm mb-2 px-3 py-2.5 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-300">{col.label}</span>
+                  <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 border-t-4 border-t-gray-200 shadow-sm mb-2 px-3 py-2.5 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-300 dark:text-gray-600">{col.label}</span>
                   </div>
                   <div className="flex flex-col gap-2 p-1.5">
                     {[1, 2].map((i) => (
-                      <div key={i} className="bg-white border border-gray-100 rounded-lg p-3 shadow-sm animate-pulse">
-                        <div className="h-3.5 bg-gray-100 rounded w-3/4 mb-2" />
-                        <div className="h-3 bg-gray-100 rounded w-1/2 mb-3" />
-                        <div className="h-3 bg-gray-100 rounded w-1/4" />
+                      <div key={i} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-lg p-3 shadow-sm animate-pulse">
+                        <div className="h-3.5 bg-gray-100 dark:bg-gray-800 rounded w-3/4 mb-2" />
+                        <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/2 mb-3" />
+                        <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/4" />
                       </div>
                     ))}
                   </div>

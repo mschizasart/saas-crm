@@ -3,6 +3,8 @@
 import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { FormPageLayout } from '@/components/layouts/form-page-layout';
+import { Button } from '@/components/ui/button';
 
 interface Category { id: string; name: string; }
 interface ClientOption { id: string; company?: string; company_name?: string; }
@@ -86,11 +88,20 @@ export default function NewExpensePage() {
   }
 
   return (
-    <div className="max-w-3xl">
-      <div className="mb-4"><Link href="/expenses" className="text-sm text-gray-500 hover:text-primary">← Back</Link></div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">New Expense</h1>
-
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
+    <FormPageLayout
+      title="New Expense"
+      backHref="/expenses"
+      onSubmit={handleSubmit}
+      footer={
+        <>
+          <Link href="/expenses" className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Cancel</Link>
+          <Button type="submit" disabled={saving}>
+            {saving ? 'Saving…' : 'Create Expense'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
         {error && <div className="px-3 py-2 bg-red-50 border border-red-100 text-sm text-red-600 rounded">{error}</div>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -128,11 +139,11 @@ export default function NewExpensePage() {
         </Field>
 
         <div className="flex items-center gap-6">
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} />
             Billable
           </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
             Recurring
           </label>
@@ -152,15 +163,8 @@ export default function NewExpensePage() {
             </Field>
           </div>
         )}
-
-        <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
-          <Link href="/expenses" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Cancel</Link>
-          <button type="submit" disabled={saving} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50">
-            {saving ? 'Saving…' : 'Create Expense'}
-          </button>
-        </div>
-      </form>
-    </div>
+      </div>
+    </FormPageLayout>
   );
 }
 
@@ -169,7 +173,7 @@ const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg f
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">
+      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}

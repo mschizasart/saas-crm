@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { SettingsPageLayout, SettingsSection } from '@/components/layouts/settings-page-layout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 const getToken = () =>
@@ -106,26 +107,14 @@ export default function BackupsPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Backups</h1>
-        <button
-          className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
-          onClick={createBackup}
-          disabled={busy}
-        >
-          Create Backup Now
-        </button>
-      </div>
-
+    <SettingsPageLayout title="Backups" description="Create, download, and restore database backups">
       {message && (
         <div className="p-3 rounded bg-blue-50 text-blue-900 text-sm">
           {message}
         </div>
       )}
 
-      <section className="border rounded-lg p-5 space-y-3">
-        <h2 className="text-lg font-semibold">Automatic Backups</h2>
+      <SettingsSection title="Automatic Backups" description="Run a scheduled backup every night">
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -134,52 +123,64 @@ export default function BackupsPage() {
           />
           <span>Enable automatic daily backups (runs nightly at 3:00 AM)</span>
         </label>
-      </section>
+      </SettingsSection>
 
-      <section className="border rounded-lg p-5">
-        <h2 className="text-lg font-semibold mb-4">Existing Backups</h2>
+      <SettingsSection
+        title="Existing Backups"
+        footer={
+          <button
+            className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
+            onClick={createBackup}
+            disabled={busy}
+          >
+            Create Backup Now
+          </button>
+        }
+      >
         {backups.length === 0 ? (
-          <p className="text-sm text-gray-500">No backups yet.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">No backups yet.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left border-b">
-                <th className="py-2">Filename</th>
-                <th>Created</th>
-                <th>Size</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {backups.map((b) => (
-                <tr key={b.filename} className="border-b">
-                  <td className="py-2 font-mono">{b.filename}</td>
-                  <td>
-                    {b.lastModified
-                      ? new Date(b.lastModified).toLocaleString()
-                      : '—'}
-                  </td>
-                  <td>{fmtSize(b.size)}</td>
-                  <td className="text-right space-x-3">
-                    <button
-                      className="text-blue-600 hover:underline"
-                      onClick={() => downloadBackup(b.filename)}
-                    >
-                      Download
-                    </button>
-                    <button
-                      className="text-red-600 hover:underline"
-                      onClick={() => deleteBackup(b.filename)}
-                    >
-                      Delete
-                    </button>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left border-b">
+                  <th className="py-2">Filename</th>
+                  <th>Created</th>
+                  <th>Size</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {backups.map((b) => (
+                  <tr key={b.filename} className="border-b">
+                    <td className="py-2 font-mono">{b.filename}</td>
+                    <td>
+                      {b.lastModified
+                        ? new Date(b.lastModified).toLocaleString()
+                        : '—'}
+                    </td>
+                    <td>{fmtSize(b.size)}</td>
+                    <td className="text-right space-x-3">
+                      <button
+                        className="text-blue-600 hover:underline"
+                        onClick={() => downloadBackup(b.filename)}
+                      >
+                        Download
+                      </button>
+                      <button
+                        className="text-red-600 hover:underline"
+                        onClick={() => deleteBackup(b.filename)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </section>
-    </div>
+      </SettingsSection>
+    </SettingsPageLayout>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -217,40 +218,34 @@ export default function TaskDetailPage() {
     router.push('/tasks');
   }
 
-  if (loading) return <div className="text-gray-400">Loading...</div>;
-  if (!task) return <div className="text-gray-400">Task not found</div>;
+  if (loading) return <div className="text-gray-400 dark:text-gray-500">Loading...</div>;
+  if (!task) return <div className="text-gray-400 dark:text-gray-500">Task not found</div>;
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{task.name}</h1>
-          {task.project && (
-            <p className="text-sm text-gray-500 mt-1">
-              Project: {task.project.name}
-            </p>
-          )}
-        </div>
-        <button
-          onClick={remove}
-          className="text-sm text-red-600 hover:text-red-700"
-        >
-          Delete
-        </button>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
+    <DetailPageLayout
+      title={task.name}
+      subtitle={task.project ? `Project: ${task.project.name}` : undefined}
+      breadcrumbs={[
+        { label: 'Tasks', href: '/tasks' },
+        { label: task.name },
+      ]}
+      actions={[
+        { label: 'Delete', onClick: remove, variant: 'secondary' },
+      ]}
+    >
+      <div className="space-y-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 space-y-4">
         {task.description && (
-          <p className="text-sm text-gray-700 whitespace-pre-line">
+          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">
             {task.description}
           </p>
         )}
         <div className="flex items-center gap-4">
-          <label className="text-sm font-medium text-gray-700">Status</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
           <select
             value={task.status}
             onChange={(e) => updateStatus(e.target.value)}
-            className="border border-gray-200 rounded-md px-3 py-1.5 text-sm bg-white"
+            className="border border-gray-200 dark:border-gray-700 rounded-md px-3 py-1.5 text-sm bg-white dark:bg-gray-900"
           >
             <option value="not_started">Not started</option>
             <option value="in_progress">In progress</option>
@@ -258,20 +253,20 @@ export default function TaskDetailPage() {
             <option value="awaiting_feedback">Awaiting feedback</option>
             <option value="complete">Complete</option>
           </select>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-gray-500 dark:text-gray-400">
             Priority: <span className="capitalize">{task.priority}</span>
           </span>
           {task.dueDate && (
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
               Due: {new Date(task.dueDate).toLocaleDateString()}
             </span>
           )}
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">Assignees</h2>
-        <div className="text-sm text-gray-700 mb-3">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Assignees</h2>
+        <div className="text-sm text-gray-700 dark:text-gray-300 mb-3">
           {task.assignments?.length
             ? task.assignments
                 .map((a) =>
@@ -287,7 +282,7 @@ export default function TaskDetailPage() {
             placeholder="User ID to assign"
             value={assignUserId}
             onChange={(e) => setAssignUserId(e.target.value)}
-            className="flex-1 border border-gray-200 rounded-md px-3 py-1.5 text-sm"
+            className="flex-1 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-1.5 text-sm"
           />
           <button
             onClick={assign}
@@ -298,8 +293,8 @@ export default function TaskDetailPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">Checklist</h2>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Checklist</h2>
         <div className="space-y-2 mb-3">
           {task.checklists?.map((c) => (
             <label
@@ -328,7 +323,7 @@ export default function TaskDetailPage() {
             value={newChecklist}
             onChange={(e) => setNewChecklist(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addChecklist()}
-            className="flex-1 border border-gray-200 rounded-md px-3 py-1.5 text-sm"
+            className="flex-1 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-1.5 text-sm"
           />
           <button
             onClick={addChecklist}
@@ -340,8 +335,8 @@ export default function TaskDetailPage() {
       </div>
 
       {/* Dependencies */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">Dependencies</h2>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Dependencies</h2>
 
         {blockedBy.length > 0 && (
           <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
@@ -360,15 +355,15 @@ export default function TaskDetailPage() {
 
         <div className="space-y-2 mb-3">
           {dependencies.length === 0 && (
-            <p className="text-sm text-gray-400">No dependencies</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">No dependencies</p>
           )}
           {dependencies.map((dep) => (
             <div
               key={dep.id}
-              className="flex items-center justify-between text-sm border border-gray-100 rounded-lg px-3 py-2"
+              className="flex items-center justify-between text-sm border border-gray-100 dark:border-gray-800 rounded-lg px-3 py-2"
             >
               <div className="flex items-center gap-2">
-                <span className="text-gray-900">{dep.dependsOn.name}</span>
+                <span className="text-gray-900 dark:text-gray-100">{dep.dependsOn.name}</span>
                 <span
                   className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                     dep.dependsOn.status === 'complete'
@@ -381,7 +376,7 @@ export default function TaskDetailPage() {
               </div>
               <button
                 onClick={() => removeDependency(dep.dependsOn.id)}
-                className="text-gray-400 hover:text-red-500 text-sm px-1"
+                className="text-gray-400 dark:text-gray-500 hover:text-red-500 text-sm px-1"
                 title="Remove dependency"
               >
                 x
@@ -394,7 +389,7 @@ export default function TaskDetailPage() {
           <select
             value={selectedDepId}
             onChange={(e) => setSelectedDepId(e.target.value)}
-            className="flex-1 border border-gray-200 rounded-md px-3 py-1.5 text-sm bg-white"
+            className="flex-1 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-1.5 text-sm bg-white dark:bg-gray-900"
           >
             <option value="">-- Add dependency --</option>
             {availableTasks
@@ -417,22 +412,22 @@ export default function TaskDetailPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">Comments</h2>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Comments</h2>
         <div className="space-y-3 mb-3">
           {task.comments?.map((c) => (
             <div
               key={c.id}
-              className="text-sm border-l-2 border-gray-200 pl-3 py-1"
+              className="text-sm border-l-2 border-gray-200 dark:border-gray-700 pl-3 py-1"
             >
-              <p className="text-gray-700 whitespace-pre-line">{c.content}</p>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line">{c.content}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                 {new Date(c.createdAt).toLocaleString()}
               </p>
             </div>
           ))}
           {!task.comments?.length && (
-            <p className="text-sm text-gray-400">No comments</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">No comments</p>
           )}
         </div>
         <div className="flex gap-2">
@@ -442,7 +437,7 @@ export default function TaskDetailPage() {
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addComment()}
-            className="flex-1 border border-gray-200 rounded-md px-3 py-1.5 text-sm"
+            className="flex-1 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-1.5 text-sm"
           />
           <button
             onClick={addComment}
@@ -452,6 +447,7 @@ export default function TaskDetailPage() {
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </DetailPageLayout>
   );
 }

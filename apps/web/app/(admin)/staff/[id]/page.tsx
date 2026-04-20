@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 
 interface Role {
   id: string;
@@ -16,9 +16,9 @@ interface StaffUser {
   email: string;
   phone: string | null;
   avatar?: string | null;
-  isActive: boolean;
+  active: boolean;
   isAdmin: boolean;
-  twoFactorEnabled: boolean;
+  twoFaEnabled: boolean;
   lastLogin: string | null;
   role?: Role | null;
   roleId?: string | null;
@@ -212,7 +212,7 @@ export default function StaffDetailPage() {
   if (loading) {
     return (
       <div className="flex justify-center py-24">
-        <div className="animate-pulse text-gray-400 text-sm">Loading...</div>
+        <div className="animate-pulse text-gray-400 dark:text-gray-500 text-sm">Loading...</div>
       </div>
     );
   }
@@ -226,79 +226,70 @@ export default function StaffDetailPage() {
     );
   }
 
-  return (
-    <div className="max-w-4xl mx-auto">
-      <div className="flex items-center gap-2 mb-6 text-sm text-gray-500">
-        <Link href="/staff" className="hover:text-primary">Staff</Link>
-        <span>/</span>
-        <span className="text-gray-900 font-medium">{user.firstName} {user.lastName}</span>
-      </div>
+  const actions = !editing
+    ? [
+        { label: 'Edit', onClick: startEdit, variant: 'primary' as const },
+        { label: 'Permissions', href: `/staff/${userId}/permissions`, variant: 'secondary' as const },
+        { label: 'Reset Password', onClick: () => setShowReset(true), variant: 'secondary' as const },
+        { label: user.active ? 'Deactivate' : 'Activate', onClick: toggleActive, variant: 'secondary' as const },
+        { label: 'Delete', onClick: deleteUser, variant: 'secondary' as const },
+      ]
+    : undefined;
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <div className="flex items-center gap-3">
-          <div className="relative group">
-            {user.avatar ? (
-              <img
-                src={user.avatar}
-                alt={`${user.firstName} ${user.lastName}`}
-                className="w-12 h-12 rounded-full object-cover border-2 border-gray-200"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center text-lg font-semibold border-2 border-gray-200">
-                {user.firstName[0]}{user.lastName[0]}
-              </div>
-            )}
-            <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white text-xs font-medium rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
-              {uploading ? '...' : 'Edit'}
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadAvatar(file);
-                  e.target.value = '';
-                }}
-                disabled={uploading}
-              />
-            </label>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">{user.firstName} {user.lastName}</h1>
-          <Badge tone={user.isActive ? 'green' : 'gray'}>{user.isActive ? 'Active' : 'Inactive'}</Badge>
-          {user.isAdmin && <Badge tone="blue">Admin</Badge>}
+  const badgeNode = (
+    <span className="inline-flex items-center gap-1">
+      <Badge tone={user.active ? 'green' : 'gray'}>{user.active ? 'Active' : 'Inactive'}</Badge>
+      {user.isAdmin && <Badge tone="blue">Admin</Badge>}
+    </span>
+  );
+
+  const avatarNode = (
+    <div className="relative group inline-block">
+      {user.avatar ? (
+        <img
+          src={user.avatar}
+          alt={`${user.firstName} ${user.lastName}`}
+          className="w-24 h-24 rounded-full object-cover border-2 border-gray-200 dark:border-gray-700"
+        />
+      ) : (
+        <div className="w-24 h-24 rounded-full bg-primary/10 text-primary flex items-center justify-center text-2xl font-semibold border-2 border-gray-200 dark:border-gray-700">
+          {user.firstName[0]}{user.lastName[0]}
         </div>
-        {!editing && (
-          <div className="flex gap-2">
-            <button
-              onClick={startEdit}
-              className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => setShowReset(true)}
-              className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50"
-            >
-              Reset Password
-            </button>
-            <button
-              onClick={toggleActive}
-              className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50"
-            >
-              {user.isActive ? 'Deactivate' : 'Activate'}
-            </button>
-            <button
-              onClick={deleteUser}
-              className="px-4 py-2 text-sm font-medium border border-red-200 text-red-600 rounded-lg hover:bg-red-50"
-            >
-              Delete
-            </button>
-          </div>
-        )}
-      </div>
+      )}
+      <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white text-xs font-medium rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+        {uploading ? '...' : 'Change avatar'}
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) uploadAvatar(file);
+            e.target.value = '';
+          }}
+          disabled={uploading}
+        />
+      </label>
+    </div>
+  );
 
+  return (
+    <DetailPageLayout
+      title={`${user.firstName} ${user.lastName}`}
+      breadcrumbs={[
+        { label: 'Staff', href: '/staff' },
+        { label: `${user.firstName} ${user.lastName}` },
+      ]}
+      badge={badgeNode}
+      actions={actions}
+      sidebar={
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 flex flex-col items-center">
+          {avatarNode}
+        </div>
+      }
+    >
       {editing ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
           {saveError && (
             <div className="mb-4 px-3 py-2 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg">
               {saveError}
@@ -306,47 +297,47 @@ export default function StaffDetailPage() {
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">First Name</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">First Name</label>
               <input
                 type="text"
                 value={(editForm.firstName as string) ?? ''}
                 onChange={(e) => setEditForm((p) => ({ ...p, firstName: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Last Name</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Last Name</label>
               <input
                 type="text"
                 value={(editForm.lastName as string) ?? ''}
                 onChange={(e) => setEditForm((p) => ({ ...p, lastName: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Email</label>
               <input
                 type="email"
                 value={(editForm.email as string) ?? ''}
                 onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Phone</label>
               <input
                 type="text"
                 value={(editForm.phone as string) ?? ''}
                 onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Role</label>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Role</label>
               <select
                 value={(editForm.roleId as string) ?? ''}
                 onChange={(e) => setEditForm((p) => ({ ...p, roleId: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white"
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
               >
                 <option value="">— None —</option>
                 {roles.map((r) => (
@@ -355,7 +346,7 @@ export default function StaffDetailPage() {
               </select>
             </div>
             <div className="flex items-center">
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700 mt-5">
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mt-5">
                 <input
                   type="checkbox"
                   checked={!!editForm.isAdmin}
@@ -376,34 +367,34 @@ export default function StaffDetailPage() {
             </button>
             <button
               onClick={() => setEditing(false)}
-              className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50"
+              className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               Cancel
             </button>
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
-              <dt className="text-xs font-semibold text-gray-400 uppercase">Email</dt>
-              <dd className="text-gray-900 mt-1">{user.email}</dd>
+              <dt className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Email</dt>
+              <dd className="text-gray-900 dark:text-gray-100 mt-1">{user.email}</dd>
             </div>
             <div>
-              <dt className="text-xs font-semibold text-gray-400 uppercase">Phone</dt>
-              <dd className="text-gray-900 mt-1">{user.phone ?? '—'}</dd>
+              <dt className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Phone</dt>
+              <dd className="text-gray-900 dark:text-gray-100 mt-1">{user.phone ?? '—'}</dd>
             </div>
             <div>
-              <dt className="text-xs font-semibold text-gray-400 uppercase">Role</dt>
-              <dd className="text-gray-900 mt-1">{user.role?.name ?? '—'}</dd>
+              <dt className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Role</dt>
+              <dd className="text-gray-900 dark:text-gray-100 mt-1">{user.role?.name ?? '—'}</dd>
             </div>
             <div>
-              <dt className="text-xs font-semibold text-gray-400 uppercase">2FA</dt>
-              <dd className="mt-1"><Badge tone={user.twoFactorEnabled ? 'green' : 'gray'}>{user.twoFactorEnabled ? 'Enabled' : 'Disabled'}</Badge></dd>
+              <dt className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">2FA</dt>
+              <dd className="mt-1"><Badge tone={user.twoFaEnabled ? 'green' : 'gray'}>{user.twoFaEnabled ? 'Enabled' : 'Disabled'}</Badge></dd>
             </div>
             <div>
-              <dt className="text-xs font-semibold text-gray-400 uppercase">Last Login</dt>
-              <dd className="text-gray-900 mt-1">
+              <dt className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Last Login</dt>
+              <dd className="text-gray-900 dark:text-gray-100 mt-1">
                 {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
               </dd>
             </div>
@@ -413,24 +404,24 @@ export default function StaffDetailPage() {
 
       {showReset && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Reset Password</h2>
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl max-w-md w-full p-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Reset Password</h2>
             {resetError && (
               <div className="mb-4 px-3 py-2 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg">
                 {resetError}
               </div>
             )}
-            <label className="block text-xs font-medium text-gray-500 mb-1">New Password</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">New Password</label>
             <input
               type="text"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             />
             <div className="flex gap-3 mt-5 justify-end">
               <button
                 onClick={() => { setShowReset(false); setNewPassword(''); setResetError(null); }}
-                className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50"
+                className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
               >
                 Cancel
               </button>
@@ -445,6 +436,6 @@ export default function StaffDetailPage() {
           </div>
         </div>
       )}
-    </div>
+    </DetailPageLayout>
   );
 }

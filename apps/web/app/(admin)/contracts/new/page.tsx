@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { RichTextEditor, RichTextEditorHandle } from '../../../../components/rich-text-editor';
+import { FormPageLayout } from '@/components/layouts/form-page-layout';
+import { Button } from '@/components/ui/button';
 
 interface ClientOption { id: string; company?: string; company_name?: string; name?: string; }
 interface MergeField { key: string; label: string; }
@@ -73,11 +75,20 @@ export default function NewContractPage() {
   }
 
   return (
-    <div className="max-w-3xl">
-      <div className="mb-4"><Link href="/contracts" className="text-sm text-gray-500 hover:text-primary">← Back</Link></div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">New Contract</h1>
-
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
+    <FormPageLayout
+      title="New Contract"
+      backHref="/contracts"
+      onSubmit={handleSubmit}
+      footer={
+        <>
+          <Link href="/contracts" className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">Cancel</Link>
+          <Button type="submit" disabled={saving}>
+            {saving ? 'Saving…' : 'Create Contract'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
         {error && <div className="px-3 py-2 bg-red-50 border border-red-100 text-sm text-red-600 rounded">{error}</div>}
 
         <Field label="Subject" required>
@@ -118,7 +129,7 @@ export default function NewContractPage() {
             <button
               type="button"
               onClick={() => setShowMergeFields(!showMergeFields)}
-              className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 rounded-lg transition-colors"
             >
               {showMergeFields ? 'Hide Merge Fields' : 'Insert Merge Field'}
             </button>
@@ -130,7 +141,7 @@ export default function NewContractPage() {
                   key={field.key}
                   type="button"
                   onClick={() => editorRef.current?.insertText(field.key)}
-                  className="px-2 py-1 text-xs bg-white border border-blue-200 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+                  className="px-2 py-1 text-xs bg-white dark:bg-gray-900 border border-blue-200 text-blue-700 rounded hover:bg-blue-100 transition-colors"
                   title={field.label}
                 >
                   {field.key}
@@ -140,15 +151,8 @@ export default function NewContractPage() {
           )}
           <RichTextEditor ref={editorRef} value={content} onChange={setContent} placeholder="Write your contract content here... Use merge fields to insert dynamic values." minHeight="250px" />
         </Field>
-
-        <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
-          <Link href="/contracts" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Cancel</Link>
-          <button type="submit" disabled={saving} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50">
-            {saving ? 'Saving…' : 'Create Contract'}
-          </button>
-        </div>
-      </form>
-    </div>
+      </div>
+    </FormPageLayout>
   );
 }
 
@@ -157,7 +161,7 @@ const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg f
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">
+      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}

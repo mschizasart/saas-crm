@@ -66,26 +66,26 @@ export default function BookingWidgetPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Booking Widget</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Booking Widget</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Preview available slots and generate an embeddable booking link for clients.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: Preview */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-          <h2 className="font-semibold text-gray-900 mb-4">Preview Available Slots</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Preview Available Slots</h2>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Staff Member</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Staff Member</label>
               <select value={selectedStaff} onChange={(e) => setSelectedStaff(e.target.value)} className={inputClass}>
                 <option value="">-- Select staff --</option>
                 {staff.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date</label>
               <input
                 type="date"
                 value={selectedDate}
@@ -96,7 +96,7 @@ export default function BookingWidgetPage() {
           </div>
 
           {loadingSlots && (
-            <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+            <div className="mt-4 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
               <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               Loading slots...
             </div>
@@ -104,9 +104,9 @@ export default function BookingWidgetPage() {
 
           {!loadingSlots && selectedStaff && (
             <div className="mt-4">
-              <p className="text-xs font-medium text-gray-500 uppercase mb-2">Available Slots ({slots.length})</p>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mb-2">Available Slots ({slots.length})</p>
               {slots.length === 0 ? (
-                <p className="text-sm text-gray-400">No available slots for this date.</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500">No available slots for this date.</p>
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                   {slots.map((slot, i) => (
@@ -121,17 +121,17 @@ export default function BookingWidgetPage() {
         </div>
 
         {/* Right: Embed Code */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-          <h2 className="font-semibold text-gray-900 mb-4">Shareable Booking</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Shareable Booking</h2>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Booking URL</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Booking URL</label>
               <div className="flex items-center gap-2">
                 <input readOnly value={bookingUrl} className={`${inputClass} bg-gray-50 text-gray-600`} />
                 <button
                   onClick={() => navigator.clipboard.writeText(bookingUrl)}
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 whitespace-nowrap"
+                  className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 whitespace-nowrap"
                 >
                   Copy
                 </button>
@@ -155,7 +155,7 @@ export default function BookingWidgetPage() {
                   />
                   <button
                     onClick={() => navigator.clipboard.writeText(embedCode)}
-                    className="mt-2 px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50"
+                    className="mt-2 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
                   >
                     Copy embed code
                   </button>
@@ -163,9 +163,9 @@ export default function BookingWidgetPage() {
               )}
             </div>
 
-            <div className="pt-4 border-t border-gray-100">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">How it works</h3>
-              <ul className="text-xs text-gray-500 space-y-1 list-disc list-inside">
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">How it works</h3>
+              <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-1 list-disc list-inside">
                 <li>Clients visit the booking URL or embedded widget</li>
                 <li>They select a staff member and available time slot</li>
                 <li>They provide name and email to book the appointment</li>

@@ -106,8 +106,8 @@ export default function PlatformBillingPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Platform Billing</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Platform Billing</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Revenue, subscriptions and churn across all organizations.
         </p>
       </div>
@@ -155,14 +155,14 @@ export default function PlatformBillingPage() {
       </div>
 
       {/* Orgs by plan */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-6">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900">Organizations by Plan</h2>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden mb-6">
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">Organizations by Plan</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
                 <th className="px-4 py-2.5">Plan</th>
                 <th className="px-4 py-2.5">Slug</th>
                 <th className="px-4 py-2.5">Active Orgs</th>
@@ -173,13 +173,13 @@ export default function PlatformBillingPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
                     Loading…
                   </td>
                 </tr>
               ) : byPlan.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
                     No plans configured yet.
                   </td>
                 </tr>
@@ -188,12 +188,12 @@ export default function PlatformBillingPage() {
                   {byPlan.map((p) => (
                     <tr
                       key={p.planId}
-                      className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60"
+                      className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60"
                     >
-                      <td className="px-4 py-3 font-medium text-gray-900">{p.planName}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.planSlug}</td>
-                      <td className="px-4 py-3 text-gray-700">{p.count}</td>
-                      <td className="px-4 py-3 text-gray-700">
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{p.planName}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">{p.planSlug}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{p.count}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
                         {formatCurrency(p.monthlyPrice)}
                       </td>
                       <td className="px-4 py-3 font-semibold text-indigo-600">
@@ -201,7 +201,7 @@ export default function PlatformBillingPage() {
                       </td>
                     </tr>
                   ))}
-                  <tr className="bg-gray-50 font-semibold">
+                  <tr className="bg-gray-50 dark:bg-gray-900 font-semibold">
                     <td className="px-4 py-3" colSpan={4}>
                       Total
                     </td>
@@ -217,15 +217,15 @@ export default function PlatformBillingPage() {
       </div>
 
       {/* Revenue chart */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <h2 className="font-semibold text-gray-900 mb-4">Active Subscriptions by Month</h2>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+        <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Active Subscriptions by Month</h2>
         <div className="h-72">
           {loading ? (
-            <div className="h-full flex items-center justify-center text-sm text-gray-400">
+            <div className="h-full flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">
               Loading…
             </div>
           ) : chartData.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-sm text-gray-400">
+            <div className="h-full flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">
               No revenue data yet.
             </div>
           ) : (
@@ -257,8 +257,8 @@ function StatCard({
   big?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-5">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+    <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-5">
+      <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">
         {label}
       </p>
       <p className={`font-bold ${accent} ${big ? 'text-2xl' : 'text-xl'}`}>{value}</p>

@@ -75,16 +75,16 @@ export default function ClientsImportPage() {
 
   return (
     <div className="max-w-3xl">
-      <div className="flex items-center gap-2 mb-6 text-sm text-gray-500">
+      <div className="flex items-center gap-2 mb-6 text-sm text-gray-500 dark:text-gray-400">
         <Link href="/clients" className="hover:text-primary transition-colors">Clients</Link>
         <span>/</span>
-        <span className="text-gray-900 font-medium">Import CSV</span>
+        <span className="text-gray-900 dark:text-gray-100 font-medium">Import CSV</span>
       </div>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Import Clients from CSV</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Import Clients from CSV</h1>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
-        <p className="text-sm text-gray-600 mb-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 mb-6">
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
           Upload a CSV file with these columns: <strong>company</strong> (required), phone, website, address, city, country, vat, email.
           The first row should be the header.
         </p>
@@ -99,30 +99,30 @@ export default function ClientsImportPage() {
           />
           <button
             onClick={() => fileRef.current?.click()}
-            className="px-4 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            className="px-4 py-2 text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 transition-colors"
           >
             Choose CSV File
           </button>
-          {fileName && <span className="text-sm text-gray-600">{fileName}</span>}
+          {fileName && <span className="text-sm text-gray-600 dark:text-gray-400">{fileName}</span>}
         </div>
 
         {preview.length > 0 && (
           <div className="mb-4">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Preview (first 5 rows)</h3>
-            <div className="overflow-x-auto border border-gray-200 rounded-lg">
+            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Preview (first 5 rows)</h3>
+            <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
               <table className="min-w-full text-xs">
                 <thead>
-                  <tr className="bg-gray-50">
+                  <tr className="bg-gray-50 dark:bg-gray-900">
                     {preview[0]?.map((header, i) => (
-                      <th key={i} className="px-3 py-2 text-left font-semibold text-gray-600">{header}</th>
+                      <th key={i} className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-400">{header}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {preview.slice(1).map((row, ri) => (
-                    <tr key={ri} className="border-t border-gray-100">
+                    <tr key={ri} className="border-t border-gray-100 dark:border-gray-800">
                       {row.map((cell, ci) => (
-                        <td key={ci} className="px-3 py-2 text-gray-700">{cell}</td>
+                        <td key={ci} className="px-3 py-2 text-gray-700 dark:text-gray-300">{cell}</td>
                       ))}
                     </tr>
                   ))}
@@ -148,8 +148,8 @@ export default function ClientsImportPage() {
       )}
 
       {result && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Import Results</h3>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Import Results</h3>
           <div className="grid grid-cols-3 gap-4 mb-4">
             <div className="text-center p-3 bg-green-50 rounded-lg">
               <p className="text-2xl font-bold text-green-700">{result.imported}</p>
@@ -159,14 +159,14 @@ export default function ClientsImportPage() {
               <p className="text-2xl font-bold text-yellow-700">{result.skipped}</p>
               <p className="text-xs text-yellow-600">Skipped</p>
             </div>
-            <div className="text-center p-3 bg-gray-50 rounded-lg">
-              <p className="text-2xl font-bold text-gray-700">{result.errors.length}</p>
-              <p className="text-xs text-gray-600">Errors</p>
+            <div className="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
+              <p className="text-2xl font-bold text-gray-700 dark:text-gray-300">{result.errors.length}</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">Errors</p>
             </div>
           </div>
           {result.errors.length > 0 && (
             <div className="mt-3">
-              <p className="text-xs font-semibold text-gray-500 mb-2">Error Details:</p>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Error Details:</p>
               <ul className="text-xs text-red-600 space-y-1 max-h-40 overflow-y-auto">
                 {result.errors.map((err, i) => (
                   <li key={i}>{err}</li>

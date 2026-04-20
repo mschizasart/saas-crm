@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import SavedItemModal from '../../../../components/saved-item-modal';
+import { SettingsPageLayout, SettingsSection } from '@/components/layouts/settings-page-layout';
+import { typography } from '@/lib/ui-tokens';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -87,28 +89,16 @@ export default function SavedItemsPage() {
     loadItems();
   }
 
-  if (loading) return <div className="p-6 text-sm text-gray-500">Loading...</div>;
+  if (loading) return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading...</div>;
 
   return (
-    <div className="max-w-5xl">
-      <div className="mb-4">
-        <Link href="/settings" className="text-sm text-gray-500 hover:text-primary">&larr; Settings</Link>
-      </div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Saved Items</h1>
-          <p className="text-sm text-gray-500 mt-1">Predefined line items for invoices, estimates, and credit notes</p>
-        </div>
-        <button
-          onClick={handleNew}
-          className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 shadow-sm"
-        >
-          + Add New Item
-        </button>
+    <SettingsPageLayout title="Saved Items" description="Predefined line items for invoices, estimates, and credit notes">
+      <div className="mb-[-0.5rem]">
+        <Link href="/settings" className={`${typography.bodyMuted} hover:text-primary`}>&larr; Settings</Link>
       </div>
 
       {message && (
-        <div className={`mb-4 px-3 py-2 text-sm rounded-lg border ${
+        <div className={`px-3 py-2 text-sm rounded-lg border ${
           message.type === 'success'
             ? 'bg-green-50 border-green-200 text-green-700'
             : 'bg-red-50 border-red-200 text-red-700'
@@ -117,16 +107,24 @@ export default function SavedItemsPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+      <SettingsSection title="Manage saved items">
+        <div className="flex items-center justify-end mb-4">
+          <button
+            onClick={handleNew}
+            className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 shadow-sm"
+          >
+            + Add New Item
+          </button>
+        </div>
         {items.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-400">
+          <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">
             No saved items yet. Click &quot;+ Add New Item&quot; to create one.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs text-gray-500 uppercase border-b border-gray-100">
+                <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase border-b border-gray-100 dark:border-gray-800">
                   <th className="px-4 py-3">Description</th>
                   <th className="px-4 py-3 w-28">Rate</th>
                   <th className="px-4 py-3 w-32">Tax</th>
@@ -139,21 +137,21 @@ export default function SavedItemsPage() {
                 {items.map((item) => (
                   <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">{item.description}</div>
+                      <div className="font-medium text-gray-900 dark:text-gray-100">{item.description}</div>
                       {item.longDescription && (
-                        <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{item.longDescription}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{item.longDescription}</div>
                       )}
                     </td>
                     <td className="px-4 py-3 tabular-nums">{Number(item.rate).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">
                       {item.tax1 || item.tax2 ? (
                         <span>{[item.tax1, item.tax2].filter(Boolean).length} tax(es)</span>
                       ) : (
                         <span>{Number(item.taxRate) > 0 ? `${Number(item.taxRate)}%` : 'No Tax'}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-gray-500">{item.unit || '-'}</td>
-                    <td className="px-4 py-3 text-gray-500">{item.groupName || '-'}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{item.unit || '-'}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{item.groupName || '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button
@@ -176,7 +174,7 @@ export default function SavedItemsPage() {
             </table>
           </div>
         )}
-      </div>
+      </SettingsSection>
 
       <SavedItemModal
         open={modalOpen}
@@ -196,6 +194,6 @@ export default function SavedItemsPage() {
           zipCode: editItem.zipCode,
         } : undefined}
       />
-    </div>
+    </SettingsPageLayout>
   );
 }

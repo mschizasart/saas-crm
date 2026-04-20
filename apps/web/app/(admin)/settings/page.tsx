@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useI18n } from '@/lib/i18n/use-i18n';
 import { SUPPORTED_LANGUAGES } from '@/lib/i18n/index';
 import { useTheme } from '@/lib/theme';
+import { SettingsPageLayout, SettingsSection } from '@/components/layouts/settings-page-layout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -28,7 +30,31 @@ interface Tax { id?: string; name: string; rate: number }
 interface Currency { id?: string; code: string; symbol: string; name: string }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<TabKey>('company');
+  return (
+    <Suspense fallback={null}>
+      <SettingsPageInner />
+    </Suspense>
+  );
+}
+
+function SettingsPageInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialTab = (() => {
+    const raw = searchParams?.get('tab');
+    const valid = TABS.map((t) => t.key) as string[];
+    // Accept "general" as an alias for "company" for back-compat with old links.
+    if (raw === 'general') return 'company' as TabKey;
+    if (raw && valid.includes(raw)) return raw as TabKey;
+    return 'company' as TabKey;
+  })();
+  const [tab, setTabState] = useState<TabKey>(initialTab);
+  const setTab = (t: TabKey) => {
+    setTabState(t);
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
+    params.set('tab', t);
+    router.replace(`/settings?${params.toString()}`, { scroll: false });
+  };
   const [org, setOrg] = useState<any>(null);
   const [settings, setSettings] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
@@ -105,27 +131,19 @@ export default function SettingsPage() {
     }
   };
 
-  if (loading) return <div className="p-6 text-gray-500 text-sm">Loading…</div>;
+  if (loading) return <div className="p-6 text-gray-500 dark:text-gray-400 text-sm">Loading…</div>;
+
+  const currentTabLabel = TABS.find((t) => t.key === tab)?.label ?? '';
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <button
-          onClick={save}
-          disabled={saving}
-          className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50"
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-      </div>
+    <SettingsPageLayout title="Settings" description="Configure your organization and global preferences">
       {message && (
-        <div className="mb-4 text-sm text-gray-700 bg-blue-50 border border-blue-100 rounded px-3 py-2">
+        <div className="text-sm text-gray-700 dark:text-gray-300 bg-blue-50 border border-blue-100 rounded px-3 py-2">
           {message}
         </div>
       )}
 
-      <div className="border-b border-gray-200 mb-6 flex gap-2 overflow-x-auto">
+      <div className="border-b border-gray-200 dark:border-gray-700 flex gap-2 overflow-x-auto">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -141,7 +159,18 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 max-w-3xl">
+      <SettingsSection
+        title={currentTabLabel}
+        footer={
+          <button
+            onClick={save}
+            disabled={saving}
+            className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        }
+      >
         {tab === 'company' && (
           <div className="space-y-4">
             <Field label="Company name" value={org?.name ?? ''} onChange={(v) => setProfile('name', v)} />
@@ -170,7 +199,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={() => setMessage('Test email queued (stub)')}
-              className="text-sm px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-50"
+              className="text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               Send test email
             </button>
@@ -179,10 +208,10 @@ export default function SettingsPage() {
 
         {tab === 'gateways' && (
           <div className="space-y-4">
-            <h2 className="font-semibold text-gray-800">Stripe</h2>
+            <h2 className="font-semibold text-gray-800 dark:text-gray-200">Stripe</h2>
             <Field label="Publishable key" type="password" value={settings.stripePk ?? ''} onChange={(v) => setSetting('stripePk', v)} />
             <Field label="Secret key" type="password" value={settings.stripeSk ?? ''} onChange={(v) => setSetting('stripeSk', v)} />
-            <h2 className="font-semibold text-gray-800 pt-4">PayPal</h2>
+            <h2 className="font-semibold text-gray-800 dark:text-gray-200 pt-4">PayPal</h2>
             <Field label="Client ID" type="password" value={settings.paypalClientId ?? ''} onChange={(v) => setSetting('paypalClientId', v)} />
             <Field label="Secret" type="password" value={settings.paypalSecret ?? ''} onChange={(v) => setSetting('paypalSecret', v)} />
           </div>
@@ -218,20 +247,20 @@ export default function SettingsPage() {
             <ThemeSelector />
             <LanguageSelector />
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Primary color</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Primary color</label>
               <input
                 type="color"
                 value={settings.primaryColor ?? '#2563eb'}
                 onChange={(e) => setSetting('primaryColor', e.target.value)}
-                className="h-10 w-20 rounded border border-gray-200"
+                className="h-10 w-20 rounded border border-gray-200 dark:border-gray-700"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Date format</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date format</label>
               <select
                 value={settings.dateFormat ?? 'YYYY-MM-DD'}
                 onChange={(e) => setSetting('dateFormat', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
               >
                 <option>YYYY-MM-DD</option>
                 <option>DD/MM/YYYY</option>
@@ -239,11 +268,11 @@ export default function SettingsPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Time format</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Time format</label>
               <select
                 value={settings.timeFormat ?? '24h'}
                 onChange={(e) => setSetting('timeFormat', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
               >
                 <option value="24h">24-hour</option>
                 <option value="12h">12-hour</option>
@@ -252,7 +281,7 @@ export default function SettingsPage() {
 
             {/* Invoice PDF Template */}
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-2">Invoice PDF Template</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Invoice PDF Template</label>
               <div className="grid grid-cols-3 gap-3">
                 {([
                   { value: 'default', label: 'Default', desc: 'Blue header with modern layout, colored table headers, clean design.' },
@@ -269,8 +298,8 @@ export default function SettingsPage() {
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    <div className="text-sm font-semibold text-gray-800 mb-1">{tmpl.label}</div>
-                    <p className="text-xs text-gray-500 leading-relaxed">{tmpl.desc}</p>
+                    <div className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">{tmpl.label}</div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{tmpl.desc}</p>
                   </button>
                 ))}
               </div>
@@ -281,8 +310,8 @@ export default function SettingsPage() {
         {tab === 'reports' && (
           <div className="space-y-6">
             <div>
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">Scheduled Report Emails</h3>
-              <p className="text-xs text-gray-500 mb-4">Automatically send sales summary emails to all admin users in your organization.</p>
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Scheduled Report Emails</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Automatically send sales summary emails to all admin users in your organization.</p>
               <div className="space-y-3">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
@@ -292,8 +321,8 @@ export default function SettingsPage() {
                     className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary/30"
                   />
                   <div>
-                    <span className="text-sm font-medium text-gray-700">Send weekly sales summary email</span>
-                    <p className="text-xs text-gray-500">Sent every Monday at 8:00 AM to all admin users</p>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Send weekly sales summary email</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Sent every Monday at 8:00 AM to all admin users</p>
                   </div>
                 </label>
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -304,14 +333,14 @@ export default function SettingsPage() {
                     className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary/30"
                   />
                   <div>
-                    <span className="text-sm font-medium text-gray-700">Send monthly report email</span>
-                    <p className="text-xs text-gray-500">Sent on the 1st of each month at 8:00 AM to all admin users</p>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Send monthly report email</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Sent on the 1st of each month at 8:00 AM to all admin users</p>
                   </div>
                 </label>
               </div>
             </div>
-            <div className="border-t border-gray-100 pt-4">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">Ticket Surveys</h3>
+            <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Ticket Surveys</h3>
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -320,15 +349,15 @@ export default function SettingsPage() {
                   className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary/30"
                 />
                 <div>
-                  <span className="text-sm font-medium text-gray-700">Send satisfaction survey on ticket close</span>
-                  <p className="text-xs text-gray-500">Automatically email a satisfaction survey to the client contact when a ticket is closed</p>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Send satisfaction survey on ticket close</span>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Automatically email a satisfaction survey to the client contact when a ticket is closed</p>
                 </div>
               </label>
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </SettingsSection>
+    </SettingsPageLayout>
   );
 }
 
@@ -343,8 +372,8 @@ function ThemeSelector() {
 
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">Theme</label>
-      <p className="text-xs text-gray-400 mb-2">Choose your preferred color scheme.</p>
+      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Theme</label>
+      <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">Choose your preferred color scheme.</p>
       <div className="grid grid-cols-3 gap-3">
         {([
           { value: 'light', label: 'Light', desc: 'Clean, bright interface' },
@@ -361,8 +390,8 @@ function ThemeSelector() {
                 : 'border-gray-200 hover:border-gray-300'
             }`}
           >
-            <div className="text-sm font-semibold text-gray-800 mb-1">{opt.label}</div>
-            <p className="text-xs text-gray-500 leading-relaxed">{opt.desc}</p>
+            <div className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">{opt.label}</div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{opt.desc}</p>
           </button>
         ))}
       </div>
@@ -374,12 +403,12 @@ function LanguageSelector() {
   const { t, lang, setLang } = useI18n();
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{t('settings.language')}</label>
-      <p className="text-xs text-gray-400 mb-2">{t('settings.languageDescription')}</p>
+      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('settings.language')}</label>
+      <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">{t('settings.languageDescription')}</p>
       <select
         value={lang}
         onChange={(e) => setLang(e.target.value)}
-        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
       >
         {SUPPORTED_LANGUAGES.map((l) => (
           <option key={l.code} value={l.code}>
@@ -404,12 +433,12 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{label}</label>
       <input
         type={type}
         value={value as any}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
       />
     </div>
   );
@@ -433,19 +462,19 @@ function CrudList<T extends Record<string, any>>({
   };
   return (
     <div className="space-y-3">
-      {items.length === 0 && <p className="text-sm text-gray-400">No items yet.</p>}
+      {items.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500">No items yet.</p>}
       {items.map((item, i) => (
         <div key={i} className="flex gap-2 items-end">
           {columns.map((c) => (
             <div key={c.key} className="flex-1">
-              <label className="block text-xs text-gray-500 mb-1">{c.label}</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{c.label}</label>
               <input
                 type={c.type ?? 'text'}
                 value={item[c.key] ?? ''}
                 onChange={(e) =>
                   update(i, c.key, c.type === 'number' ? Number(e.target.value) : e.target.value)
                 }
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
               />
             </div>
           ))}
@@ -459,7 +488,7 @@ function CrudList<T extends Record<string, any>>({
       ))}
       <button
         onClick={() => setItems([...items, { ...blank }])}
-        className="text-sm px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-50"
+        className="text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800"
       >
         + Add
       </button>

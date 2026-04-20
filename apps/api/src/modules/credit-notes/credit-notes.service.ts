@@ -2,9 +2,13 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { PdfService } from '../pdf/pdf.service';
+import { renderCreditNoteHtml } from '../pdf/templates/credit-note.template';
 
 export interface CreateCreditNoteDto {
   clientId?: string;
@@ -27,6 +31,7 @@ export class CreditNotesService {
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
+    private pdfService: PdfService,
   ) {}
 
   // ─── Private helpers ───────────────────────────────────────────────────────
@@ -48,19 +53,19 @@ export class CreditNotesService {
       taxRate?: number;
     }>,
     discount = 0,
-  ): { subtotal: number; tax: number; discount: number; total: number } {
-    let subtotal = 0;
-    let tax = 0;
+  ): { subTotal: number; totalTax: number; discount: number; total: number } {
+    let subTotal = 0;
+    let totalTax = 0;
 
     for (const item of items) {
       const lineTotal = item.quantity * item.unitPrice;
       const lineTax = lineTotal * ((item.taxRate ?? 0) / 100);
-      subtotal += lineTotal;
-      tax += lineTax;
+      subTotal += lineTotal;
+      totalTax += lineTax;
     }
 
-    const total = subtotal + tax - discount;
-    return { subtotal, tax, discount, total };
+    const total = subTotal + totalTax - discount;
+    return { subTotal, totalTax, discount, total };
   }
 
   // ─── findAll ───────────────────────────────────────────────────────────────
@@ -73,10 +78,19 @@ export class CreditNotesService {
       clientId?: string;
       page?: number;
       limit?: number;
+      // Optional contact clientId — when set, forces the client filter to the
+      // contact's own clientId (portal users cannot see other clients' notes).
+      contactClientId?: string | null;
     },
   ) {
-    const { search, status, clientId, page = 1, limit = 20 } = query;
+    const { search, status, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
+    // Portal contacts are hard-scoped to their own client. If a contact has no
+    // linked clientId we return an empty result rather than all the org's data.
+    const clientId =
+      query.contactClientId !== undefined
+        ? (query.contactClientId ?? '__no_client__')
+        : query.clientId;
 
     return this.prisma.withOrganization(orgId, async (tx) => {
       const where: any = { organizationId: orgId };
@@ -117,12 +131,24 @@ export class CreditNotesService {
           client: true,
           invoice: true,
           items: { orderBy: { order: 'asc' } },
-          createdByUser: { select: { id: true, name: true, email: true } },
         },
       });
       if (!creditNote) throw new NotFoundException('Credit note not found');
       return creditNote;
     });
+  }
+
+  // Render a credit-note PDF. Loads the credit note with items/client/invoice
+  // plus the organization branding, runs the credit-note template, returns a
+  // PDF buffer alongside the raw model for any downstream checks.
+  async getPdf(orgId: string, id: string) {
+    const creditNote = await this.findOne(orgId, id);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+    });
+    const html = renderCreditNoteHtml(creditNote, organization);
+    const pdf = await this.pdfService.generatePdf(html);
+    return { pdf, creditNote };
   }
 
   // ─── create ────────────────────────────────────────────────────────────────
@@ -144,21 +170,18 @@ export class CreditNotesService {
           number,
           date: new Date(dto.date),
           status: 'open',
-          subtotal: totals.subtotal,
-          tax: totals.tax,
+          subTotal: totals.subTotal,
+          totalTax: totals.totalTax,
           discount: totals.discount,
           total: totals.total,
-          notes: dto.notes ?? null,
-          currency: dto.currency ?? 'USD',
-          createdBy,
+          remainingAmount: totals.total,
+          clientNote: dto.notes ?? null,
           items: {
             createMany: {
               data: dto.items.map((item, index) => ({
                 description: item.description,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice,
-                taxRate: item.taxRate ?? 0,
-                total: item.quantity * item.unitPrice,
+                qty: item.quantity,
+                rate: item.unitPrice,
                 order: item.order ?? index,
               })),
             },
@@ -189,9 +212,9 @@ export class CreditNotesService {
         dto.items ??
         (existing.items as any[]).map((i: any) => ({
           description: i.description,
-          quantity: Number(i.quantity),
-          unitPrice: Number(i.unitPrice),
-          taxRate: Number(i.taxRate),
+          quantity: Number(i.qty),
+          unitPrice: Number(i.rate),
+          taxRate: 0,
           order: i.order,
         }));
 
@@ -206,10 +229,8 @@ export class CreditNotesService {
           data: dto.items.map((item, index) => ({
             creditNoteId: id,
             description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            taxRate: item.taxRate ?? 0,
-            total: item.quantity * item.unitPrice,
+            qty: item.quantity,
+            rate: item.unitPrice,
             order: item.order ?? index,
           })),
         });
@@ -221,10 +242,9 @@ export class CreditNotesService {
           ...(dto.clientId !== undefined && { clientId: dto.clientId }),
           ...(dto.invoiceId !== undefined && { invoiceId: dto.invoiceId }),
           ...(dto.date && { date: new Date(dto.date) }),
-          ...(dto.notes !== undefined && { notes: dto.notes }),
-          ...(dto.currency && { currency: dto.currency }),
-          subtotal: totals.subtotal,
-          tax: totals.tax,
+          ...(dto.notes !== undefined && { clientNote: dto.notes }),
+          subTotal: totals.subTotal,
+          totalTax: totals.totalTax,
           discount: totals.discount,
           total: totals.total,
         },
@@ -255,7 +275,7 @@ export class CreditNotesService {
 
   async void(orgId: string, id: string) {
     const existing = await this.findOne(orgId, id);
-    if (existing.status === 'voided') {
+    if (existing.status === 'void') {
       throw new BadRequestException('Credit note is already voided');
     }
     if (existing.status === 'applied') {
@@ -265,7 +285,7 @@ export class CreditNotesService {
     const updated = await this.prisma.withOrganization(orgId, async (tx) => {
       return tx.creditNote.update({
         where: { id },
-        data: { status: 'voided' },
+        data: { status: 'void' },
       });
     });
 
@@ -331,5 +351,115 @@ export class CreditNotesService {
       invoiceId: existing.invoiceId,
     });
     return updated;
+  }
+
+  // ─── applyToInvoice ────────────────────────────────────────────────────────
+  // Apply a credit note's remaining balance against an arbitrary invoice.
+  // Creates a Payment (paymentMode='credit_note', transactionId=<cn number>),
+  // bumps the credit note's appliedTotal, and transitions the invoice status
+  // to paid / partial depending on the resulting balance.
+
+  async applyToInvoice(orgId: string, id: string, invoiceId: string) {
+    const creditNote = await this.findOne(orgId, id);
+
+    if (creditNote.status === 'void') {
+      throw new ConflictException('Credit note is voided');
+    }
+
+    // Remaining = total - sum(applications so far). We read `appliedTotal`
+    // defensively because the column is freshly added; fall back to 0.
+    const cnTotal = Number(creditNote.total ?? 0);
+    const cnApplied = Number((creditNote as any).appliedTotal ?? 0);
+    const cnRemaining = cnTotal - cnApplied;
+
+    if (cnRemaining <= 0) {
+      throw new ConflictException('Credit note has no remaining balance');
+    }
+
+    try {
+      return await this.prisma.withOrganization(orgId, async (tx) => {
+        const invoice = await tx.invoice.findFirst({
+          where: { id: invoiceId, organizationId: orgId },
+          include: { payments: true },
+        });
+        if (!invoice) throw new NotFoundException('Invoice not found');
+
+        if (
+          invoice.clientId &&
+          creditNote.clientId &&
+          invoice.clientId !== creditNote.clientId
+        ) {
+          throw new ConflictException(
+            'Credit note and invoice belong to different clients',
+          );
+        }
+
+        const invTotal = Number(invoice.total ?? 0);
+        const paidSoFar = (invoice.payments as any[]).reduce(
+          (s, p) => s + Number(p.amount ?? 0),
+          0,
+        );
+        const invRemaining = invTotal - paidSoFar;
+
+        if (invRemaining <= 0) {
+          throw new ConflictException('Invoice has no outstanding balance');
+        }
+
+        const applyAmount = Math.min(cnRemaining, invRemaining);
+
+        await tx.payment.create({
+          data: {
+            organizationId: orgId,
+            invoiceId: invoice.id,
+            clientId: invoice.clientId ?? null,
+            amount: applyAmount,
+            currency: (invoice as any).currency ?? creditNote.currency ?? 'USD',
+            paymentDate: new Date(),
+            transactionId: creditNote.number,
+            note: `Applied from credit note ${creditNote.number}`,
+          },
+        });
+
+        const newInvoicePaid = paidSoFar + applyAmount;
+        const newInvoiceStatus =
+          newInvoicePaid >= invTotal ? 'paid' : 'partial';
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: { status: newInvoiceStatus },
+        });
+
+        const newApplied = cnApplied + applyAmount;
+        const cnFullyApplied = newApplied >= cnTotal;
+        const updated = await tx.creditNote.update({
+          where: { id: creditNote.id },
+          data: {
+            appliedTotal: newApplied,
+            ...(cnFullyApplied && { status: 'applied' }),
+          },
+        });
+
+        return {
+          creditNote: updated,
+          invoiceId: invoice.id,
+          amountApplied: applyAmount,
+          invoiceStatus: newInvoiceStatus,
+        };
+      });
+    } catch (err: any) {
+      // Migration guard: if appliedTotal column hasn't been ALTER TABLE'd yet
+      // Prisma will throw PrismaClientKnownRequestError P2022 / "column does
+      // not exist". Return 503 so the UI can show a migration-pending banner.
+      const msg = String(err?.message ?? '');
+      if (
+        err?.code === 'P2022' ||
+        /column .*appliedTotal.* does not exist/i.test(msg) ||
+        /Unknown argument `appliedTotal`/i.test(msg)
+      ) {
+        throw new ServiceUnavailableException(
+          'Schema migration pending: credit_notes.appliedTotal column missing. Run the ALTER TABLE.',
+        );
+      }
+      throw err;
+    }
   }
 }

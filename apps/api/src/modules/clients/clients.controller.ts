@@ -11,6 +11,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ClientsService, CreateClientDto, CreateContactDto } from './clients.service';
@@ -140,8 +141,14 @@ export class ClientsController {
   @Get(':id/statement')
   @Permissions('clients.view')
   @ApiOperation({ summary: 'Get client financial statement (invoices + payments)' })
-  getStatement(@CurrentOrg() org: any, @Param('id') id: string) {
-    return this.service.getStatement(org.id, id);
+  getStatement(
+    @CurrentOrg() org: any,
+    @Param('id') id: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const opts = this.parseStatementRange(from, to);
+    return this.service.getStatement(org.id, id, opts);
   }
 
   @Get(':id/statement/pdf')
@@ -151,9 +158,12 @@ export class ClientsController {
     @CurrentOrg() org: any,
     @Param('id') id: string,
     @Res() res: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
+    const opts = this.parseStatementRange(from, to);
     const client = await this.service.findOne(org.id, id);
-    const { invoices, payments } = await this.service.getStatement(org.id, id);
+    const { invoices, payments } = await this.service.getStatement(org.id, id, opts);
     const html = renderStatementHtml(client, invoices, payments, org);
     const pdf = await this.pdfService.generatePdf(html);
     res.setHeader('Content-Type', 'application/pdf');
@@ -162,6 +172,25 @@ export class ClientsController {
       `attachment; filename="statement-${(client as any).company?.replace(/\s+/g, '-') ?? id}.pdf"`,
     );
     res.end(pdf);
+  }
+
+  private parseStatementRange(from?: string, to?: string) {
+    const opts: { from?: Date; to?: Date } = {};
+    if (from) {
+      const d = new Date(from);
+      if (Number.isNaN(d.getTime())) {
+        throw new BadRequestException('Invalid "from" date');
+      }
+      opts.from = d;
+    }
+    if (to) {
+      const d = new Date(to);
+      if (Number.isNaN(d.getTime())) {
+        throw new BadRequestException('Invalid "to" date');
+      }
+      opts.to = d;
+    }
+    return opts;
   }
 
   // ─── Groups ────────────────────────────────────────────────

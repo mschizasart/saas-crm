@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { SettingsPageLayout, SettingsSection } from '@/components/layouts/settings-page-layout';
+import { typography } from '@/lib/ui-tokens';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -102,48 +104,38 @@ export default function EmailTemplatesPage() {
     setForm((f) => ({ ...f, body: f.body + field }));
   }
 
-  if (loading) return <div className="p-6 text-sm text-gray-500">Loading...</div>;
+  if (loading) return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading...</div>;
 
   return (
-    <div className="max-w-5xl">
-      <div className="mb-4">
-        <Link href="/settings" className="text-sm text-gray-500 hover:text-primary">← Settings</Link>
-      </div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Email Templates</h1>
-          <p className="text-sm text-gray-500 mt-1">Customize the emails sent by the CRM. Use merge fields for dynamic content.</p>
-        </div>
-        <button onClick={startNew} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90">
-          + New Template
-        </button>
+    <SettingsPageLayout title="Email Templates" description="Customize the emails sent by the CRM. Use merge fields for dynamic content.">
+      <div className="mb-[-0.5rem]">
+        <Link href="/settings" className={`${typography.bodyMuted} hover:text-primary`}>← Settings</Link>
       </div>
 
       {message && (
-        <div className="mb-4 px-3 py-2 bg-blue-50 border border-blue-100 text-sm text-blue-700 rounded">{message}</div>
+        <div className="px-3 py-2 bg-blue-50 border border-blue-100 text-sm text-blue-700 rounded">{message}</div>
       )}
 
       {(showNew || editId) && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">{editId ? 'Edit Template' : 'New Template'}</h2>
+        <SettingsSection title={editId ? 'Edit Template' : 'New Template'}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             {!editId && (
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Slug *</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Slug *</label>
                 <input
                   value={form.slug}
                   onChange={(e) => setForm({ ...form, slug: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg font-mono"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg font-mono"
                   placeholder="e.g. invoice_send_to_client"
                 />
               </div>
             )}
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Type</label>
               <select
                 value={form.type}
                 onChange={(e) => setForm({ ...form, type: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white"
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
               >
                 <option value="">General</option>
                 <option value="invoice">Invoice</option>
@@ -155,25 +147,25 @@ export default function EmailTemplatesPage() {
               </select>
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Subject *</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Subject *</label>
               <input
                 value={form.subject}
                 onChange={(e) => setForm({ ...form, subject: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg"
                 placeholder="e.g. Invoice {{invoice_number}} from {{company_name}}"
               />
             </div>
           </div>
 
           <div className="mb-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Body (HTML with merge fields) *</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Body (HTML with merge fields) *</label>
             <div className="flex flex-wrap gap-1 mb-2">
               {MERGE_FIELDS.map((m) => (
                 <button
                   key={m.field}
                   type="button"
                   onClick={() => insertMergeField(m.field)}
-                  className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                  className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded hover:bg-gray-200"
                 >
                   {m.label}
                 </button>
@@ -183,7 +175,7 @@ export default function EmailTemplatesPage() {
               rows={10}
               value={form.body}
               onChange={(e) => setForm({ ...form, body: e.target.value })}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg font-mono"
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg font-mono"
               placeholder="<p>Hi {{client_name}},</p>"
             />
           </div>
@@ -192,48 +184,55 @@ export default function EmailTemplatesPage() {
             <button onClick={save} disabled={saving || !form.subject || !form.body} className="px-4 py-2 bg-primary text-white text-sm rounded-lg disabled:opacity-50">
               {saving ? 'Saving...' : editId ? 'Update' : 'Create'}
             </button>
-            <button onClick={() => { setShowNew(false); setEditId(null); }} className="px-3 py-2 text-sm text-gray-500">Cancel</button>
+            <button onClick={() => { setShowNew(false); setEditId(null); }} className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Cancel</button>
           </div>
-        </div>
+        </SettingsSection>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+      <SettingsSection title="Templates">
+        <div className="flex items-center justify-end mb-4">
+          <button onClick={startNew} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90">
+            + New Template
+          </button>
+        </div>
         {templates.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-400">No email templates yet. Create one to customize outgoing emails.</div>
+          <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">No email templates yet. Create one to customize outgoing emails.</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-gray-500 uppercase border-b border-gray-100">
-                <th className="px-4 py-3">Slug</th>
-                <th className="px-4 py-3">Subject</th>
-                <th className="px-4 py-3 w-24">Type</th>
-                <th className="px-4 py-3 w-20">Active</th>
-                <th className="px-4 py-3 w-24" />
-              </tr>
-            </thead>
-            <tbody>
-              {templates.map((t) => (
-                <tr key={t.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-3 font-mono text-xs text-gray-700">{t.slug}</td>
-                  <td className="px-4 py-3">{t.subject}</td>
-                  <td className="px-4 py-3 text-gray-500">{t.type || '-'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded ${t.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {t.active ? 'Yes' : 'No'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button onClick={() => startEdit(t)} className="text-xs text-primary hover:underline">Edit</button>
-                      <button onClick={() => deleteTemplate(t.id)} className="text-xs text-red-500 hover:underline">Delete</button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-gray-500 dark:text-gray-400 uppercase border-b border-gray-100 dark:border-gray-800">
+                  <th className="px-4 py-3">Slug</th>
+                  <th className="px-4 py-3">Subject</th>
+                  <th className="px-4 py-3 w-24">Type</th>
+                  <th className="px-4 py-3 w-20">Active</th>
+                  <th className="px-4 py-3 w-24" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {templates.map((t) => (
+                  <tr key={t.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">{t.slug}</td>
+                    <td className="px-4 py-3">{t.subject}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{t.type || '-'}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs px-2 py-0.5 rounded ${t.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {t.active ? 'Yes' : 'No'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button onClick={() => startEdit(t)} className="text-xs text-primary hover:underline">Edit</button>
+                        <button onClick={() => deleteTemplate(t.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
-    </div>
+      </SettingsSection>
+    </SettingsPageLayout>
   );
 }

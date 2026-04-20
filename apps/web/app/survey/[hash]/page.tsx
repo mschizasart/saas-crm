@@ -91,10 +91,10 @@ export default function PublicSurveyPage() {
 
   if (done)
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-        <div className="bg-white p-8 rounded shadow text-center max-w-md">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-6">
+        <div className="bg-white dark:bg-gray-900 p-8 rounded shadow text-center max-w-md">
           <h1 className="text-2xl font-bold mb-2">Thank you!</h1>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-400">
             Your response has been recorded.
           </p>
         </div>
@@ -102,15 +102,15 @@ export default function PublicSurveyPage() {
     );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <form
         onSubmit={submit}
-        className="max-w-2xl mx-auto bg-white p-6 rounded shadow space-y-6"
+        className="max-w-2xl mx-auto bg-white dark:bg-gray-900 p-6 rounded shadow space-y-6"
       >
         <div>
           <h1 className="text-2xl font-bold">{survey.name}</h1>
           {survey.description && (
-            <p className="text-gray-600 mt-1">{survey.description}</p>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">{survey.description}</p>
           )}
         </div>
 

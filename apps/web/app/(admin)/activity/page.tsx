@@ -1,6 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { inputClass } from '@/components/ui/form-field';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 const getToken = () =>
@@ -54,7 +59,6 @@ function groupActivities(items: ActivityItem[]): GroupedActivity[] {
   while (i < items.length) {
     const current = items[i];
     if (isFieldChange(current.action)) {
-      // Collect consecutive field_changed entries for the same entity + user within 2 seconds
       const group: ActivityItem[] = [current];
       let j = i + 1;
       while (j < items.length) {
@@ -89,21 +93,21 @@ function FieldChangeDiff({ item }: { item: ActivityItem }) {
 
   return (
     <div className="flex flex-wrap items-center gap-1 text-sm">
-      <span className="text-gray-600 font-medium">{data.field}:</span>
+      <span className="text-gray-600 dark:text-gray-400 font-medium">{data.field}:</span>
       {data.oldValue && data.oldValue !== 'null' ? (
         <span className="line-through text-red-500 bg-red-50 px-1 rounded text-xs">
           {data.oldValue === '(empty)' ? '(empty)' : data.oldValue}
         </span>
       ) : (
-        <span className="text-gray-400 text-xs">(empty)</span>
+        <span className="text-gray-400 dark:text-gray-500 text-xs">(empty)</span>
       )}
-      <span className="text-gray-400">-&gt;</span>
+      <span className="text-gray-400 dark:text-gray-500">-&gt;</span>
       {data.newValue && data.newValue !== 'null' ? (
         <span className="text-green-700 bg-green-50 px-1 rounded text-xs">
           {data.newValue === '(empty)' ? '(empty)' : data.newValue}
         </span>
       ) : (
-        <span className="text-gray-400 text-xs">(empty)</span>
+        <span className="text-gray-400 dark:text-gray-500 text-xs">(empty)</span>
       )}
     </div>
   );
@@ -149,50 +153,53 @@ export default function ActivityPage() {
     return () => clearInterval(t);
   }, [load]);
 
+  const filtersNode = (
+    <div className="flex flex-wrap gap-3">
+      <input
+        aria-label="Filter by user ID"
+        placeholder="Filter by user ID"
+        value={userFilter}
+        onChange={(e) => setUserFilter(e.target.value)}
+        className={`${inputClass} w-auto`}
+      />
+      <input
+        aria-label="Filter by action"
+        placeholder="Filter by action"
+        value={actionFilter}
+        onChange={(e) => setActionFilter(e.target.value)}
+        className={`${inputClass} w-auto`}
+      />
+      <input
+        aria-label="From date"
+        type="date"
+        value={from}
+        onChange={(e) => setFrom(e.target.value)}
+        className={`${inputClass} w-auto`}
+      />
+      <input
+        aria-label="To date"
+        type="date"
+        value={to}
+        onChange={(e) => setTo(e.target.value)}
+        className={`${inputClass} w-auto`}
+      />
+    </div>
+  );
+
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Activity</h1>
-
-      <div className="flex flex-wrap gap-3 mb-4">
-        <input
-          placeholder="Filter by user ID"
-          value={userFilter}
-          onChange={(e) => setUserFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-        />
-        <input
-          placeholder="Filter by action"
-          value={actionFilter}
-          onChange={(e) => setActionFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-        />
-        <input
-          type="date"
-          value={from}
-          onChange={(e) => setFrom(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-        />
-        <input
-          type="date"
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-        />
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+    <ListPageLayout title="Activity" filters={filtersNode}>
+      <Card>
         {loading ? (
-          <p className="p-6 text-sm text-gray-400">Loading...</p>
+          <p className="p-6 text-sm text-gray-400 dark:text-gray-500">Loading...</p>
         ) : items.length === 0 ? (
-          <p className="p-6 text-sm text-gray-400">No activity yet.</p>
+          <EmptyState title="No activity yet" />
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
             {groupActivities(items).map((group, gIdx) => {
               const first = group.items[0];
               const isExpanded = expandedGroups.has(gIdx);
 
               if (group.isGroup) {
-                // Grouped field changes
                 const entityType = first.relType ?? 'entity';
                 return (
                   <li key={`g-${gIdx}`} className="p-4">
@@ -201,7 +208,7 @@ export default function ActivityPage() {
                         {first.user ? initials(first.user.firstName, first.user.lastName) : '.'}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-800">
+                        <p className="text-sm text-gray-800 dark:text-gray-200">
                           {first.user && (
                             <span className="font-medium">
                               {first.user.firstName} {first.user.lastName}{' '}
@@ -209,7 +216,7 @@ export default function ActivityPage() {
                           )}
                           updated {group.items.length} fields on {entityType}
                         </p>
-                        <p className="text-xs text-gray-400 mt-0.5">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                           {relativeTime(first.createdAt)}
                           {first.relType && first.relId && (
                             <>
@@ -237,7 +244,7 @@ export default function ActivityPage() {
                           {isExpanded ? 'Hide changes' : `Show ${group.items.length} changes`}
                         </button>
                         {isExpanded && (
-                          <div className="mt-2 space-y-1 pl-1 border-l-2 border-gray-100">
+                          <div className="mt-2 space-y-1 pl-1 border-l-2 border-gray-100 dark:border-gray-800">
                             {group.items.map((item) => (
                               <div key={item.id} className="pl-2">
                                 <FieldChangeDiff item={item} />
@@ -251,7 +258,6 @@ export default function ActivityPage() {
                 );
               }
 
-              // Single entry (may or may not be a field change)
               const a = first;
               return (
                 <li key={a.id} className="p-4 flex items-start gap-3">
@@ -261,7 +267,7 @@ export default function ActivityPage() {
                   <div className="flex-1 min-w-0">
                     {isFieldChange(a.action) ? (
                       <>
-                        <p className="text-sm text-gray-800">
+                        <p className="text-sm text-gray-800 dark:text-gray-200">
                           {a.user && (
                             <span className="font-medium">
                               {a.user.firstName} {a.user.lastName}{' '}
@@ -274,7 +280,7 @@ export default function ActivityPage() {
                         </div>
                       </>
                     ) : (
-                      <p className="text-sm text-gray-800">
+                      <p className="text-sm text-gray-800 dark:text-gray-200">
                         {a.user && (
                           <span className="font-medium">
                             {a.user.firstName} {a.user.lastName}{' '}
@@ -283,7 +289,7 @@ export default function ActivityPage() {
                         {a.description ?? a.action}
                       </p>
                     )}
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                       {relativeTime(a.createdAt)}
                       {a.relType && a.relId && (
                         <>
@@ -303,28 +309,30 @@ export default function ActivityPage() {
             })}
           </ul>
         )}
-        <div className="flex items-center justify-between p-4 border-t border-gray-100">
-          <span className="text-xs text-gray-500">
+        <div className="flex items-center justify-between p-4 border-t border-gray-100 dark:border-gray-800">
+          <span className="text-xs text-gray-500 dark:text-gray-400">
             Page {page} of {totalPages}
           </span>
           <div className="flex gap-2">
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="px-3 py-1.5 text-xs border border-gray-200 rounded-md disabled:opacity-40"
             >
               Previous
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="px-3 py-1.5 text-xs border border-gray-200 rounded-md disabled:opacity-40"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }

@@ -1,7 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { typography } from '@/lib/ui-tokens';
+import { Badge } from '@/components/ui/badge';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { ErrorBanner } from '@/components/ui/error-banner';
+import { inputClass } from '@/components/ui/form-field';
 
 interface Expense {
   id: string;
@@ -10,11 +16,11 @@ interface Expense {
   date: string;
   billable: boolean;
   category?: { id: string; name: string } | null;
-  client?: { id: string; company?: string; company_name?: string } | null;
+  client?: { id: string; company: string } | null;
 }
 
 interface Category { id: string; name: string; }
-interface ClientOption { id: string; company?: string; company_name?: string; }
+interface ClientOption { id: string; company?: string; }
 
 interface Stats { total?: number; billable?: number; reimbursed?: number; }
 
@@ -78,39 +84,45 @@ export default function ExpensesPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Expenses</h1>
-        <Link href="/expenses/new" className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90">
-          <span className="text-lg leading-none">+</span>New Expense
-        </Link>
+  const filtersNode = (
+    <Card padding="md">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <select aria-label="Category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
+          <option value="">All categories</option>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select aria-label="Client" value={clientId} onChange={(e) => setClientId(e.target.value)} className={inputClass}>
+          <option value="">All clients</option>
+          {clients.map((c) => <option key={c.id} value={c.id}>{c.company ?? c.id}</option>)}
+        </select>
+        <input aria-label="From date" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass} />
+        <input aria-label="To date" type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} />
       </div>
+    </Card>
+  );
 
+  return (
+    <ListPageLayout
+      title="Expenses"
+      primaryAction={{ label: 'New Expense', href: '/expenses/new' }}
+      filters={filtersNode}
+    >
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <StatCard label="Total" value={stats.total ?? 0} />
         <StatCard label="Billable" value={stats.billable ?? 0} />
         <StatCard label="Reimbursed" value={stats.reimbursed ?? 0} />
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4 grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
-          <option value="">All categories</option>
-          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <select value={clientId} onChange={(e) => setClientId(e.target.value)} className={inputClass}>
-          <option value="">All clients</option>
-          {clients.map((c) => <option key={c.id} value={c.id}>{c.company ?? c.company_name ?? c.id}</option>)}
-        </select>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass} />
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} />
-      </div>
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error} onRetry={fetchData} />
+        </div>
+      )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        {error && <div className="px-4 py-3 bg-red-50 text-sm text-red-600">{error}</div>}
+      <Card>
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase">
+            <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Category</th>
               <th className="px-4 py-3">Client</th>
@@ -121,41 +133,33 @@ export default function ExpensesPage() {
           </thead>
           <tbody>
             {loading ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <tr key={i} className="border-b border-gray-100">
-                  {Array.from({ length: 6 }).map((__, j) => (
-                    <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td>
-                  ))}
-                </tr>
-              ))
+              <TableSkeleton rows={6} columns={6} />
             ) : expenses.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">No expenses</td></tr>
+              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">No expenses</td></tr>
             ) : expenses.map((e) => (
-              <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50/60">
-                <td className="px-4 py-3 font-medium text-gray-900">{e.name}</td>
-                <td className="px-4 py-3 text-gray-600">{e.category?.name ?? '—'}</td>
-                <td className="px-4 py-3 text-gray-600">{e.client?.company ?? e.client?.company_name ?? '—'}</td>
-                <td className="px-4 py-3 text-gray-600">{e.date ? new Date(e.date).toLocaleDateString() : '—'}</td>
+              <tr key={e.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/60">
+                <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{e.name}</td>
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{e.category?.name ?? '—'}</td>
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{e.client?.company ?? '—'}</td>
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{e.date ? new Date(e.date).toLocaleDateString() : '—'}</td>
                 <td className="px-4 py-3 tabular-nums">{e.amount?.toFixed?.(2) ?? e.amount}</td>
                 <td className="px-4 py-3">
-                  {e.billable ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Yes</span> : <span className="text-gray-300">—</span>}
+                  {e.billable ? <Badge variant="success">Yes</Badge> : <span className="text-gray-300 dark:text-gray-600">—</span>}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }
 
-const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white';
-
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">{typeof value === 'number' ? value.toFixed(2) : value}</p>
-    </div>
+    <Card padding="md">
+      <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</p>
+      <p className={`${typography.h2} mt-1 tabular-nums`}>{typeof value === 'number' ? value.toFixed(2) : value}</p>
+    </Card>
   );
 }

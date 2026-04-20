@@ -1,6 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { PageHeader } from '@/components/ui/page-header';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { inputClass } from '@/components/ui/form-field';
 
 interface CalEvent {
   id: string;
@@ -26,11 +30,10 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-// Build 6-week grid starting Monday for a given month.
 function buildMonthGrid(year: number, month: number): Date[] {
   const first = new Date(year, month, 1);
-  const jsDow = first.getDay(); // Sun = 0
-  const mondayOffset = (jsDow + 6) % 7; // how many days before the 1st to start the grid
+  const jsDow = first.getDay();
+  const mondayOffset = (jsDow + 6) % 7;
   const gridStart = new Date(year, month, 1 - mondayOffset);
   const days: Date[] = [];
   for (let i = 0; i < 42; i++) {
@@ -73,7 +76,6 @@ export default function CalendarPage() {
     allDay: false,
   });
 
-  // Google Calendar sync state
   const [feedUrl, setFeedUrl] = useState<string | null>(null);
   const [feedLoading, setFeedLoading] = useState(false);
   const [feedCopied, setFeedCopied] = useState(false);
@@ -222,86 +224,69 @@ export default function CalendarPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Calendar</h1>
+      <PageHeader title="Calendar">
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => {
               setShowSyncPanel((v) => !v);
               if (!feedUrl) fetchFeedUrl();
             }}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white hover:bg-gray-50"
           >
             Sync with Google Calendar
-          </button>
-          <button
-            onClick={() => setCursor(new Date(year, month - 1, 1))}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white hover:bg-gray-50"
-          >
-            &larr;
-          </button>
-          <button
-            onClick={() => {
-              const n = new Date();
-              setCursor(new Date(n.getFullYear(), n.getMonth(), 1));
-            }}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white hover:bg-gray-50"
-          >
-            Today
-          </button>
-          <button
-            onClick={() => setCursor(new Date(year, month + 1, 1))}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-md bg-white hover:bg-gray-50"
-          >
-            &rarr;
-          </button>
-          <span className="ml-4 text-lg font-semibold text-gray-800 min-w-[180px]">
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => setCursor(new Date(year, month - 1, 1))} aria-label="Previous month">&larr;</Button>
+          <Button variant="secondary" size="sm" onClick={() => {
+            const n = new Date();
+            setCursor(new Date(n.getFullYear(), n.getMonth(), 1));
+          }}>Today</Button>
+          <Button variant="secondary" size="sm" onClick={() => setCursor(new Date(year, month + 1, 1))} aria-label="Next month">&rarr;</Button>
+          <span className="ml-4 text-lg font-semibold text-gray-800 dark:text-gray-200 min-w-[180px]">
             {MONTHS[month]} {year}
           </span>
         </div>
-      </div>
+      </PageHeader>
 
       {showSyncPanel && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">
+        <Card padding="lg" className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
             Subscribe in Google Calendar
           </h2>
-          <p className="text-xs text-gray-500 mb-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
             Copy the URL below and paste it in Google Calendar: Other Calendars (+) &rarr; From URL.
             Events will sync automatically.
           </p>
           {feedLoading ? (
-            <p className="text-xs text-gray-400">Generating feed URL...</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Generating feed URL...</p>
           ) : feedUrl ? (
             <div className="flex items-center gap-2">
               <input
+                aria-label="Calendar feed URL"
                 type="text"
                 readOnly
                 value={feedUrl}
-                className="flex-1 px-3 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 text-gray-700 font-mono"
+                className={`${inputClass} bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-mono text-xs`}
               />
-              <button
-                onClick={copyFeedUrl}
-                className="px-4 py-2 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
-              >
+              <Button variant="primary" size="sm" onClick={copyFeedUrl}>
                 {feedCopied ? 'Copied!' : 'Copy'}
-              </button>
+              </Button>
             </div>
           ) : (
             <p className="text-xs text-red-500">Failed to generate feed URL.</p>
           )}
-          <p className="text-[11px] text-gray-400 mt-2">
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
             This link expires in 30 days. Generate a new one after expiry.
           </p>
-        </div>
+        </Card>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-100">
+      <Card>
+        <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
           {WEEKDAYS.map((d) => (
             <div
               key={d}
-              className="px-2 py-2 text-xs font-semibold text-gray-500 uppercase text-center"
+              className="px-2 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase text-center"
             >
               {d}
             </div>
@@ -351,7 +336,7 @@ export default function CalendarPage() {
                     </div>
                   ))}
                   {dayEvents.length > 3 && (
-                    <div className="text-[10px] text-gray-400 pl-1">
+                    <div className="text-[10px] text-gray-400 dark:text-gray-500 pl-1">
                       +{dayEvents.length - 3} more
                     </div>
                   )}
@@ -360,10 +345,10 @@ export default function CalendarPage() {
             );
           })}
         </div>
-      </div>
+      </Card>
 
       {loading && (
-        <p className="text-xs text-gray-400 mt-2">Loading events...</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Loading events...</p>
       )}
 
       {(selectedDate || editingEvent) && (
@@ -372,7 +357,7 @@ export default function CalendarPage() {
           onClick={closeModal}
         >
           <div
-            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md"
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6 w-full max-w-md"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold mb-4">
@@ -380,50 +365,50 @@ export default function CalendarPage() {
             </h2>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-gray-600">Title</label>
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Title</label>
                 <input
                   type="text"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                  className={inputClass}
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600">Description</label>
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Description</label>
                 <textarea
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm"
+                  className={inputClass}
                   rows={2}
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Start</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Start</label>
                   <input
                     type="datetime-local"
                     value={form.startDate}
                     onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                    className="w-full border border-gray-200 rounded px-2 py-2 text-sm"
+                    className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600">End</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">End</label>
                   <input
                     type="datetime-local"
                     value={form.endDate}
                     onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                    className="w-full border border-gray-200 rounded px-2 py-2 text-sm"
+                    className={inputClass}
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Type</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
                   <select
                     value={form.type}
                     onChange={(e) => setForm({ ...form, type: e.target.value })}
-                    className="w-full border border-gray-200 rounded px-2 py-2 text-sm bg-white"
+                    className={inputClass}
                   >
                     <option value="event">Event</option>
                     <option value="meeting">Meeting</option>
@@ -432,16 +417,17 @@ export default function CalendarPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Color</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Color</label>
                   <input
+                    aria-label="Event color"
                     type="color"
                     value={form.color}
                     onChange={(e) => setForm({ ...form, color: e.target.value })}
-                    className="w-full h-9 border border-gray-200 rounded"
+                    className="w-full h-9 border border-gray-200 dark:border-gray-700 rounded"
                   />
                 </div>
               </div>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                 <input
                   type="checkbox"
                   checked={form.allDay}
@@ -452,29 +438,23 @@ export default function CalendarPage() {
             </div>
             <div className="flex items-center justify-between mt-6">
               {editingEvent ? (
-                <button
-                  onClick={remove}
-                  className="text-sm text-red-600 hover:text-red-700"
-                >
+                <Button variant="ghost" onClick={remove} className="text-red-600 hover:text-red-700">
                   Delete
-                </button>
+                </Button>
               ) : (
                 <span />
               )}
               <div className="flex items-center gap-2">
-                <button
-                  onClick={closeModal}
-                  className="px-4 py-2 text-sm border border-gray-200 rounded-md hover:bg-gray-50"
-                >
+                <Button variant="secondary" onClick={closeModal}>
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
                   onClick={save}
                   disabled={!form.title || !form.startDate}
-                  className="px-4 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50"
                 >
                   Save
-                </button>
+                </Button>
               </div>
             </div>
           </div>

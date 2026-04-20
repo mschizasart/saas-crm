@@ -161,6 +161,53 @@ export class ProposalsService {
     this.events.emit('proposal.deleted', { id, orgId });
   }
 
+  // ─── updateStatus (generic, for kanban drops) ───────────────────────────
+
+  async updateStatus(
+    orgId: string,
+    id: string,
+    rawStatus: string,
+    userId?: string,
+  ) {
+    // Accept both `revised` (schema comment) and `revising` (persisted value).
+    // Normalize to the value the rest of the service actually writes.
+    const normalized = rawStatus === 'revised' ? 'revising' : rawStatus;
+
+    const allowed = [
+      'draft',
+      'sent',
+      'open',
+      'revising',
+      'declined',
+      'accepted',
+    ];
+    if (!allowed.includes(normalized)) {
+      throw new BadRequestException(
+        `Invalid proposal status '${rawStatus}'. Allowed: draft | sent | open | revised | revising | declined | accepted`,
+      );
+    }
+
+    const existing = await this.findOne(orgId, id);
+    const previousStatus = existing.status;
+
+    const updated = await this.prisma.withOrganization(orgId, async (tx) => {
+      return (tx as any).proposal.update({
+        where: { id },
+        data: { status: normalized },
+      });
+    });
+
+    this.events.emit('proposal.status_changed', {
+      proposal: updated,
+      orgId,
+      previousStatus,
+      newStatus: normalized,
+      userId,
+    });
+
+    return updated;
+  }
+
   // ─── send ──────────────────────────────────────────────────────────────────
 
   async send(orgId: string, id: string) {

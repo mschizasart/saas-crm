@@ -41,11 +41,29 @@ export class AnnouncementsController {
   findActive(
     @CurrentOrg() org: any,
     @CurrentUser() user: any,
-    @Query('audience') audience?: 'staff' | 'clients',
+    @Query('audience') audience?: 'staff' | 'clients' | 'portal',
   ) {
-    return this.service.findActive(
+    // Accept `portal` as a synonym for `clients` (portal is the preferred
+    // vocabulary on the frontend). Non-destructive: enum on the service stays
+    // the same.
+    const normalised = audience === 'portal' ? 'clients' : (audience ?? 'staff');
+    return this.service.findActive(org.id, normalised, user.id ?? user.sub);
+  }
+
+  @Get('history')
+  @ApiOperation({
+    summary:
+      'List ALL announcements (active + expired), each tagged with dismissed=true/false for the current user',
+  })
+  findHistory(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Query('audience') audience?: 'staff' | 'clients' | 'portal',
+  ) {
+    const normalised = audience === 'portal' ? 'clients' : (audience ?? 'staff');
+    return this.service.findHistory(
       org.id,
-      audience ?? 'staff',
+      normalised,
       user.id ?? user.sub,
     );
   }

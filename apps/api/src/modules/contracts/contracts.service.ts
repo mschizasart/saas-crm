@@ -73,7 +73,6 @@ export class ContractsService {
           orderBy: { createdAt: 'desc' },
           include: {
             client: { select: { id: true, company: true } },
-            creator: { select: { firstName: true, lastName: true } },
             _count: { select: { comments: true } },
           },
         }),
@@ -92,7 +91,7 @@ export class ContractsService {
         where: { id, organizationId: orgId },
         include: {
           client: true,
-          creator: { select: { id: true, firstName: true, lastName: true, email: true } },
+
           comments: {
             orderBy: { createdAt: 'asc' },
             include: {
@@ -125,7 +124,7 @@ export class ContractsService {
         },
         include: {
           client: { select: { id: true, company: true } },
-          creator: { select: { firstName: true, lastName: true } },
+
         },
       });
     });
@@ -160,7 +159,7 @@ export class ContractsService {
         },
         include: {
           client: { select: { id: true, company: true } },
-          creator: { select: { firstName: true, lastName: true } },
+
         },
       });
     });
@@ -425,7 +424,7 @@ export class ContractsService {
         },
         include: {
           client: { select: { id: true, company: true } },
-          creator: { select: { firstName: true, lastName: true } },
+
         },
       });
     });

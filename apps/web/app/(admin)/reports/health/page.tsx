@@ -111,20 +111,20 @@ export default function HealthReportPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 bg-gray-50/50">
-              <th className="text-left px-4 py-3 font-medium text-gray-600">
+            <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
+              <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
                 Company
               </th>
-              <th className="text-center px-4 py-3 font-medium text-gray-600">
+              <th className="text-center px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
                 Score
               </th>
-              <th className="text-center px-4 py-3 font-medium text-gray-600">
+              <th className="text-center px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
                 Grade
               </th>
-              <th className="text-right px-4 py-3 font-medium text-gray-600">
+              <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">
                 Actions
               </th>
             </tr>
@@ -132,11 +132,11 @@ export default function HealthReportPage() {
           <tbody>
             {loading ? (
               Array.from({ length: 8 }).map((_, i) => (
-                <tr key={i} className="border-b border-gray-100">
+                <tr key={i} className="border-b border-gray-100 dark:border-gray-800">
                   {Array.from({ length: 4 }).map((__, j) => (
                     <td key={j} className="px-4 py-3">
                       <div
-                        className="h-4 bg-gray-100 rounded animate-pulse"
+                        className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"
                         style={{ width: j === 0 ? '60%' : '40%' }}
                       />
                     </td>
@@ -147,7 +147,7 @@ export default function HealthReportPage() {
               <tr>
                 <td
                   colSpan={4}
-                  className="px-4 py-10 text-center text-sm text-gray-400"
+                  className="px-4 py-10 text-center text-sm text-gray-400 dark:text-gray-500"
                 >
                   No client data available
                 </td>
@@ -162,7 +162,7 @@ export default function HealthReportPage() {
                     key={client.clientId}
                     className={`border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors ${highlight}`}
                   >
-                    <td className="px-4 py-3 font-medium text-gray-900">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                       <Link
                         href={`/clients/${client.clientId}`}
                         className="hover:text-primary transition-colors"
@@ -171,10 +171,10 @@ export default function HealthReportPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className="font-semibold text-gray-900">
+                      <span className="font-semibold text-gray-900 dark:text-gray-100">
                         {client.score}
                       </span>
-                      <span className="text-gray-400">/100</span>
+                      <span className="text-gray-400 dark:text-gray-500">/100</span>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span

@@ -96,13 +96,13 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl p-8">
-      <h2 className="text-2xl font-bold text-gray-900 mb-1">Start your free trial</h2>
-      <p className="text-gray-500 mb-2 text-sm">14 days free. No credit card required.</p>
+    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-8">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">Start your free trial</h2>
+      <p className="text-gray-500 dark:text-gray-400 mb-2 text-sm">14 days free. No credit card required.</p>
 
       <ul className="mb-6 space-y-1">
         {FEATURES.map((f) => (
-          <li key={f} className="flex items-center gap-2 text-xs text-gray-600">
+          <li key={f} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
             <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
             {f}
           </li>
@@ -111,11 +111,11 @@ export default function RegisterPage() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Organization name</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Organization name</label>
           <input
             {...register('organizationName')}
             onChange={handleOrgNameChange}
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+            className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
             placeholder="Acme Inc."
           />
           {errors.organizationName && (
@@ -124,14 +124,14 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Subdomain</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Subdomain</label>
           <div className="flex">
             <input
               {...register('slug')}
-              className="flex-1 px-4 py-2.5 border border-r-0 border-gray-200 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+              className="flex-1 px-4 py-2.5 border border-r-0 border-gray-200 dark:border-gray-700 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               placeholder="acme"
             />
-            <span className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-r-lg text-sm text-gray-500">
+            <span className="px-3 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-r-lg text-sm text-gray-500 dark:text-gray-400">
               .yoursaas.com
             </span>
           </div>
@@ -142,10 +142,10 @@ export default function RegisterPage() {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">First name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">First name</label>
             <input
               {...register('firstName')}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               placeholder="John"
             />
             {errors.firstName && (
@@ -153,21 +153,21 @@ export default function RegisterPage() {
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Last name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Last name</label>
             <input
               {...register('lastName')}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
               placeholder="Doe"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Work email</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Work email</label>
           <input
             {...register('email')}
             type="email"
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+            className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
             placeholder="john@acme.com"
           />
           {errors.email && (
@@ -176,11 +176,11 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
           <input
             {...register('password')}
             type="password"
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+            className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
             placeholder="At least 8 characters"
           />
           {errors.password && (
@@ -189,10 +189,10 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Default Currency</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Default Currency</label>
           <select
             {...register('currency')}
-            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm bg-white"
+            className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm bg-white dark:bg-gray-900"
           >
             {CURRENCIES.map(c => (
               <option key={c.code} value={c.code}>{c.symbol} {c.name} ({c.code})</option>
@@ -210,7 +210,7 @@ export default function RegisterPage() {
         </button>
       </form>
 
-      <p className="mt-4 text-center text-xs text-gray-500">
+      <p className="mt-4 text-center text-xs text-gray-500 dark:text-gray-400">
         Already have an account?{' '}
         <Link href="/login" className="text-primary font-medium hover:underline">
           Sign in

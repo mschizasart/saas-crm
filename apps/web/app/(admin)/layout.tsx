@@ -7,6 +7,7 @@ import { AnnouncementsBanner } from '@/components/announcements-banner';
 import { ToastProvider } from '@/components/toast-provider';
 import { GlobalSearch } from '@/components/global-search';
 import { KeyboardShortcuts } from '@/components/keyboard-shortcuts';
+import { apiFetch, getAccessToken, isTokenExpired } from '@/lib/api';
 
 export default function AdminLayout({
   children,
@@ -18,17 +19,33 @@ export default function AdminLayout({
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.replace('/login');
-    } else {
-      setReady(true);
-    }
+    let cancelled = false;
+
+    (async () => {
+      const token = getAccessToken();
+      if (!token) {
+        router.replace('/login');
+        return;
+      }
+
+      if (isTokenExpired(token)) {
+        // apiFetch will attempt a refresh; if it fails it redirects to /login itself.
+        const res = await apiFetch('/api/v1/auth/me').catch(() => null);
+        if (cancelled) return;
+        if (!res || !res.ok) return;
+      }
+
+      if (!cancelled) setReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   if (!ready) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
+      <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -36,7 +53,7 @@ export default function AdminLayout({
 
   return (
     <ToastProvider>
-      <div className="flex h-screen overflow-hidden bg-gray-50">
+      <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
         {/* Desktop sidebar */}
         <div className="hidden md:flex">
           <AdminSidebar />
@@ -54,10 +71,10 @@ export default function AdminLayout({
 
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* Mobile top bar with hamburger */}
-          <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-100">
+          <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
             <button
               onClick={() => setMobileOpen(true)}
-              className="p-1.5 rounded-md hover:bg-gray-100 text-gray-600"
+              className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 dark:text-gray-300"
               aria-label="Open menu"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -67,7 +84,7 @@ export default function AdminLayout({
             <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center">
               <span className="text-white font-bold text-xs">A</span>
             </div>
-            <span className="font-semibold text-gray-900 text-sm">AppoinlyCRM</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">AppoinlyCRM</span>
           </div>
 
           <AnnouncementsBanner />

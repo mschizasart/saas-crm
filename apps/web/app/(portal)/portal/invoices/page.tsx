@@ -49,14 +49,14 @@ export default function PortalInvoicesPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Your Invoices</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Your Invoices</h1>
 
       {error && <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 text-sm text-red-600 rounded-lg">{error}</div>}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase">
+            <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
               <th className="px-4 py-3">Number</th>
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Due</th>
@@ -68,21 +68,21 @@ export default function PortalInvoicesPage() {
           <tbody>
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="border-b border-gray-100">
+                <tr key={i} className="border-b border-gray-100 dark:border-gray-800">
                   {Array.from({ length: 6 }).map((__, j) => (
-                    <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td>
+                    <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" /></td>
                   ))}
                 </tr>
               ))
             ) : items.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">No invoices yet</td></tr>
+              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">No invoices yet</td></tr>
             ) : items.map((inv) => (
-              <tr key={inv.id} className="border-b border-gray-100 hover:bg-gray-50/60">
-                <td className="px-4 py-3 font-medium text-gray-900">
+              <tr key={inv.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/60">
+                <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                   <Link href={`/invoices/${inv.id}`} className="hover:text-primary">{inv.number}</Link>
                 </td>
-                <td className="px-4 py-3 text-gray-600">{inv.date ? new Date(inv.date).toLocaleDateString() : '—'}</td>
-                <td className="px-4 py-3 text-gray-600">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : '—'}</td>
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{inv.date ? new Date(inv.date).toLocaleDateString() : '—'}</td>
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : '—'}</td>
                 <td className="px-4 py-3 tabular-nums">{inv.total?.toFixed?.(2) ?? inv.total} {inv.currency}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[inv.status] ?? 'bg-gray-100 text-gray-700'}`}>
@@ -91,7 +91,7 @@ export default function PortalInvoicesPage() {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-3">
-                    <button className="text-xs text-gray-500 hover:text-primary">PDF</button>
+                    <button className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary">PDF</button>
                     {inv.status !== 'paid' && (
                       <button className="text-xs px-3 py-1 bg-primary text-white rounded hover:bg-primary/90">Pay Now</button>
                     )}

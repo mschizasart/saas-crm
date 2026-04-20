@@ -14,8 +14,8 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
 import { useI18n } from '@/lib/i18n/use-i18n';
-import { useTheme } from '@/lib/theme';
-import { Moon, Sun, Search } from 'lucide-react';
+import { useTheme, type Theme } from '@/lib/theme';
+import { Moon, Sun, Monitor, Search } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -109,26 +109,26 @@ function NotificationBell() {
         )}
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-2 w-72 bg-white text-gray-900 rounded-lg shadow-lg border border-gray-100 z-50 max-h-96 overflow-y-auto">
-          <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
+        <div className="absolute left-0 top-full mt-2 w-72 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg shadow-lg border border-gray-100 dark:border-gray-800 z-50 max-h-96 overflow-y-auto">
+          <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
             <span className="text-sm font-semibold">Notifications</span>
             <Link href="/notifications" className="text-xs text-primary hover:underline">
               View all
             </Link>
           </div>
           {items.length === 0 ? (
-            <p className="p-4 text-xs text-gray-400 text-center">No notifications</p>
+            <p className="p-4 text-xs text-gray-400 dark:text-gray-500 text-center">No notifications</p>
           ) : (
             <ul>
               {items.map((n) => (
                 <li
                   key={n.id}
-                  className={`px-3 py-2 border-b border-gray-50 text-xs ${
+                  className={`px-3 py-2 border-b border-gray-50 dark:border-gray-800 text-xs ${
                     n.read ? '' : 'bg-primary/5'
                   }`}
                 >
                   <p className="font-medium">{n.title}</p>
-                  {n.description && <p className="text-gray-500 mt-0.5">{n.description}</p>}
+                  {n.description && <p className="text-gray-500 dark:text-gray-400 mt-0.5">{n.description}</p>}
                 </li>
               ))}
             </ul>
@@ -160,7 +160,14 @@ function useNavItems(): NavItem[] {
         { label: t('nav.proposals'), href: '/proposals', icon: FileCheck },
         { label: t('nav.estimates'), href: '/estimates', icon: Calculator },
         { label: t('nav.invoices'), href: '/invoices', icon: FileText },
-        { label: t('nav.payments'), href: '/payments', icon: CreditCard },
+        {
+          label: t('nav.payments'),
+          icon: CreditCard,
+          children: [
+            { label: 'All payments', href: '/payments', icon: CreditCard },
+            { label: 'Batch record', href: '/payments/batch', icon: CreditCard },
+          ],
+        },
         { label: t('nav.creditNotes'), href: '/credit-notes', icon: Receipt },
         { label: t('nav.expenses'), href: '/expenses', icon: DollarSign },
         { label: t('nav.subscriptions'), href: '/subscriptions', icon: Zap },
@@ -228,18 +235,19 @@ function useNavItems(): NavItem[] {
       label: t('nav.settings'),
       icon: Settings,
       children: [
-        { label: t('nav.general'), href: '/settings/general', icon: Settings },
-        { label: t('nav.email'), href: '/settings/email', icon: Bell },
-        { label: t('nav.paymentGateways'), href: '/settings/payments', icon: CreditCard },
+        { label: t('nav.general'), href: '/settings?tab=company', icon: Settings },
+        { label: t('nav.email'), href: '/settings?tab=email', icon: Bell },
+        { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },
         { label: t('nav.customFields'), href: '/settings/custom-fields', icon: FileText },
         { label: t('nav.tags'), href: '/settings/tags', icon: Tag },
-        { label: t('nav.roles'), href: '/settings/roles', icon: Users },
+        { label: t('nav.roles'), href: '/staff/roles', icon: Users },
         { label: t('nav.savedItems'), href: '/settings/saved-items', icon: BookOpen },
         { label: t('nav.predefinedReplies'), href: '/settings/predefined-replies', icon: FileCheck },
         { label: t('nav.leadStatuses'), href: '/settings/lead-statuses', icon: Target },
         { label: t('nav.leadSources'), href: '/settings/lead-sources', icon: UserCircle },
         { label: t('nav.emailTemplates'), href: '/settings/email-templates', icon: FileCheck },
         { label: t('nav.paymentModes'), href: '/settings/payment-modes', icon: CreditCard },
+        { label: 'Expense Categories', href: '/settings/expense-categories', icon: DollarSign },
         { label: 'Automations', href: '/settings/automations', icon: Workflow },
         { label: 'Webhooks', href: '/settings/webhooks', icon: Webhook },
         { label: 'API Keys', href: '/settings/api-keys', icon: Key },
@@ -313,7 +321,20 @@ function NavItemRow({ item, depth = 0 }: { item: NavItem; depth?: number }) {
 export function AdminSidebar({ onClose }: { onClose?: () => void } = {}) {
   const { t } = useI18n();
   const navItems = useNavItems();
-  const { dark, toggle } = useTheme();
+  const { theme, setTheme } = useTheme();
+
+  const themeOrder: Theme[] = ['light', 'dark', 'system'];
+  const themeLabel: Record<Theme, string> = {
+    light: 'Light Mode',
+    dark: 'Dark Mode',
+    system: 'System Theme',
+  };
+  const cycleTheme = () => {
+    const idx = themeOrder.indexOf(theme);
+    const next = themeOrder[(idx + 1) % themeOrder.length];
+    setTheme(next);
+  };
+  const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor;
 
   return (
     <aside className="w-60 flex-shrink-0 bg-sidebar text-sidebar-foreground flex flex-col h-screen overflow-y-auto">
@@ -360,14 +381,15 @@ export function AdminSidebar({ onClose }: { onClose?: () => void } = {}) {
 
       {/* Bottom bar: dark mode toggle + trial */}
       <div className="px-3 pb-4 space-y-3">
-        {/* Dark mode toggle */}
+        {/* Theme toggle — cycles light → dark → system */}
         <button
-          onClick={toggle}
+          onClick={cycleTheme}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-          title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={`Theme: ${themeLabel[theme]} (click to switch)`}
+          aria-label={`Switch theme (current: ${themeLabel[theme]})`}
         >
-          {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          <span>{dark ? 'Light Mode' : 'Dark Mode'}</span>
+          <ThemeIcon className="w-4 h-4" />
+          <span>{themeLabel[theme]}</span>
         </button>
 
         {/* Trial banner */}

@@ -132,11 +132,11 @@ export default function TicketsReportPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Tickets by Priority</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Tickets by Priority</h2>
           <div style={{ width: '100%', height: 320 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 rounded animate-pulse" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 rounded animate-pulse" />
             ) : (
               <ResponsiveContainer>
                 <BarChart data={priorityChart}>
@@ -158,25 +158,25 @@ export default function TicketsReportPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">By Assignee</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">By Assignee</h2>
           {loading || !data ? (
             <div className="space-y-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-8 bg-gray-50 rounded animate-pulse"
+                  className="h-8 bg-gray-50 dark:bg-gray-900 rounded animate-pulse"
                 />
               ))}
             </div>
           ) : data.byAssignee.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">
+            <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
               No assigned tickets.
             </p>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs font-semibold text-gray-400 uppercase border-b border-gray-100">
+                <tr className="text-left text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase border-b border-gray-100 dark:border-gray-800">
                   <th className="py-2">Assignee</th>
                   <th className="py-2 text-right">Count</th>
                   <th className="py-2 text-right">Avg Res.</th>
@@ -186,15 +186,15 @@ export default function TicketsReportPage() {
                 {data.byAssignee.map((a) => (
                   <tr
                     key={a.userId}
-                    className="border-b border-gray-100 last:border-0"
+                    className="border-b border-gray-100 dark:border-gray-800 last:border-0"
                   >
-                    <td className="py-2 text-gray-800 truncate max-w-[160px]">
+                    <td className="py-2 text-gray-800 dark:text-gray-200 truncate max-w-[160px]">
                       {a.name}
                     </td>
-                    <td className="py-2 text-right font-semibold text-gray-900">
+                    <td className="py-2 text-right font-semibold text-gray-900 dark:text-gray-100">
                       {a.count}
                     </td>
-                    <td className="py-2 text-right text-gray-500">
+                    <td className="py-2 text-right text-gray-500 dark:text-gray-400">
                       {a.avgResolution.toFixed(1)} h
                     </td>
                   </tr>

@@ -12,7 +12,7 @@ import * as bcrypt from 'bcryptjs';
 import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
 import { PrismaService } from '../../database/prisma.service';
-import { RegisterOrganizationDto } from './dto/auth.dto';
+import { RegisterOrganizationDto, PortalRegisterDto } from './dto/auth.dto';
 import { seedOrganization } from '../../../prisma/seed-org';
 
 @Injectable()
@@ -335,5 +335,51 @@ export class AuthService {
 
     const adminUser = org.users[0];
     return this.generateTokenPair(adminUser);
+  }
+
+  // ─── Portal contact self-registration ──────────────────────
+
+  async registerPortalContact(dto: PortalRegisterDto) {
+    const org = await this.prisma.organization.findFirst({
+      where: { slug: { equals: dto.organizationSlug, mode: 'insensitive' } },
+    });
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    const existing = await this.prisma.user.findFirst({
+      where: { organizationId: org.id, email: dto.email },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'An account with this email already exists for this organization.',
+      );
+    }
+
+    // If the setting is missing, default to self-registration allowed (active immediately)
+    const settings = (org as any).settings as Record<string, any> | null;
+    const selfRegister = settings?.portalSelfRegister !== false;
+
+    const hashedPassword = await bcrypt.hash(dto.password, 12);
+    const user = await this.prisma.user.create({
+      data: {
+        organizationId: org.id,
+        email: dto.email,
+        password: hashedPassword,
+        passwordFormat: 'bcrypt',
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        phone: dto.phone,
+        type: 'contact',
+        active: selfRegister,
+      },
+    });
+
+    if (!selfRegister) {
+      return { requiresApproval: true };
+    }
+
+    const tokens = await this.generateTokenPair(user);
+    return { ...tokens, user };
   }
 }

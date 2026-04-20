@@ -289,10 +289,12 @@ export class TasksService {
     if (visited.has(fromTaskId)) return;
     visited.add(fromTaskId);
 
-    const deps = await this.prisma.client.taskDependency.findMany({
-      where: { taskId: fromTaskId },
-      select: { dependsOnId: true },
-    });
+    const deps = await this.prisma.withOrganization(orgId, (tx) =>
+      tx.taskDependency.findMany({
+        where: { taskId: fromTaskId, task: { organizationId: orgId } },
+        select: { dependsOnId: true },
+      }),
+    );
 
     for (const dep of deps) {
       await this.checkCircular(orgId, dep.dependsOnId, targetId, visited);

@@ -116,13 +116,13 @@ export default function IncomeExpensePage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">
+        <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Income vs Expenses
           </h2>
           <div style={{ width: '100%', height: 340 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 rounded animate-pulse" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 rounded animate-pulse" />
             ) : (
               <ResponsiveContainer>
                 <LineChart data={data.byMonth}>
@@ -149,15 +149,15 @@ export default function IncomeExpensePage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Expenses by Category
           </h2>
           <div style={{ width: '100%', height: 340 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 rounded animate-pulse" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 rounded animate-pulse" />
             ) : data.byCategory.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">
                 No expenses in range.
               </p>
             ) : (

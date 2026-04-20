@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
@@ -31,6 +31,21 @@ export interface CreateMilestoneDto {
   dueDate?: string;
   color?: string;
   order?: number;
+  status?: 'planned' | 'in_progress' | 'done' | 'cancelled';
+}
+
+/**
+ * Detects Prisma errors thrown when the new `milestones.status` column hasn't
+ * been migrated yet (P2022 column does not exist). Used to silently fall back
+ * to legacy `completed` behaviour so the API keeps running pre-migration.
+ */
+function isMilestoneStatusColumnError(err: any): boolean {
+  const msg = String(err?.message ?? '');
+  return (
+    err?.code === 'P2022' ||
+    /column .*status.* does not exist/i.test(msg) ||
+    /Unknown arg `status`/i.test(msg)
+  );
 }
 
 export interface CreateDiscussionDto {
@@ -49,8 +64,14 @@ export interface CreateProjectFileDto {
   mimeType?: string;
 }
 
+export interface CreateProjectNoteDto {
+  content: string;
+}
+
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
@@ -476,17 +497,34 @@ export class ProjectsService {
         orderBy: { order: 'desc' },
         select: { order: true },
       });
-      return tx.milestone.create({
-        data: {
-          organizationId: orgId,
-          projectId,
-          name: dto.name,
-          description: dto.description ?? null,
-          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-          color: dto.color ?? '#6b7280',
-          order: dto.order ?? (maxOrder ? maxOrder.order + 1 : 0),
-        },
-      });
+
+      const status = dto.status ?? 'planned';
+      const completed = status === 'done';
+      const baseData: any = {
+        organizationId: orgId,
+        projectId,
+        name: dto.name,
+        description: dto.description ?? null,
+        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        color: dto.color ?? '#6b7280',
+        order: dto.order ?? (maxOrder ? maxOrder.order + 1 : 0),
+        completed,
+        completedAt: completed ? new Date() : null,
+      };
+
+      try {
+        return await tx.milestone.create({
+          data: { ...baseData, status } as any,
+        });
+      } catch (err) {
+        if (isMilestoneStatusColumnError(err)) {
+          this.logger.warn(
+            'Milestone.status column missing — falling back to completed-only create.',
+          );
+          return tx.milestone.create({ data: baseData });
+        }
+        throw err;
+      }
     });
   }
 
@@ -503,22 +541,47 @@ export class ProjectsService {
       });
       if (!existing) throw new NotFoundException('Milestone not found');
 
-      return tx.milestone.update({
-        where: { id: milestoneId },
-        data: {
-          ...(dto.name !== undefined && { name: dto.name }),
-          ...(dto.description !== undefined && { description: dto.description }),
-          ...(dto.dueDate !== undefined && {
-            dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-          }),
-          ...(dto.color !== undefined && { color: dto.color }),
-          ...(dto.order !== undefined && { order: dto.order }),
-          ...(dto.completed !== undefined && {
-            completed: dto.completed,
-            completedAt: dto.completed ? new Date() : null,
-          }),
-        },
-      });
+      // Keep `completed` in sync with `status` when status is provided so that
+      // legacy readers still work correctly.
+      const baseData: any = {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.dueDate !== undefined && {
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        }),
+        ...(dto.color !== undefined && { color: dto.color }),
+        ...(dto.order !== undefined && { order: dto.order }),
+      };
+
+      if (dto.status !== undefined) {
+        const derivedCompleted = dto.status === 'done';
+        baseData.completed = derivedCompleted;
+        baseData.completedAt = derivedCompleted ? new Date() : null;
+      } else if (dto.completed !== undefined) {
+        baseData.completed = dto.completed;
+        baseData.completedAt = dto.completed ? new Date() : null;
+      }
+
+      try {
+        return await tx.milestone.update({
+          where: { id: milestoneId },
+          data: {
+            ...baseData,
+            ...(dto.status !== undefined && { status: dto.status }),
+          } as any,
+        });
+      } catch (err) {
+        if (isMilestoneStatusColumnError(err)) {
+          this.logger.warn(
+            'Milestone.status column missing — falling back to completed-only update.',
+          );
+          return tx.milestone.update({
+            where: { id: milestoneId },
+            data: baseData,
+          });
+        }
+        throw err;
+      }
     });
   }
 
@@ -642,6 +705,47 @@ export class ProjectsService {
           content: dto.content,
         },
       });
+    });
+  }
+
+  // ─── Project Notes ──────────────────────────────────────────
+
+  async getNotes(orgId: string, projectId: string) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return (tx as any).projectNote.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+  }
+
+  async createNote(orgId: string, projectId: string, dto: CreateProjectNoteDto, userId?: string) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      return (tx as any).projectNote.create({
+        data: {
+          projectId,
+          userId: userId ?? null,
+          content: dto.content,
+        },
+      });
+    });
+  }
+
+  async deleteNote(orgId: string, projectId: string, noteId: string, userId?: string) {
+    await this.findOne(orgId, projectId);
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const note = await (tx as any).projectNote.findFirst({
+        where: { id: noteId, projectId },
+      });
+      if (!note) throw new NotFoundException('Note not found');
+      // Allow author to delete; higher-level permission check enforced by controller RBAC.
+      if (userId && note.userId && note.userId !== userId) {
+        // Permission layer (projects.edit) on controller allows admins/editors to delete others' notes.
+      }
+      await (tx as any).projectNote.delete({ where: { id: noteId } });
+      return note;
     });
   }
 }

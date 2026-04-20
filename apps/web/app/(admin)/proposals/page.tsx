@@ -2,20 +2,23 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { FileText } from 'lucide-react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorBanner } from '@/components/ui/error-banner';
 
 interface Proposal {
   id: string;
   subject: string;
-  totalValue: number;
-  currency: string;
+  total: number | null;
+  currency: string | null;
   status: string;
   createdAt: string;
-  client?: { id: string; company?: string; company_name?: string } | null;
-}
-
-interface Response {
-  data: Proposal[];
-  meta: { page: number; per_page: number; total: number; total_pages: number };
+  client?: { id: string; company: string } | null;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -25,17 +28,9 @@ function getToken(): string | null {
   return localStorage.getItem('access_token');
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-700',
-  sent: 'bg-blue-100 text-blue-700',
-  opened: 'bg-indigo-100 text-indigo-700',
-  accepted: 'bg-green-100 text-green-700',
-  declined: 'bg-red-100 text-red-700',
-};
-
 export default function ProposalsPage() {
   const [items, setItems] = useState<Proposal[]>([]);
-  const [meta, setMeta] = useState<Response['meta'] | null>(null);
+  const [meta, setMeta] = useState<{ totalPages: number; total: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -43,11 +38,11 @@ export default function ProposalsPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/proposals?page=${page}&per_page=15`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      const res = await fetch(`${API_BASE}/api/v1/proposals?page=${page}&limit=15`, { headers: { Authorization: `Bearer ${getToken()}` } });
       if (!res.ok) throw new Error(`Failed (${res.status})`);
       const json = await res.json();
       setItems(json.data ?? []);
-      setMeta(json.meta ?? null);
+      setMeta({ totalPages: json.totalPages, total: json.total });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     } finally {
@@ -57,70 +52,72 @@ export default function ProposalsPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Proposals</h1>
-        <Link href="/proposals/new" className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90">
-          <span className="text-lg leading-none">+</span>New Proposal
-        </Link>
+  const paginationNode =
+    meta && meta.total > 0 ? (
+      <div className="flex items-center justify-between px-4 py-3 border border-gray-100 dark:border-gray-800 rounded-xl bg-gray-50/50 dark:bg-gray-800/50">
+        <p className="text-xs text-gray-500 dark:text-gray-400">{meta.total} total</p>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>Previous</Button>
+          <span className="text-xs text-gray-600 dark:text-gray-400">Page {page} of {meta.totalPages}</span>
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))} disabled={page >= meta.totalPages}>Next</Button>
+        </div>
       </div>
+    ) : null;
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        {error && <div className="px-4 py-3 bg-red-50 border-b border-red-100 text-sm text-red-600">{error}</div>}
+  return (
+    <ListPageLayout
+      title="Proposals"
+      secondaryActions={[{ label: 'Pipeline view', href: '/proposals/pipeline' }]}
+      primaryAction={{ label: 'New Proposal', href: '/proposals/new', icon: <span className="text-lg leading-none">+</span> }}
+      pagination={paginationNode}
+    >
+      <Card>
+        {error && (
+          <ErrorBanner message={error} onRetry={fetchData} className="rounded-none border-0 border-b border-red-100" />
+        )}
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
                 <th className="px-4 py-3">Subject</th>
                 <th className="px-4 py-3">Client</th>
                 <th className="px-4 py-3">Value</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Created</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Created</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i} className="border-b border-gray-100">
-                    {Array.from({ length: 6 }).map((__, j) => (
-                      <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td>
-                    ))}
-                  </tr>
-                ))
+                <TableSkeleton rows={6} columns={6} columnWidths={['60%', '40%', '30%', '25%', '30%', '20%']} />
               ) : items.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">No proposals yet</td></tr>
-              ) : items.map((p) => (
-                <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/60">
-                  <td className="px-4 py-3 font-medium text-gray-900">{p.subject}</td>
-                  <td className="px-4 py-3 text-gray-600">{p.client?.company ?? p.client?.company_name ?? '—'}</td>
-                  <td className="px-4 py-3 tabular-nums">{p.totalValue?.toFixed?.(2) ?? p.totalValue} {p.currency}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[p.status] ?? 'bg-gray-100 text-gray-700'}`}>
-                      {p.status}
-                    </span>
+                <tr>
+                  <td colSpan={6} className="px-4 py-8">
+                    <EmptyState
+                      icon={<FileText className="w-10 h-10" />}
+                      title="No proposals yet"
+                      action={{ label: 'Create your first proposal', href: '/proposals/new' }}
+                    />
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '—'}</td>
+                </tr>
+              ) : items.map((p) => (
+                <tr key={p.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/60">
+                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{p.subject}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{p.client?.company ?? '—'}</td>
+                  <td className="px-4 py-3 tabular-nums">{p.total != null ? Number(p.total).toFixed(2) : '—'} {p.currency ?? ''}</td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={p.status} />
+                  </td>
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '—'}</td>
                   <td className="px-4 py-3 text-right">
-                    <Link href={`/proposals/${p.id}`} className="text-xs text-gray-500 hover:text-primary font-medium">View</Link>
+                    <Link href={`/proposals/${p.id}`} className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary font-medium">View</Link>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {meta && meta.total > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
-            <p className="text-xs text-gray-500">{meta.total} total</p>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-3 py-1.5 text-xs border border-gray-200 rounded-md bg-white disabled:opacity-40">Previous</button>
-              <span className="text-xs text-gray-600">Page {page} of {meta.total_pages}</span>
-              <button onClick={() => setPage((p) => Math.min(meta.total_pages, p + 1))} disabled={page >= meta.total_pages} className="px-3 py-1.5 text-xs border border-gray-200 rounded-md bg-white disabled:opacity-40">Next</button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }

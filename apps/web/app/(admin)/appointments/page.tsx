@@ -1,7 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { typography } from '@/lib/ui-tokens';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { ErrorBanner } from '@/components/ui/error-banner';
+import { Button } from '@/components/ui/button';
+import { inputClass } from '@/components/ui/form-field';
+import { useModalA11y } from '@/components/ui/use-modal-a11y';
 
 interface Appointment {
   id: string;
@@ -34,7 +41,14 @@ function getToken(): string | null {
   return localStorage.getItem('access_token');
 }
 
-const STATUS_BADGE: Record<string, string> = {
+const STATUS_VARIANT: Record<string, BadgeVariant> = {
+  scheduled: 'info',
+  confirmed: 'success',
+  cancelled: 'muted',
+  completed: 'success',
+};
+
+const STATUS_CELL_CLASS: Record<string, string> = {
   scheduled: 'bg-blue-100 text-blue-700',
   confirmed: 'bg-green-100 text-green-700',
   cancelled: 'bg-gray-100 text-gray-400',
@@ -72,6 +86,10 @@ export default function AppointmentsPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [showForm, setShowForm] = useState(false);
   const [showDetail, setShowDetail] = useState<Appointment | null>(null);
+  const closeForm = useCallback(() => setShowForm(false), []);
+  const closeDetail = useCallback(() => setShowDetail(null), []);
+  const formModalRef = useModalA11y(showForm, closeForm);
+  const detailModalRef = useModalA11y(!!showDetail, closeDetail);
   const [formData, setFormData] = useState({
     title: '', description: '', location: '', staffId: '', clientId: '',
     date: new Date().toISOString().slice(0, 10), startHour: '09:00', endHour: '09:30',
@@ -171,63 +189,59 @@ export default function AppointmentsPage() {
   const weekDates = getWeekDates(currentDate);
   const hours = Array.from({ length: 9 }, (_, i) => i + 9); // 9-17
 
+  const filtersNode = (
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="flex items-center gap-1 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-0.5">
+        <button onClick={() => setView('day')} className={`px-3 py-1.5 text-sm rounded-md ${view === 'day' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Day</button>
+        <button onClick={() => setView('week')} className={`px-3 py-1.5 text-sm rounded-md ${view === 'week' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Week</button>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button variant="secondary" size="sm" onClick={() => navigateDate(-1)} aria-label="Previous">&lsaquo;</Button>
+        <Button variant="secondary" size="sm" onClick={() => setCurrentDate(new Date())}>Today</Button>
+        <Button variant="secondary" size="sm" onClick={() => navigateDate(1)} aria-label="Next">&rsaquo;</Button>
+      </div>
+      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        {view === 'day' ? formatDate(currentDate.toISOString()) : `${formatDate(weekDates[0].toISOString())} - ${formatDate(weekDates[6].toISOString())}`}
+      </span>
+      <select
+        aria-label="Filter by staff"
+        value={staffFilter}
+        onChange={(e) => setStaffFilter(e.target.value)}
+        className={`${inputClass} ml-auto w-auto`}
+      >
+        <option value="">All staff</option>
+        {staff.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>)}
+      </select>
+    </div>
+  );
+
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Appointments</h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Link
-            href="/appointments/booking"
-            className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50"
-          >
-            Booking Widget
-          </Link>
-          <button
-            onClick={() => setShowForm(true)}
-            className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90"
-          >
-            <span className="text-lg leading-none">+</span>
-            New Appointment
-          </button>
+    <ListPageLayout
+      title="Appointments"
+      primaryAction={{ label: 'New Appointment', onClick: () => setShowForm(true) }}
+      secondaryActions={[{ label: 'Booking Widget', href: '/appointments/booking' }]}
+      filters={filtersNode}
+    >
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error} onRetry={fetchAppointments} onDismiss={() => setError(null)} />
         </div>
-      </div>
-
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-0.5">
-          <button onClick={() => setView('day')} className={`px-3 py-1.5 text-sm rounded-md ${view === 'day' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Day</button>
-          <button onClick={() => setView('week')} className={`px-3 py-1.5 text-sm rounded-md ${view === 'week' ? 'bg-primary text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Week</button>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => navigateDate(-1)} className="px-2 py-1 border border-gray-200 rounded-md text-sm hover:bg-gray-50">&lsaquo;</button>
-          <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1 border border-gray-200 rounded-md text-sm hover:bg-gray-50">Today</button>
-          <button onClick={() => navigateDate(1)} className="px-2 py-1 border border-gray-200 rounded-md text-sm hover:bg-gray-50">&rsaquo;</button>
-        </div>
-        <span className="text-sm font-medium text-gray-700">
-          {view === 'day' ? formatDate(currentDate.toISOString()) : `${formatDate(weekDates[0].toISOString())} - ${formatDate(weekDates[6].toISOString())}`}
-        </span>
-        <select value={staffFilter} onChange={(e) => setStaffFilter(e.target.value)} className="ml-auto px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white">
-          <option value="">All staff</option>
-          {staff.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>)}
-        </select>
-      </div>
-
-      {error && <div className="mb-4 px-4 py-2 bg-red-50 border border-red-100 text-sm text-red-600 rounded-lg">{error}</div>}
+      )}
 
       {/* Calendar Grid */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="px-2 py-3 text-xs text-gray-500 w-16">Time</th>
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
+                <th className="px-2 py-3 text-xs text-gray-500 dark:text-gray-400 w-16">Time</th>
                 {view === 'week' ? weekDates.map((d, i) => (
-                  <th key={i} className="px-2 py-3 text-xs text-gray-500 font-medium">
+                  <th key={i} className="px-2 py-3 text-xs text-gray-500 dark:text-gray-400 font-medium">
                     {d.toLocaleDateString('en-US', { weekday: 'short' })}<br />
-                    <span className="font-semibold text-gray-900">{d.getDate()}</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100">{d.getDate()}</span>
                   </th>
                 )) : (
-                  <th className="px-2 py-3 text-xs text-gray-700 font-medium">{formatDate(currentDate.toISOString())}</th>
+                  <th className="px-2 py-3 text-xs text-gray-700 dark:text-gray-300 font-medium">{formatDate(currentDate.toISOString())}</th>
                 )}
               </tr>
             </thead>
@@ -235,9 +249,9 @@ export default function AppointmentsPage() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-50">
-                    <td className="px-2 py-4"><div className="h-4 w-12 bg-gray-100 rounded animate-pulse" /></td>
+                    <td className="px-2 py-4"><div className="h-4 w-12 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" /></td>
                     {(view === 'week' ? weekDates : [currentDate]).map((_, j) => (
-                      <td key={j} className="px-2 py-4"><div className="h-6 bg-gray-50 rounded animate-pulse" /></td>
+                      <td key={j} className="px-2 py-4"><div className="h-6 bg-gray-50 dark:bg-gray-900 rounded animate-pulse" /></td>
                     ))}
                   </tr>
                 ))
@@ -245,7 +259,7 @@ export default function AppointmentsPage() {
                 const timeLabel = `${hour.toString().padStart(2, '0')}:00`;
                 return (
                   <tr key={hour} className="border-b border-gray-50 h-16">
-                    <td className="px-2 py-1 text-xs text-gray-400 align-top">{timeLabel}</td>
+                    <td className="px-2 py-1 text-xs text-gray-400 dark:text-gray-500 align-top">{timeLabel}</td>
                     {(view === 'week' ? weekDates : [currentDate]).map((day, colIdx) => {
                       const dayStr = day.toISOString().slice(0, 10);
                       const hourAppts = appointments.filter((a) => {
@@ -258,7 +272,7 @@ export default function AppointmentsPage() {
                             <button
                               key={a.id}
                               onClick={() => setShowDetail(a)}
-                              className={`w-full text-left px-2 py-1 rounded text-xs mb-0.5 truncate ${STATUS_BADGE[a.status] ?? 'bg-gray-100 text-gray-700'}`}
+                              className={`w-full text-left px-2 py-1 rounded text-xs mb-0.5 truncate ${STATUS_CELL_CLASS[a.status] ?? 'bg-gray-100 text-gray-700'}`}
                             >
                               {formatTime(a.startTime)} {a.title}
                             </button>
@@ -272,28 +286,35 @@ export default function AppointmentsPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
 
       {/* New Appointment Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowForm(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 mx-4" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">New Appointment</h2>
+          <div
+            ref={formModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="appointment-form-modal-title"
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md p-6 mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="appointment-form-modal-title" className={`${typography.h3} mb-4`}>New Appointment</h2>
             <form onSubmit={handleCreate} className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Title *</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Title *</label>
                 <input required value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className={inputClass} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Staff</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Staff</label>
                   <select value={formData.staffId} onChange={(e) => setFormData({ ...formData, staffId: e.target.value })} className={inputClass}>
                     <option value="">-- Select --</option>
                     {staff.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Client</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Client</label>
                   <select value={formData.clientId} onChange={(e) => setFormData({ ...formData, clientId: e.target.value })} className={inputClass}>
                     <option value="">-- Select --</option>
                     {clients.map((c) => <option key={c.id} value={c.id}>{c.company ?? c.company_name ?? c.id}</option>)}
@@ -301,32 +322,32 @@ export default function AppointmentsPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date *</label>
                 <input required type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} className={inputClass} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Start *</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Start *</label>
                   <input required type="time" value={formData.startHour} onChange={(e) => setFormData({ ...formData, startHour: e.target.value })} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">End *</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">End *</label>
                   <input required type="time" value={formData.endHour} onChange={(e) => setFormData({ ...formData, endHour: e.target.value })} className={inputClass} />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Location</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Location</label>
                 <input value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Description</label>
                 <textarea rows={2} value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className={inputClass} />
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
-                <button type="submit" disabled={saving} className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50">
+                <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+                <Button type="submit" variant="primary" disabled={saving} loading={saving}>
                   {saving ? 'Saving...' : 'Create'}
-                </button>
+                </Button>
               </div>
             </form>
           </div>
@@ -336,35 +357,40 @@ export default function AppointmentsPage() {
       {/* Detail Modal */}
       {showDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowDetail(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 mx-4" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold text-gray-900 mb-1">{showDetail.title}</h2>
-            <p className="text-sm text-gray-500 mb-4">
+          <div
+            ref={detailModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="appointment-detail-modal-title"
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md p-6 mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="appointment-detail-modal-title" className={`${typography.h3} mb-1`}>{showDetail.title}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
               {formatDate(showDetail.startTime)} {formatTime(showDetail.startTime)} - {formatTime(showDetail.endTime)}
             </p>
-            {showDetail.location && <p className="text-sm text-gray-600 mb-2">Location: {showDetail.location}</p>}
-            {showDetail.description && <p className="text-sm text-gray-600 mb-4">{showDetail.description}</p>}
+            {showDetail.location && <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Location: {showDetail.location}</p>}
+            {showDetail.description && <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{showDetail.description}</p>}
             <div className="mb-4">
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[showDetail.status] ?? 'bg-gray-100'}`}>
+              <Badge variant={STATUS_VARIANT[showDetail.status] ?? 'default'}>
                 {showDetail.status}
-              </span>
+              </Badge>
             </div>
             <div className="flex flex-wrap gap-2">
               {showDetail.status === 'scheduled' && (
-                <button onClick={() => handleStatusChange(showDetail.id, 'confirmed')} className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700">Confirm</button>
+                <Button size="sm" variant="primary" onClick={() => handleStatusChange(showDetail.id, 'confirmed')} className="bg-green-600 hover:bg-green-700">Confirm</Button>
               )}
               {showDetail.status !== 'cancelled' && showDetail.status !== 'completed' && (
                 <>
-                  <button onClick={() => handleStatusChange(showDetail.id, 'completed')} className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700">Complete</button>
-                  <button onClick={() => handleStatusChange(showDetail.id, 'cancelled')} className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700">Cancel</button>
+                  <Button size="sm" variant="primary" onClick={() => handleStatusChange(showDetail.id, 'completed')} className="bg-emerald-600 hover:bg-emerald-700">Complete</Button>
+                  <Button size="sm" variant="destructive" onClick={() => handleStatusChange(showDetail.id, 'cancelled')}>Cancel</Button>
                 </>
               )}
-              <button onClick={() => setShowDetail(null)} className="px-3 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 ml-auto">Close</button>
+              <Button size="sm" variant="secondary" onClick={() => setShowDetail(null)} className="ml-auto">Close</Button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </ListPageLayout>
   );
 }
-
-const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white';

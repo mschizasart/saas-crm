@@ -19,6 +19,7 @@ import {
   CreateDiscussionDto,
   CreateDiscussionCommentDto,
   CreateProjectFileDto,
+  CreateProjectNoteDto,
 } from './projects.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
@@ -310,5 +311,39 @@ export class ProjectsController {
     @Body() dto: CreateDiscussionCommentDto,
   ) {
     return this.service.addDiscussionComment(org.id, id, discussionId, dto, user.id);
+  }
+
+  // ─── Notes ──────────────────────────────────────────────────
+
+  @Get(':id/notes')
+  @Permissions('projects.view')
+  @ApiOperation({ summary: 'List notes for a project' })
+  getNotes(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.service.getNotes(org.id, id);
+  }
+
+  @Post(':id/notes')
+  @Permissions('projects.edit')
+  @ApiOperation({ summary: 'Add a note to a project' })
+  createNote(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() dto: CreateProjectNoteDto,
+  ) {
+    return this.service.createNote(org.id, id, dto, user.id);
+  }
+
+  @Delete(':projectId/notes/:noteId')
+  @Permissions('projects.edit')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a note (author or admin)' })
+  deleteNote(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Param('projectId') projectId: string,
+    @Param('noteId') noteId: string,
+  ) {
+    return this.service.deleteNote(org.id, projectId, noteId, user.id);
   }
 }

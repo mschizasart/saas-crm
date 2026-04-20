@@ -78,44 +78,44 @@ export default function PortalTicketDetailPage() {
     }
   }
 
-  if (loading) return <div className="animate-pulse h-96 bg-gray-100 rounded-xl" />;
+  if (loading) return <div className="animate-pulse h-96 bg-gray-100 dark:bg-gray-800 rounded-xl" />;
   if (error || !ticket) return <div className="text-red-600">{error ?? 'Not found'}</div>;
 
   return (
     <div>
-      <div className="mb-4"><Link href="/portal/tickets" className="text-sm text-gray-500 hover:text-primary">← Back to tickets</Link></div>
+      <div className="mb-4"><Link href="/portal/tickets" className="text-sm text-gray-500 dark:text-gray-400 hover:text-primary">← Back to tickets</Link></div>
 
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{ticket.subject}</h1>
-          <p className="text-sm text-gray-500 mt-1 capitalize">Priority: {ticket.priority} · {new Date(ticket.createdAt).toLocaleString()}</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{ticket.subject}</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 capitalize">Priority: {ticket.priority} · {new Date(ticket.createdAt).toLocaleString()}</p>
         </div>
         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">{ticket.status}</span>
       </div>
 
       <div className="space-y-4">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-          <p className="text-sm text-gray-800 whitespace-pre-wrap">{ticket.message}</p>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+          <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{ticket.message}</p>
         </div>
 
         {(ticket.replies ?? []).filter((r) => !r.isInternal).map((r) => (
           <div key={r.id} className={`rounded-xl border p-4 ${r.fromClient ? 'bg-primary/5 border-primary/20' : 'bg-white border-gray-100'}`}>
-            <p className="text-xs text-gray-500 mb-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
               {r.author?.name ?? (r.fromClient ? 'You' : 'Support')} · {new Date(r.createdAt).toLocaleString()}
             </p>
-            <p className="text-sm text-gray-800 whitespace-pre-wrap">{r.message}</p>
+            <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{r.message}</p>
           </div>
         ))}
       </div>
 
       {ticket.status !== 'closed' && (
-        <form onSubmit={sendReply} className="mt-6 bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <label className="block text-xs font-medium text-gray-600 mb-2">Reply</label>
+        <form onSubmit={sendReply} className="mt-6 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Reply</label>
           <textarea
             rows={4}
             value={reply}
             onChange={(e) => setReply(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
             placeholder="Type your message…"
           />
           <div className="flex justify-end mt-3">

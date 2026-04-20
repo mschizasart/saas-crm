@@ -15,8 +15,13 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname();
   const router = useRouter();
 
-  // Login page has no shell
-  if (pathname === '/portal/login') {
+  // Unauthenticated auth pages have no shell (centered card, like login)
+  const isAuthPage =
+    pathname === '/portal/login' ||
+    pathname === '/portal/forgot-password' ||
+    pathname === '/portal/register' ||
+    pathname?.startsWith('/portal/reset-password/');
+  if (isAuthPage) {
     return <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">{children}</div>;
   }
 
@@ -36,15 +41,15 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 shadow-sm">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-sm">C</span>
               </div>
-              <span className="font-semibold text-gray-800">Client Portal</span>
+              <span className="font-semibold text-gray-800 dark:text-gray-200">Client Portal</span>
             </div>
             <nav className="hidden md:flex items-center gap-1">
               {NAV.map((item) => {
@@ -63,7 +68,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               })}
               <button
                 onClick={signOut}
-                className="ml-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+                className="ml-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
               >
                 Sign Out
               </button>

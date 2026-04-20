@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, FormEvent } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useModalA11y } from '@/components/ui/use-modal-a11y';
+import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 
 interface LeadNote {
   id: string;
@@ -28,20 +30,31 @@ interface LeadEmailRecord {
   sentAt: string;
 }
 
+interface LeadStatusRef {
+  id: string;
+  name: string;
+  color?: string | null;
+}
+
+interface LeadSourceRef {
+  id: string;
+  name: string;
+}
+
 interface Lead {
   id: string;
   name: string;
   email: string | null;
   phone: string | null;
   company: string | null;
-  position: string | null;
+  position: number | null;
   website: string | null;
   address: string | null;
   city: string | null;
   country: string | null;
-  status: string;
-  source: string | null;
-  budget: number | null;
+  status: LeadStatusRef | null;
+  source: LeadSourceRef | null;
+  value: number | string | null;
   description: string | null;
   createdAt: string;
   notes?: LeadNote[];
@@ -81,6 +94,10 @@ export default function LeadDetailPage() {
   const [emailsLoading, setEmailsLoading] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [showLogModal, setShowLogModal] = useState(false);
+  const closeSendModal = useCallback(() => setShowSendModal(false), []);
+  const closeLogModal = useCallback(() => setShowLogModal(false), []);
+  const sendModalRef = useModalA11y(showSendModal, closeSendModal);
+  const logModalRef = useModalA11y(showLogModal, closeLogModal);
   const [emailForm, setEmailForm] = useState({ to: '', subject: '', body: '' });
   const [logForm, setLogForm] = useState({ direction: 'outbound', subject: '', body: '', fromEmail: '', toEmail: '' });
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -114,10 +131,23 @@ export default function LeadDetailPage() {
 
   async function saveEdit() {
     try {
+      // Flatten status/source refs back to plain strings the API expects.
+      const { status, source, notes, activities, ...scalar } = draft as any;
+      const payload: Record<string, any> = { ...scalar };
+      if (status && typeof status === 'object' && 'name' in status) {
+        payload.status = (status as LeadStatusRef).name;
+      } else if (typeof status === 'string') {
+        payload.status = status;
+      }
+      if (source && typeof source === 'object' && 'name' in source) {
+        payload.source = (source as LeadSourceRef).name;
+      } else if (typeof source === 'string') {
+        payload.source = source;
+      }
       const res = await fetch(`${API_BASE}/api/v1/leads/${id}`, {
         method: 'PATCH',
         headers: authHeaders(),
-        body: JSON.stringify(draft),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Save failed');
       setEditing(false);
@@ -252,11 +282,11 @@ export default function LeadDetailPage() {
   if (loading) {
     return (
       <div className="max-w-4xl animate-pulse">
-        <div className="h-4 w-32 bg-gray-100 rounded mb-4" />
-        <div className="h-7 w-64 bg-gray-100 rounded mb-6" />
-        <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-3">
+        <div className="h-4 w-32 bg-gray-100 dark:bg-gray-800 rounded mb-4" />
+        <div className="h-7 w-64 bg-gray-100 dark:bg-gray-800 rounded mb-6" />
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-6 space-y-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-4 bg-gray-100 rounded" />
+            <div key={i} className="h-4 bg-gray-100 dark:bg-gray-800 rounded" />
           ))}
         </div>
       </div>
@@ -266,7 +296,7 @@ export default function LeadDetailPage() {
   if (error || !lead) {
     return (
       <div className="max-w-4xl">
-        <Link href="/leads" className="text-sm text-gray-500 hover:text-primary">← Back</Link>
+        <Link href="/leads" className="text-sm text-gray-500 dark:text-gray-400 hover:text-primary">← Back</Link>
         <div className="mt-4 px-4 py-3 bg-red-50 border border-red-100 rounded text-sm text-red-600">
           {error ?? 'Lead not found'}
         </div>
@@ -274,37 +304,33 @@ export default function LeadDetailPage() {
     );
   }
 
+  const actions = editing
+    ? [
+        { label: 'Cancel', onClick: () => { setEditing(false); setDraft(lead); }, variant: 'secondary' as const },
+        { label: 'Save', onClick: saveEdit, variant: 'primary' as const },
+      ]
+    : [
+        { label: 'Edit', onClick: () => setEditing(true), variant: 'secondary' as const },
+        {
+          label: converting ? 'Converting…' : 'Convert to Client',
+          onClick: convertToClient,
+          disabled: converting,
+          variant: 'primary' as const,
+        },
+      ];
+
   return (
-    <div className="max-w-4xl">
-      <div className="mb-4">
-        <Link href="/leads" className="text-sm text-gray-500 hover:text-primary">← Back to leads</Link>
-      </div>
-
-      <div className="flex items-start justify-between mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{lead.name}</h1>
-          <p className="text-sm text-gray-500 mt-1">{lead.company} {lead.position && `· ${lead.position}`}</p>
-        </div>
-        <div className="flex gap-2">
-          {!editing && (
-            <>
-              <button onClick={() => setEditing(true)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Edit</button>
-              <button onClick={convertToClient} disabled={converting} className="px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50">
-                {converting ? 'Converting…' : 'Convert to Client'}
-              </button>
-            </>
-          )}
-          {editing && (
-            <>
-              <button onClick={() => { setEditing(false); setDraft(lead); }} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
-              <button onClick={saveEdit} className="px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90">Save</button>
-            </>
-          )}
-        </div>
-      </div>
-
+    <DetailPageLayout
+      title={lead.name}
+      subtitle={lead.company ?? undefined}
+      breadcrumbs={[
+        { label: 'Leads', href: '/leads' },
+        { label: lead.name },
+      ]}
+      actions={actions}
+    >
       {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
         <nav className="flex gap-6">
           {(['overview', 'notes', 'emails', 'activity'] as Tab[]).map((t) => (
             <button
@@ -321,7 +347,7 @@ export default function LeadDetailPage() {
       </div>
 
       {tab === 'overview' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <Detail label="Email">
               {editing ? (
@@ -344,13 +370,6 @@ export default function LeadDetailPage() {
                 lead.company ?? '—'
               )}
             </Detail>
-            <Detail label="Position">
-              {editing ? (
-                <input className={inputClass} value={draft.position ?? ''} onChange={(e) => setDraft({ ...draft, position: e.target.value })} />
-              ) : (
-                lead.position ?? '—'
-              )}
-            </Detail>
             <Detail label="Website">
               {editing ? (
                 <input className={inputClass} value={draft.website ?? ''} onChange={(e) => setDraft({ ...draft, website: e.target.value })} />
@@ -360,13 +379,24 @@ export default function LeadDetailPage() {
             </Detail>
             <Detail label="Status">
               {editing ? (
-                <input className={inputClass} value={draft.status ?? ''} onChange={(e) => setDraft({ ...draft, status: e.target.value })} />
+                <input
+                  className={inputClass}
+                  value={(draft.status as LeadStatusRef | null)?.name ?? ''}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      status: { id: '', name: e.target.value } as LeadStatusRef,
+                    })
+                  }
+                />
               ) : (
-                <span className="inline-block px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">{lead.status}</span>
+                <span className="inline-block px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
+                  {lead.status?.name ?? '—'}
+                </span>
               )}
             </Detail>
-            <Detail label="Source">{lead.source ?? '—'}</Detail>
-            <Detail label="Budget">{lead.budget != null ? lead.budget : '—'}</Detail>
+            <Detail label="Source">{lead.source?.name ?? '—'}</Detail>
+            <Detail label="Value">{lead.value != null ? String(lead.value) : '—'}</Detail>
             <Detail label="Address" wide>
               {[lead.address, lead.city, lead.country].filter(Boolean).join(', ') || '—'}
             </Detail>
@@ -383,7 +413,7 @@ export default function LeadDetailPage() {
 
       {tab === 'notes' && (
         <div className="space-y-4">
-          <form onSubmit={addNote} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <form onSubmit={addNote} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
             <textarea
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
@@ -404,12 +434,12 @@ export default function LeadDetailPage() {
 
           <div className="space-y-3">
             {(lead.notes ?? []).length === 0 && (
-              <div className="text-sm text-gray-400 text-center py-8">No notes yet</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">No notes yet</div>
             )}
             {(lead.notes ?? []).map((note) => (
-              <div key={note.id} className="bg-white rounded-xl border border-gray-100 p-4">
-                <p className="text-sm text-gray-800 whitespace-pre-wrap">{note.content}</p>
-                <p className="text-xs text-gray-400 mt-2">
+              <div key={note.id} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-4">
+                <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{note.content}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
                   {note.author?.name ?? 'Anonymous'} · {new Date(note.createdAt).toLocaleString()}
                 </p>
               </div>
@@ -422,28 +452,28 @@ export default function LeadDetailPage() {
         <div className="space-y-4">
           <div className="flex gap-2">
             <button onClick={() => { setEmailForm({ to: lead.email ?? '', subject: '', body: '' }); setShowSendModal(true); }} className="px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90">Send Email</button>
-            <button onClick={() => setShowLogModal(true)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Log Email</button>
+            <button onClick={() => setShowLogModal(true)} className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Log Email</button>
           </div>
 
           {emailsLoading ? (
-            <div className="text-sm text-gray-400 text-center py-8">Loading...</div>
+            <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Loading...</div>
           ) : emails.length === 0 ? (
-            <div className="text-sm text-gray-400 text-center py-8 bg-white rounded-xl border border-gray-100">No emails yet</div>
+            <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800">No emails yet</div>
           ) : (
             <div className="space-y-2">
               {emails.map((em) => (
-                <div key={em.id} className="bg-white rounded-xl border border-gray-100 p-4">
+                <div key={em.id} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 p-4">
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${em.direction === 'inbound' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
                       {em.direction === 'inbound' ? 'Received' : 'Sent'}
                     </span>
-                    <span className="text-sm font-medium text-gray-800">{em.subject ?? '(no subject)'}</span>
+                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{em.subject ?? '(no subject)'}</span>
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
                     {em.direction === 'inbound' ? `From: ${em.fromEmail ?? '—'}` : `To: ${em.toEmail ?? '—'}`}
                     {' '}· {new Date(em.sentAt).toLocaleString()}
                   </div>
-                  {em.body && <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap line-clamp-3">{em.body}</p>}
+                  {em.body && <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 whitespace-pre-wrap line-clamp-3">{em.body}</p>}
                 </div>
               ))}
             </div>
@@ -452,25 +482,32 @@ export default function LeadDetailPage() {
           {/* Send Email Modal */}
           {showSendModal && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowSendModal(false)}>
-              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Send Email</h3>
+              <div
+                ref={sendModalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="lead-send-email-modal-title"
+                className="bg-white dark:bg-gray-900 rounded-xl p-6 w-full max-w-md shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 id="lead-send-email-modal-title" className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Send Email</h3>
                 <form onSubmit={handleSendEmail} className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">To</label>
                     <input type="email" value={emailForm.to} onChange={(e) => setEmailForm({ ...emailForm, to: e.target.value })} className={inputClass} required />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Subject</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Subject</label>
                     <input value={emailForm.subject} onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })} className={inputClass} required />
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-medium text-gray-600">Body</label>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Body</label>
                       <div className="flex items-center gap-1">
                         <select
                           value={aiTone}
                           onChange={(e) => setAiTone(e.target.value as 'professional' | 'friendly' | 'formal')}
-                          className="px-2 py-1 text-[11px] border border-gray-200 rounded-md bg-white text-gray-600"
+                          className="px-2 py-1 text-[11px] border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400"
                         >
                           <option value="professional">Professional</option>
                           <option value="friendly">Friendly</option>
@@ -499,7 +536,7 @@ export default function LeadDetailPage() {
                     <textarea rows={5} value={emailForm.body} onChange={(e) => setEmailForm({ ...emailForm, body: e.target.value })} className={inputClass} />
                   </div>
                   <div className="flex justify-end gap-2 pt-2">
-                    <button type="button" onClick={() => setShowSendModal(false)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button type="button" onClick={() => setShowSendModal(false)} className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Cancel</button>
                     <button type="submit" disabled={sendingEmail} className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50">{sendingEmail ? 'Sending...' : 'Send'}</button>
                   </div>
                 </form>
@@ -510,34 +547,41 @@ export default function LeadDetailPage() {
           {/* Log Email Modal */}
           {showLogModal && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowLogModal(false)}>
-              <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl" onClick={(e) => e.stopPropagation()}>
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Log Email</h3>
+              <div
+                ref={logModalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="lead-log-email-modal-title"
+                className="bg-white dark:bg-gray-900 rounded-xl p-6 w-full max-w-md shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 id="lead-log-email-modal-title" className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Log Email</h3>
                 <form onSubmit={handleLogEmail} className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Direction</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Direction</label>
                     <select value={logForm.direction} onChange={(e) => setLogForm({ ...logForm, direction: e.target.value })} className={inputClass}>
                       <option value="outbound">Sent (Outbound)</option>
                       <option value="inbound">Received (Inbound)</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">From</label>
                     <input value={logForm.fromEmail} onChange={(e) => setLogForm({ ...logForm, fromEmail: e.target.value })} className={inputClass} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">To</label>
                     <input value={logForm.toEmail} onChange={(e) => setLogForm({ ...logForm, toEmail: e.target.value })} className={inputClass} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Subject</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Subject</label>
                     <input value={logForm.subject} onChange={(e) => setLogForm({ ...logForm, subject: e.target.value })} className={inputClass} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Body</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Body</label>
                     <textarea rows={4} value={logForm.body} onChange={(e) => setLogForm({ ...logForm, body: e.target.value })} className={inputClass} />
                   </div>
                   <div className="flex justify-end gap-2 pt-2">
-                    <button type="button" onClick={() => setShowLogModal(false)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
+                    <button type="button" onClick={() => setShowLogModal(false)} className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Cancel</button>
                     <button type="submit" disabled={sendingEmail} className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50">{sendingEmail ? 'Saving...' : 'Log Email'}</button>
                   </div>
                 </form>
@@ -548,17 +592,17 @@ export default function LeadDetailPage() {
       )}
 
       {tab === 'activity' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
           {(lead.activities ?? []).length === 0 ? (
-            <div className="text-sm text-gray-400 text-center py-8">No activity yet</div>
+            <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">No activity yet</div>
           ) : (
             <ul className="space-y-3">
               {(lead.activities ?? []).map((a) => (
                 <li key={a.id} className="flex gap-3 text-sm">
                   <div className="w-2 h-2 bg-primary rounded-full mt-1.5" />
                   <div className="flex-1">
-                    <p className="text-gray-800">{a.description}</p>
-                    <p className="text-xs text-gray-400">{new Date(a.createdAt).toLocaleString()}</p>
+                    <p className="text-gray-800 dark:text-gray-200">{a.description}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{new Date(a.createdAt).toLocaleString()}</p>
                   </div>
                 </li>
               ))}
@@ -566,7 +610,7 @@ export default function LeadDetailPage() {
           )}
         </div>
       )}
-    </div>
+    </DetailPageLayout>
   );
 }
 
@@ -575,8 +619,8 @@ const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg f
 function Detail({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return (
     <div className={wide ? 'sm:col-span-2' : ''}>
-      <dt className="text-xs text-gray-500 mb-1">{label}</dt>
-      <dd className="text-gray-900">{children}</dd>
+      <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</dt>
+      <dd className="text-gray-900 dark:text-gray-100">{children}</dd>
     </div>
   );
 }

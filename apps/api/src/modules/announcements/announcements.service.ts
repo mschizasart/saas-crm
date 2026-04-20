@@ -49,6 +49,42 @@ export class AnnouncementsService {
     });
   }
 
+  // All announcements (active + expired) for the given audience, tagged with
+  // `dismissed: boolean` computed per-user via the AnnouncementDismissal join.
+  async findHistory(
+    orgId: string,
+    audience: 'staff' | 'clients',
+    userId: string,
+  ) {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const audienceFilter =
+        audience === 'staff' ? { showToStaff: true } : { showToClients: true };
+
+      const items = await tx.announcement.findMany({
+        where: {
+          organizationId: orgId,
+          ...audienceFilter,
+        },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          dismissals: {
+            where: { userId },
+            select: { userId: true, dismissedAt: true },
+          },
+        },
+      });
+
+      return items.map((a: any) => {
+        const { dismissals, ...rest } = a;
+        return {
+          ...rest,
+          dismissed: Array.isArray(dismissals) && dismissals.length > 0,
+          dismissedAt: dismissals?.[0]?.dismissedAt ?? null,
+        };
+      });
+    });
+  }
+
   async create(orgId: string, dto: CreateAnnouncementDto) {
     return this.prisma.withOrganization(orgId, async (tx) => {
       return tx.announcement.create({

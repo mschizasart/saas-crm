@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { ErrorBanner } from '@/components/ui/error-banner';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface Role {
   id: string;
@@ -60,32 +64,27 @@ export default function RolesPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="flex items-center gap-2 mb-6 text-sm text-gray-500">
+    <ListPageLayout
+      title="Roles"
+      primaryAction={{ label: 'New Role', href: '/staff/roles/new' }}
+      className="max-w-4xl mx-auto"
+    >
+      <div className="flex items-center gap-2 mb-6 text-sm text-gray-500 dark:text-gray-400">
         <Link href="/staff" className="hover:text-primary">Staff</Link>
         <span>/</span>
-        <span className="text-gray-900 font-medium">Roles</span>
-      </div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Roles</h1>
-        <Link
-          href="/staff/roles/new"
-          className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90"
-        >
-          <span className="text-lg leading-none">+</span>
-          New Role
-        </Link>
+        <span className="text-gray-900 dark:text-gray-100 font-medium">Roles</span>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        {error && (
-          <div className="px-4 py-3 bg-red-50 border-b border-red-100 text-sm text-red-600">
-            {error} — <button className="underline" onClick={fetchRoles}>retry</button>
-          </div>
-        )}
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error} onRetry={fetchRoles} />
+        </div>
+      )}
+
+      <Card>
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Users</th>
               <th className="px-4 py-3 text-right">Actions</th>
@@ -93,23 +92,27 @@ export default function RolesPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={3} className="px-4 py-12 text-center text-gray-400">Loading…</td></tr>
+              <tr><td colSpan={3} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
             ) : roles.length === 0 ? (
-              <tr><td colSpan={3} className="px-4 py-12 text-center text-gray-400">No roles yet</td></tr>
+              <tr>
+                <td colSpan={3}>
+                  <EmptyState title="No roles yet" action={{ label: 'New Role', href: '/staff/roles/new' }} />
+                </td>
+              </tr>
             ) : (
               roles.map((r) => {
                 const count = getUserCount(r);
                 return (
-                  <tr key={r.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60">
-                    <td className="px-4 py-3 font-medium text-gray-900">{r.name}</td>
-                    <td className="px-4 py-3 text-gray-500">{count}</td>
+                  <tr key={r.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{r.name}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{count}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-3">
-                        <Link href={`/staff/roles/${r.id}`} className="text-xs text-gray-500 hover:text-primary">Edit</Link>
+                        <Link href={`/staff/roles/${r.id}`} className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary">Edit</Link>
                         <button
                           disabled={count > 0}
                           onClick={() => deleteRole(r.id)}
-                          className="text-xs text-gray-500 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
                           title={count > 0 ? 'Cannot delete role with assigned users' : 'Delete'}
                         >
                           Delete
@@ -122,7 +125,7 @@ export default function RolesPage() {
             )}
           </tbody>
         </table>
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }

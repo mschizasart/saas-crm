@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { FileText } from 'lucide-react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorBanner } from '@/components/ui/error-banner';
+import { typography } from '@/lib/ui-tokens';
 
 interface Estimate {
   id: string;
@@ -10,12 +19,7 @@ interface Estimate {
   total: number;
   currency: string;
   status: string;
-  client?: { id: string; company?: string; company_name?: string } | null;
-}
-
-interface EstimatesResponse {
-  data: Estimate[];
-  meta: { page: number; per_page: number; total: number; total_pages: number };
+  client?: { id: string; company: string } | null;
 }
 
 interface Stats {
@@ -33,17 +37,9 @@ function getToken(): string | null {
   return localStorage.getItem('access_token');
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-700',
-  sent: 'bg-blue-100 text-blue-700',
-  accepted: 'bg-green-100 text-green-700',
-  declined: 'bg-red-100 text-red-700',
-  expired: 'bg-amber-100 text-amber-700',
-};
-
 export default function EstimatesPage() {
   const [items, setItems] = useState<Estimate[]>([]);
-  const [meta, setMeta] = useState<EstimatesResponse['meta'] | null>(null);
+  const [meta, setMeta] = useState<{ totalPages: number; total: number } | null>(null);
   const [stats, setStats] = useState<Stats>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,13 +50,13 @@ export default function EstimatesPage() {
     setError(null);
     try {
       const [lRes, sRes] = await Promise.all([
-        fetch(`${API_BASE}/api/v1/estimates?page=${page}&per_page=15`, { headers: { Authorization: `Bearer ${getToken()}` } }),
+        fetch(`${API_BASE}/api/v1/estimates?page=${page}&limit=15`, { headers: { Authorization: `Bearer ${getToken()}` } }),
         fetch(`${API_BASE}/api/v1/estimates/stats`, { headers: { Authorization: `Bearer ${getToken()}` } }),
       ]);
       if (!lRes.ok) throw new Error(`Failed (${lRes.status})`);
       const list = await lRes.json();
       setItems(list.data ?? []);
-      setMeta(list.meta ?? null);
+      setMeta({ totalPages: list.totalPages, total: list.total });
       if (sRes.ok) setStats(await sRes.json());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
@@ -71,15 +67,25 @@ export default function EstimatesPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Estimates</h1>
-        <Link href="/estimates/new" className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90">
-          <span className="text-lg leading-none">+</span>New Estimate
-        </Link>
+  const paginationNode =
+    meta && meta.total > 0 ? (
+      <div className="flex items-center justify-between px-4 py-3 border border-gray-100 dark:border-gray-800 rounded-xl bg-gray-50/50 dark:bg-gray-800/50">
+        <p className="text-xs text-gray-500 dark:text-gray-400">{meta.total} total</p>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>Previous</Button>
+          <span className="text-xs text-gray-600 dark:text-gray-400">Page {page} of {meta.totalPages}</span>
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))} disabled={page >= meta.totalPages}>Next</Button>
+        </div>
       </div>
+    ) : null;
 
+  return (
+    <ListPageLayout
+      title="Estimates"
+      secondaryActions={[{ label: 'Pipeline view', href: '/estimates/pipeline' }]}
+      primaryAction={{ label: 'New Estimate', href: '/estimates/new', icon: <span className="text-lg leading-none">+</span> }}
+      pagination={paginationNode}
+    >
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <StatCard label="Draft" value={stats.draft ?? 0} />
         <StatCard label="Sent" value={stats.sent ?? 0} />
@@ -87,18 +93,18 @@ export default function EstimatesPage() {
         <StatCard label="Declined" value={stats.declined ?? 0} />
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card>
         {error && (
-          <div className="px-4 py-3 bg-red-50 border-b border-red-100 text-sm text-red-600">{error}</div>
+          <ErrorBanner message={error} onRetry={fetchData} className="rounded-none border-0 border-b border-red-100" />
         )}
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                 <th className="px-4 py-3">Number</th>
                 <th className="px-4 py-3">Client</th>
-                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Date</th>
                 <th className="px-4 py-3">Total</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -106,55 +112,44 @@ export default function EstimatesPage() {
             </thead>
             <tbody>
               {loading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i} className="border-b border-gray-100">
-                    {Array.from({ length: 6 }).map((__, j) => (
-                      <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td>
-                    ))}
-                  </tr>
-                ))
+                <TableSkeleton rows={6} columns={6} columnWidths={['40%', '50%', '30%', '30%', '25%', '20%']} />
               ) : items.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">No estimates yet</td></tr>
+                <tr>
+                  <td colSpan={6} className="px-4 py-8">
+                    <EmptyState
+                      icon={<FileText className="w-10 h-10" />}
+                      title="No estimates yet"
+                      action={{ label: 'Create your first estimate', href: '/estimates/new' }}
+                    />
+                  </td>
+                </tr>
               ) : items.map((est) => (
-                <tr key={est.id} className="border-b border-gray-100 hover:bg-gray-50/60">
-                  <td className="px-4 py-3 font-medium text-gray-900">{est.number}</td>
-                  <td className="px-4 py-3 text-gray-600">{est.client?.company ?? est.client?.company_name ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{est.date ? new Date(est.date).toLocaleDateString() : '—'}</td>
+                <tr key={est.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/60">
+                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{est.number}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{est.client?.company ?? '—'}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400 hidden lg:table-cell">{est.date ? new Date(est.date).toLocaleDateString() : '—'}</td>
                   <td className="px-4 py-3 tabular-nums">{est.total?.toFixed?.(2) ?? est.total} {est.currency}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[est.status] ?? 'bg-gray-100 text-gray-700'}`}>
-                      {est.status}
-                    </span>
+                    <StatusBadge status={est.status} />
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link href={`/estimates/${est.id}`} className="text-xs text-gray-500 hover:text-primary font-medium">View</Link>
+                    <Link href={`/estimates/${est.id}`} className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary font-medium">View</Link>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-
-        {meta && meta.total > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
-            <p className="text-xs text-gray-500">{meta.total} total</p>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="px-3 py-1.5 text-xs border border-gray-200 rounded-md bg-white disabled:opacity-40">Previous</button>
-              <span className="text-xs text-gray-600">Page {page} of {meta.total_pages}</span>
-              <button onClick={() => setPage((p) => Math.min(meta.total_pages, p + 1))} disabled={page >= meta.total_pages} className="px-3 py-1.5 text-xs border border-gray-200 rounded-md bg-white disabled:opacity-40">Next</button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-      <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-    </div>
+    <Card padding="md">
+      <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</p>
+      <p className={`${typography.h2} mt-1`}>{value}</p>
+    </Card>
   );
 }

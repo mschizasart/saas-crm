@@ -1,21 +1,20 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 
 interface Proposal {
   id: string;
   subject: string;
   content: string;
-  totalValue: number;
+  total: number;
   currency: string;
   status: string;
   allowComments: boolean;
   createdAt: string;
   publicHash?: string;
   client?: { id: string; company?: string; company_name?: string } | null;
-  assignedTo?: { id: string; name?: string } | null;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -65,44 +64,41 @@ export default function ProposalDetailPage() {
     }
   }
 
-  if (loading) return <div className="max-w-4xl animate-pulse h-96 bg-gray-100 rounded-xl" />;
+  if (loading) return <div className="max-w-4xl animate-pulse h-96 bg-gray-100 dark:bg-gray-800 rounded-xl" />;
   if (error || !p) return <div className="text-red-600">{error ?? 'Not found'}</div>;
 
   return (
-    <div className="max-w-4xl">
-      <div className="mb-4"><Link href="/proposals" className="text-sm text-gray-500 hover:text-primary">← Back to proposals</Link></div>
-
-      <div className="flex items-start justify-between mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{p.subject}</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {p.client?.company ?? p.client?.company_name ?? '—'} · Value: {p.totalValue} {p.currency}
-          </p>
-        </div>
+    <DetailPageLayout
+      title={p.subject}
+      subtitle={`${p.client?.company ?? p.client?.company_name ?? '—'} · Value: ${p.total} ${p.currency}`}
+      breadcrumbs={[
+        { label: 'Proposals', href: '/proposals' },
+        { label: p.subject },
+      ]}
+      badge={
         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">{p.status}</span>
-      </div>
-
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button disabled={busy} onClick={() => run('send')} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">Send</button>
-        <button disabled={busy} onClick={() => run('accept')} className="px-3 py-1.5 text-sm border border-green-200 text-green-700 rounded-lg hover:bg-green-50 disabled:opacity-50">Mark Accepted</button>
-        <button disabled={busy} onClick={() => run('decline')} className="px-3 py-1.5 text-sm border border-red-200 text-red-700 rounded-lg hover:bg-red-50 disabled:opacity-50">Mark Declined</button>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+      }
+      actions={[
+        { label: 'Send', onClick: () => run('send'), disabled: busy, variant: 'secondary' },
+        { label: 'Mark Accepted', onClick: () => run('accept'), disabled: busy, variant: 'secondary' },
+        { label: 'Mark Declined', onClick: () => run('decline'), disabled: busy, variant: 'secondary' },
+      ]}
+    >
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
         <div className="prose max-w-none text-sm" dangerouslySetInnerHTML={{ __html: p.content }} />
       </div>
 
       {p.publicHash && (
-        <div className="mt-4 p-3 bg-gray-50 rounded-lg text-sm flex items-center justify-between gap-2">
-          <span className="text-gray-600 truncate">Public link: /proposal/{p.publicHash}</span>
+        <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm flex items-center justify-between gap-2">
+          <span className="text-gray-600 dark:text-gray-400 truncate">Public link: /proposal/{p.publicHash}</span>
           <button
             onClick={() => navigator.clipboard.writeText(`${window.location.origin}/proposal/${p.publicHash}`)}
-            className="text-xs px-2 py-1 bg-white border border-gray-200 rounded hover:bg-gray-50"
+            className="text-xs px-2 py-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-800"
           >
             Copy
           </button>
         </div>
       )}
-    </div>
+    </DetailPageLayout>
   );
 }

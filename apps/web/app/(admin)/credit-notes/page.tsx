@@ -2,6 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { ErrorBanner } from '@/components/ui/error-banner';
+import { Button } from '@/components/ui/button';
 
 type Status = 'all' | 'draft' | 'open' | 'applied' | 'voided';
 
@@ -28,17 +33,18 @@ function authHeaders(): HeadersInit {
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    draft: 'bg-gray-100 text-gray-500',
-    open: 'bg-blue-100 text-blue-700',
-    applied: 'bg-green-100 text-green-700',
-    voided: 'bg-red-100 text-red-700',
-  };
+const STATUS_MAP: Record<string, BadgeVariant> = {
+  draft: 'muted',
+  open: 'info',
+  applied: 'success',
+  voided: 'error',
+};
+
+function CreditNoteStatusBadge({ status }: { status: string }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${map[status] ?? 'bg-gray-100 text-gray-500'}`}>
+    <Badge variant={STATUS_MAP[status] ?? 'default'} className="capitalize">
       {status}
-    </span>
+    </Badge>
   );
 }
 
@@ -88,47 +94,70 @@ export default function CreditNotesPage() {
 
   const totalPages = meta?.totalPages ?? 1;
 
+  const filtersNode = (
+    <div className="border-b border-gray-200 dark:border-gray-700">
+      <nav className="flex gap-1 -mb-px">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setStatus(t.key)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              status === t.key ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+
+  const paginationNode =
+    !loading && meta && meta.total > 0 ? (
+      <div className="flex items-center justify-between px-4 py-3 border border-gray-100 dark:border-gray-800 rounded-xl bg-gray-50/50 dark:bg-gray-800/50">
+        <p className="text-xs text-gray-500 dark:text-gray-400">{meta.total} total</p>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+          >
+            Previous
+          </Button>
+          <span className="text-xs text-gray-600 dark:text-gray-400 min-w-[80px] text-center">Page {page} of {totalPages}</span>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+    ) : null;
+
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Credit Notes</h1>
-        <Link
-          href="/credit-notes/new"
-          className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90"
-        >
-          <span className="text-lg leading-none">+</span>
-          New Credit Note
-        </Link>
-      </div>
+    <ListPageLayout
+      title="Credit Notes"
+      primaryAction={{ label: 'New Credit Note', href: '/credit-notes/new' }}
+      filters={filtersNode}
+      pagination={paginationNode}
+    >
+      {error && (
+        <div className="mb-4">
+          <ErrorBanner message={error} onRetry={fetchItems} />
+        </div>
+      )}
 
-      <div className="border-b border-gray-200 mb-4">
-        <nav className="flex gap-1 -mb-px">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setStatus(t.key)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                status === t.key ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        {error && (
-          <div className="px-4 py-3 bg-red-50 border-b border-red-100 text-sm text-red-600">
-            {error} — <button className="underline" onClick={fetchItems}>retry</button>
-          </div>
-        )}
+      <Card>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                 <th className="px-4 py-3">Number</th>
-                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Date</th>
                 <th className="px-4 py-3">Client</th>
                 <th className="px-4 py-3">Invoice</th>
                 <th className="px-4 py-3 text-right">Total</th>
@@ -138,30 +167,30 @@ export default function CreditNotesPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">Loading…</td></tr>
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">Loading…</td></tr>
               ) : items.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">No credit notes found</td></tr>
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400 dark:text-gray-500">No credit notes found</td></tr>
               ) : (
                 items.map((cn) => (
-                  <tr key={cn.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60">
-                    <td className="px-4 py-3 font-medium text-gray-900">
+                  <tr key={cn.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                       <Link href={`/credit-notes/${cn.id}`} className="text-primary hover:underline">
                         {cn.number}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-gray-500">{new Date(cn.date).toLocaleDateString()}</td>
-                    <td className="px-4 py-3 text-gray-500">{cn.client?.company ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-500">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">{new Date(cn.date).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{cn.client?.company ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                       {cn.invoice ? (
                         <Link href={`/invoices/${cn.invoice.id}`} className="text-primary hover:underline">
                           {cn.invoice.number}
                         </Link>
                       ) : '—'}
                     </td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900">{Number(cn.total).toFixed(2)}</td>
-                    <td className="px-4 py-3"><StatusBadge status={cn.status} /></td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-gray-100">{Number(cn.total).toFixed(2)}</td>
+                    <td className="px-4 py-3"><CreditNoteStatusBadge status={cn.status} /></td>
                     <td className="px-4 py-3 text-right">
-                      <Link href={`/credit-notes/${cn.id}`} className="text-xs text-gray-500 hover:text-primary">View</Link>
+                      <Link href={`/credit-notes/${cn.id}`} className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary">View</Link>
                     </td>
                   </tr>
                 ))
@@ -169,29 +198,7 @@ export default function CreditNotesPage() {
             </tbody>
           </table>
         </div>
-        {!loading && meta && meta.total > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
-            <p className="text-xs text-gray-500">{meta.total} total</p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40"
-              >
-                Previous
-              </button>
-              <span className="text-xs text-gray-600 min-w-[80px] text-center">Page {page} of {totalPages}</span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }

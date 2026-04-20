@@ -90,46 +90,46 @@ export default function EditRolePage() {
   }
 
   if (loading) {
-    return <div className="flex justify-center py-24 text-sm text-gray-400">Loading…</div>;
+    return <div className="flex justify-center py-24 text-sm text-gray-400 dark:text-gray-500">Loading…</div>;
   }
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="flex items-center gap-2 mb-6 text-sm text-gray-500">
+      <div className="flex items-center gap-2 mb-6 text-sm text-gray-500 dark:text-gray-400">
         <Link href="/staff/roles" className="hover:text-primary">Roles</Link>
         <span>/</span>
-        <span className="text-gray-900 font-medium">{name || 'Edit'}</span>
+        <span className="text-gray-900 dark:text-gray-100 font-medium">{name || 'Edit'}</span>
       </div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Edit Role</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Edit Role</h1>
 
-      <form onSubmit={save} className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+      <form onSubmit={save} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
         {error && (
           <div className="mb-4 px-3 py-2 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg">{error}</div>
         )}
         <div className="mb-6">
-          <label className="block text-xs font-medium text-gray-500 mb-1">Name *</label>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Name *</label>
           <input
             type="text"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full max-w-md px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            className="w-full max-w-md px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
           />
         </div>
 
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">Permissions</h2>
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Permissions</h2>
         {Object.keys(matrix).length === 0 ? (
-          <p className="text-sm text-gray-400">No permissions available</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500">No permissions available</p>
         ) : (
           <div className="space-y-4">
             {Object.entries(matrix).map(([mod, actions]) => (
-              <div key={mod} className="border border-gray-100 rounded-lg p-4">
-                <p className="text-sm font-medium text-gray-700 mb-2 capitalize">{mod}</p>
+              <div key={mod} className="border border-gray-100 dark:border-gray-800 rounded-lg p-4">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 capitalize">{mod}</p>
                 <div className="flex flex-wrap gap-4">
                   {actions.map((a) => {
                     const k = permKey(mod, a);
                     return (
-                      <label key={a} className="inline-flex items-center gap-2 text-sm text-gray-700">
+                      <label key={a} className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                         <input
                           type="checkbox"
                           checked={!!permissions[k]}
@@ -154,7 +154,7 @@ export default function EditRolePage() {
           >
             {saving ? 'Saving…' : 'Save Changes'}
           </button>
-          <Link href="/staff/roles" className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50">
+          <Link href="/staff/roles" className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
             Cancel
           </Link>
         </div>

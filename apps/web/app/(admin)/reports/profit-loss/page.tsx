@@ -131,11 +131,11 @@ export default function ProfitLossPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Line chart: Revenue vs Expenses by month */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Revenue vs Expenses by Month</h2>
+        <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Revenue vs Expenses by Month</h2>
           <div style={{ width: '100%', height: 320 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 rounded animate-pulse" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 rounded animate-pulse" />
             ) : (
               <ResponsiveContainer>
                 <LineChart data={data.byMonth}>
@@ -170,13 +170,13 @@ export default function ProfitLossPage() {
         </div>
 
         {/* Pie chart: Expenses by category */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Expenses by Category</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Expenses by Category</h2>
           <div style={{ width: '100%', height: 320 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 rounded animate-pulse" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 rounded animate-pulse" />
             ) : data.expensesByCategory.length === 0 ? (
-              <p className="text-sm text-gray-400 py-8 text-center">
+              <p className="text-sm text-gray-400 dark:text-gray-500 py-8 text-center">
                 No expenses in this period.
               </p>
             ) : (

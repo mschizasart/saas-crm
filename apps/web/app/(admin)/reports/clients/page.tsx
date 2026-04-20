@@ -114,13 +114,13 @@ export default function ClientsReportPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Clients by Country</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Clients by Country</h2>
           <div style={{ width: '100%', height: 340 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 rounded animate-pulse" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 rounded animate-pulse" />
             ) : data.byCountry.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">
                 No country data.
               </p>
             ) : (
@@ -148,22 +148,22 @@ export default function ClientsReportPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Top 10 by Revenue</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Top 10 by Revenue</h2>
           {loading || !data ? (
             <div className="space-y-2">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-8 bg-gray-50 rounded animate-pulse" />
+                <div key={i} className="h-8 bg-gray-50 dark:bg-gray-900 rounded animate-pulse" />
               ))}
             </div>
           ) : data.topByRevenue.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">
+            <p className="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
               No revenue data.
             </p>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs font-semibold text-gray-400 uppercase border-b border-gray-100">
+                <tr className="text-left text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase border-b border-gray-100 dark:border-gray-800">
                   <th className="py-2">Client</th>
                   <th className="py-2 text-right">Revenue</th>
                 </tr>
@@ -172,12 +172,12 @@ export default function ClientsReportPage() {
                 {data.topByRevenue.map((c) => (
                   <tr
                     key={c.clientId}
-                    className="border-b border-gray-100 last:border-0"
+                    className="border-b border-gray-100 dark:border-gray-800 last:border-0"
                   >
-                    <td className="py-2 text-gray-800 truncate max-w-[200px]">
+                    <td className="py-2 text-gray-800 dark:text-gray-200 truncate max-w-[200px]">
                       {c.company}
                     </td>
-                    <td className="py-2 text-right font-semibold text-gray-900">
+                    <td className="py-2 text-right font-semibold text-gray-900 dark:text-gray-100">
                       {formatCurrency(c.totalRevenue)}
                     </td>
                   </tr>

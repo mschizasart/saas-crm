@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -11,9 +12,10 @@ import { useParams, useRouter } from 'next/navigation';
 interface InvoiceItem {
   id: string;
   description: string;
-  quantity: number;
-  unitPrice: number;
-  taxRate: number;
+  qty: number;
+  rate: number;
+  tax1: string | null;
+  tax2: string | null;
   total: number;
   order: number;
 }
@@ -31,8 +33,8 @@ interface Invoice {
   date: string;
   dueDate: string | null;
   status: string;
-  subtotal: number;
-  tax: number;
+  subTotal: number;
+  totalTax: number;
   discount: number;
   total: number;
   notes: string | null;
@@ -204,78 +206,48 @@ export default function InvoiceDetailPage() {
   const showMarkPaid = ['sent', 'partial', 'overdue', 'viewed'].includes(status);
   const discount = Number(invoice.discount);
 
+  const actions: { label: string; onClick: () => void; disabled?: boolean; variant?: 'primary' | 'secondary' }[] = [];
+  if (showSend) {
+    actions.push({ label: 'Send Invoice', onClick: () => runAction('send'), disabled: actionLoading, variant: 'primary' });
+  }
+  if (showMarkPaid) {
+    actions.push({ label: 'Mark as Paid', onClick: () => runAction('mark-paid'), disabled: actionLoading, variant: 'primary' });
+  }
+  actions.push({
+    label: 'Duplicate',
+    onClick: () => runAction('duplicate', (data) => {
+      if (data?.id) router.push(`/invoices/${data.id}`);
+    }),
+    disabled: actionLoading,
+    variant: 'secondary',
+  });
+  actions.push({
+    label: 'Create Credit Note',
+    onClick: () => runAction('credit-note', (data) => {
+      if (data?.id) router.push(`/credit-notes/${data.id}`);
+    }),
+    disabled: actionLoading,
+    variant: 'secondary',
+  });
+  actions.push({
+    label: 'Clone to Estimate',
+    onClick: () => runAction('clone-to-estimate', (data) => {
+      if (data?.id) router.push(`/estimates/${data.id}`);
+    }),
+    disabled: actionLoading,
+    variant: 'secondary',
+  });
+
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* ── Breadcrumb ────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 mb-6 text-sm text-gray-500">
-        <Link href="/invoices" className="hover:text-primary transition-colors">Invoices</Link>
-        <span>/</span>
-        <span className="text-gray-900 font-medium">Invoice #{invoice.number}</span>
-      </div>
-
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-900">Invoice {invoice.number}</h1>
-          <StatusBadge status={status} />
-        </div>
-
-        {/* Action bar */}
-        <div className="flex items-center gap-2">
-          {showSend && (
-            <button
-              onClick={() => runAction('send')}
-              disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              Send Invoice
-            </button>
-          )}
-          {showMarkPaid && (
-            <button
-              onClick={() => runAction('mark-paid')}
-              disabled={actionLoading}
-              className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-            >
-              Mark as Paid
-            </button>
-          )}
-          <button
-            onClick={() =>
-              runAction('duplicate', (data) => {
-                if (data?.id) router.push(`/invoices/${data.id}`);
-              })
-            }
-            disabled={actionLoading}
-            className="px-4 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
-          >
-            Duplicate
-          </button>
-          <button
-            onClick={() =>
-              runAction('credit-note', (data) => {
-                if (data?.id) router.push(`/credit-notes/${data.id}`);
-              })
-            }
-            disabled={actionLoading}
-            className="px-4 py-2 text-sm font-medium border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-          >
-            Create Credit Note
-          </button>
-          <button
-            onClick={() =>
-              runAction('clone-to-estimate', (data) => {
-                if (data?.id) router.push(`/estimates/${data.id}`);
-              })
-            }
-            disabled={actionLoading}
-            className="px-4 py-2 text-sm font-medium border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-          >
-            Clone to Estimate
-          </button>
-        </div>
-      </div>
-
+    <DetailPageLayout
+      title={`Invoice ${invoice.number}`}
+      breadcrumbs={[
+        { label: 'Invoices', href: '/invoices' },
+        { label: `Invoice #${invoice.number}` },
+      ]}
+      badge={<StatusBadge status={status} />}
+      actions={actions}
+    >
       {actionError && (
         <div className="mb-4 px-3 py-2 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg">
           {actionError}
@@ -283,40 +255,40 @@ export default function InvoiceDetailPage() {
       )}
 
       {/* ── Info row ─────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 mb-6">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 text-sm">
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Client</p>
+            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">Client</p>
             {invoice.client ? (
               <Link href={`/clients/${invoice.client.id}`} className="text-primary hover:underline font-medium">
                 {invoice.client.company}
               </Link>
             ) : (
-              <span className="text-gray-300">—</span>
+              <span className="text-gray-300 dark:text-gray-600">—</span>
             )}
           </div>
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Issue Date</p>
-            <p className="text-gray-900 font-medium">{new Date(invoice.date).toLocaleDateString()}</p>
+            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">Issue Date</p>
+            <p className="text-gray-900 dark:text-gray-100 font-medium">{new Date(invoice.date).toLocaleDateString()}</p>
           </div>
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Due Date</p>
-            <p className="text-gray-900 font-medium">
-              {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : <span className="text-gray-300">—</span>}
+            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">Due Date</p>
+            <p className="text-gray-900 dark:text-gray-100 font-medium">
+              {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : <span className="text-gray-300 dark:text-gray-600">—</span>}
             </p>
           </div>
         </div>
       </div>
 
       {/* ── Line items ───────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-6">
-        <div className="px-4 py-3 border-b border-gray-100">
-          <h2 className="text-sm font-semibold text-gray-700">Line Items</h2>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden mb-6">
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Line Items</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                 <th className="px-4 py-3 text-left">Description</th>
                 <th className="px-4 py-3 text-right">Qty</th>
                 <th className="px-4 py-3 text-right">Unit Price</th>
@@ -330,11 +302,11 @@ export default function InvoiceDetailPage() {
                   key={item.id}
                   className={`border-b border-gray-100 last:border-0 ${i % 2 === 1 ? 'bg-gray-50/50' : ''}`}
                 >
-                  <td className="px-4 py-3 text-gray-900">{item.description}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{Number(item.quantity)}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{fmt(item.unitPrice)}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{Number(item.taxRate)}%</td>
-                  <td className="px-4 py-3 text-right font-medium text-gray-900">{fmt(item.total)}</td>
+                  <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{item.description}</td>
+                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">{Number(item.qty)}</td>
+                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">{fmt(item.rate)}</td>
+                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">{item.tax1 ?? '—'}</td>
+                  <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-gray-100">{fmt(item.total)}</td>
                 </tr>
               ))}
             </tbody>
@@ -342,23 +314,23 @@ export default function InvoiceDetailPage() {
         </div>
 
         {/* Totals box */}
-        <div className="px-4 py-4 border-t border-gray-100 flex justify-end">
+        <div className="px-4 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end">
           <div className="w-full max-w-xs space-y-1.5 text-sm">
-            <div className="flex justify-between text-gray-600">
+            <div className="flex justify-between text-gray-600 dark:text-gray-400">
               <span>Subtotal</span>
-              <span>{fmt(invoice.subtotal)}</span>
+              <span>{fmt(invoice.subTotal)}</span>
             </div>
-            <div className="flex justify-between text-gray-600">
+            <div className="flex justify-between text-gray-600 dark:text-gray-400">
               <span>Tax</span>
-              <span>{fmt(invoice.tax)}</span>
+              <span>{fmt(invoice.totalTax)}</span>
             </div>
             {discount > 0 && (
-              <div className="flex justify-between text-gray-600">
+              <div className="flex justify-between text-gray-600 dark:text-gray-400">
                 <span>Discount</span>
                 <span>-{fmt(discount)}</span>
               </div>
             )}
-            <div className="flex justify-between font-bold text-gray-900 text-base pt-2 border-t border-gray-200">
+            <div className="flex justify-between font-bold text-gray-900 dark:text-gray-100 text-base pt-2 border-t border-gray-200 dark:border-gray-700">
               <span>Total</span>
               <span>{invoice.currency} {fmt(invoice.total)}</span>
             </div>
@@ -368,14 +340,14 @@ export default function InvoiceDetailPage() {
 
       {/* ── Payments ─────────────────────────────────────────────────────── */}
       {invoice.payments && invoice.payments.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-6">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-700">Payments</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden mb-6">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Payments</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                   <th className="px-4 py-3 text-left">Date</th>
                   <th className="px-4 py-3 text-right">Amount</th>
                   <th className="px-4 py-3 text-left">Transaction ID</th>
@@ -383,11 +355,11 @@ export default function InvoiceDetailPage() {
               </thead>
               <tbody>
                 {invoice.payments.map((p) => (
-                  <tr key={p.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50">
-                    <td className="px-4 py-3 text-gray-600">{new Date(p.paymentDate).toLocaleDateString()}</td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900">{fmt(p.amount)}</td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {p.transactionId ?? <span className="text-gray-300">—</span>}
+                  <tr key={p.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/50">
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{new Date(p.paymentDate).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-gray-100">{fmt(p.amount)}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+                      {p.transactionId ?? <span className="text-gray-300 dark:text-gray-600">—</span>}
                     </td>
                   </tr>
                 ))}
@@ -398,12 +370,12 @@ export default function InvoiceDetailPage() {
       )}
 
       {/* ── Activity ───────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden mb-6">
         <button
           onClick={() => setShowActivity((v) => !v)}
-          className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
         >
-          <h2 className="text-sm font-semibold text-gray-700">Activity Log</h2>
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Activity Log</h2>
           <svg
             className={`w-4 h-4 text-gray-400 transition-transform ${showActivity ? 'rotate-180' : ''}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
@@ -412,13 +384,13 @@ export default function InvoiceDetailPage() {
           </svg>
         </button>
         {showActivity && (
-          <div className="border-t border-gray-100">
+          <div className="border-t border-gray-100 dark:border-gray-800">
             {activitiesLoading ? (
-              <p className="p-4 text-sm text-gray-400">Loading...</p>
+              <p className="p-4 text-sm text-gray-400 dark:text-gray-500">Loading...</p>
             ) : activities.length === 0 ? (
-              <p className="p-4 text-sm text-gray-400 text-center">No activity recorded.</p>
+              <p className="p-4 text-sm text-gray-400 dark:text-gray-500 text-center">No activity recorded.</p>
             ) : (
-              <ul className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800 max-h-80 overflow-y-auto">
                 {activities.map((a: any) => (
                   <li key={a.id} className="px-4 py-3 flex items-start gap-3">
                     <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-semibold flex-shrink-0">
@@ -429,7 +401,7 @@ export default function InvoiceDetailPage() {
                     <div className="flex-1 min-w-0">
                       {a.action?.endsWith('.field_changed') && a.additionalData?.field ? (
                         <>
-                          <p className="text-xs text-gray-700">
+                          <p className="text-xs text-gray-700 dark:text-gray-300">
                             {a.user && <span className="font-medium">{a.user.firstName} {a.user.lastName} </span>}
                             changed <span className="font-medium">{a.additionalData.field}</span>
                           </p>
@@ -437,19 +409,19 @@ export default function InvoiceDetailPage() {
                             <span className="line-through text-red-500 bg-red-50 px-1 rounded">
                               {a.additionalData.oldValue ?? '(empty)'}
                             </span>
-                            <span className="text-gray-400">-&gt;</span>
+                            <span className="text-gray-400 dark:text-gray-500">-&gt;</span>
                             <span className="text-green-700 bg-green-50 px-1 rounded">
                               {a.additionalData.newValue ?? '(empty)'}
                             </span>
                           </div>
                         </>
                       ) : (
-                        <p className="text-xs text-gray-700">
+                        <p className="text-xs text-gray-700 dark:text-gray-300">
                           {a.user && <span className="font-medium">{a.user.firstName} {a.user.lastName} </span>}
                           {a.description ?? a.action}
                         </p>
                       )}
-                      <p className="text-[10px] text-gray-400 mt-0.5">
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
                         {new Date(a.createdAt).toLocaleString()}
                       </p>
                     </div>
@@ -463,11 +435,11 @@ export default function InvoiceDetailPage() {
 
       {/* ── Notes ────────────────────────────────────────────────────────── */}
       {invoice.notes && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Notes</h2>
-          <p className="text-sm text-gray-600 whitespace-pre-wrap">{invoice.notes}</p>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+          <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">Notes</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{invoice.notes}</p>
         </div>
       )}
-    </div>
+    </DetailPageLayout>
   );
 }

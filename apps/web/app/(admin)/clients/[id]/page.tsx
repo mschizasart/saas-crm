@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { CustomFieldsForm } from '../../../../components/custom-fields-form';
+import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,8 +27,8 @@ interface Client {
   address: string | null;
   city: string | null;
   country: string | null;
-  vatNumber: string | null;
-  isActive: boolean;
+  vat: string | null;
+  active: boolean;
   contacts: Contact[];
   _count: {
     invoices: number;
@@ -281,7 +282,7 @@ export default function ClientDetailPage() {
       address: client.address ?? '',
       city: client.city ?? '',
       country: client.country ?? '',
-      vatNumber: client.vatNumber ?? '',
+      vat: client.vat ?? '',
     });
     setSaveError(null);
     setEditing(true);
@@ -358,53 +359,32 @@ export default function ClientDetailPage() {
     { key: 'activity', label: 'Activity' },
   ];
 
+  const actions = !editing
+    ? [
+        {
+          label: downloadingStatement ? 'Generating…' : 'Download Statement',
+          onClick: downloadStatement,
+          disabled: downloadingStatement,
+          variant: 'secondary' as const,
+        },
+        { label: 'Edit', onClick: startEdit, variant: 'primary' as const },
+      ]
+    : undefined;
+
   return (
-    <div className="max-w-5xl mx-auto">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 mb-6 text-sm text-gray-500">
-        <Link href="/clients" className="hover:text-primary transition-colors">Clients</Link>
-        <span>/</span>
-        <span className="text-gray-900 font-medium">{client.company}</span>
-      </div>
-
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-900">{client.company}</h1>
-          <ActiveBadge active={client.isActive} />
-        </div>
-        {!editing && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={downloadStatement}
-              disabled={downloadingStatement}
-              className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              {downloadingStatement ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Generating…
-                </>
-              ) : (
-                'Download Statement'
-              )}
-            </button>
-            <button
-              onClick={startEdit}
-              className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-            >
-              Edit
-            </button>
-          </div>
-        )}
-      </div>
-
+    <DetailPageLayout
+      title={client.company}
+      breadcrumbs={[
+        { label: 'Clients', href: '/clients' },
+        { label: client.company },
+      ]}
+      badge={<ActiveBadge active={client.active} />}
+      actions={actions}
+    >
       {/* ── Inline Edit Form ───────────────────────────────────────────────── */}
       {editing && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Edit Client</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 mb-6">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Edit Client</h2>
           {saveError && (
             <div className="mb-4 px-3 py-2 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg">
               {saveError}
@@ -419,16 +399,16 @@ export default function ClientDetailPage() {
                 { label: 'Address', field: 'address' },
                 { label: 'City', field: 'city' },
                 { label: 'Country', field: 'country' },
-                { label: 'VAT Number', field: 'vatNumber' },
+                { label: 'VAT Number', field: 'vat' },
               ] as { label: string; field: keyof typeof editForm }[]
             ).map(({ label, field }) => (
               <div key={field}>
-                <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
                 <input
                   type="text"
                   value={(editForm[field] as string) ?? ''}
                   onChange={(e) => setEditForm((prev) => ({ ...prev, [field]: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 />
               </div>
             ))}
@@ -443,7 +423,7 @@ export default function ClientDetailPage() {
             </button>
             <button
               onClick={cancelEdit}
-              className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               Cancel
             </button>
@@ -452,7 +432,7 @@ export default function ClientDetailPage() {
       )}
 
       {/* ── Tabs ───────────────────────────────────────────────────────────── */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
         <nav className="flex gap-1 -mb-px">
           {tabs.map((t) => (
             <button
@@ -480,22 +460,22 @@ export default function ClientDetailPage() {
               { label: 'Projects', count: client._count.projects },
               { label: 'Tickets', count: client._count.tickets },
             ].map(({ label, count }) => (
-              <div key={label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{label}</p>
-                <p className="text-3xl font-bold text-gray-900">{count}</p>
+              <div key={label} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2">{label}</p>
+                <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">{count}</p>
               </div>
             ))}
           </div>
 
           {/* Health Score Card */}
           {healthLoading ? (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 animate-pulse">
-              <div className="h-4 w-1/3 bg-gray-100 rounded mb-4" />
-              <div className="h-20 w-20 bg-gray-100 rounded-full mx-auto" />
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 animate-pulse">
+              <div className="h-4 w-1/3 bg-gray-100 dark:bg-gray-800 rounded mb-4" />
+              <div className="h-20 w-20 bg-gray-100 dark:bg-gray-800 rounded-full mx-auto" />
             </div>
           ) : healthScore ? (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Health Score</h3>
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Health Score</h3>
               <div className="flex items-start gap-6">
                 {/* Circular score display */}
                 <div className="flex flex-col items-center gap-2 flex-shrink-0">
@@ -511,7 +491,7 @@ export default function ClientDetailPage() {
                             : 'border-red-500',
                     ].join(' ')}
                   >
-                    <span className="text-2xl font-bold text-gray-900">
+                    <span className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                       {healthScore.score}
                     </span>
                   </div>
@@ -535,14 +515,14 @@ export default function ClientDetailPage() {
                   {healthScore.factors.map((f) => (
                     <div key={f.name}>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-gray-600">
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
                           {f.name}
                         </span>
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
                           {f.score}/{f.maxScore}
                         </span>
                       </div>
-                      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                         <div
                           className={[
                             'h-full rounded-full transition-all',
@@ -559,7 +539,7 @@ export default function ClientDetailPage() {
                           }}
                         />
                       </div>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
                         {f.detail}
                       </p>
                     </div>
@@ -596,9 +576,9 @@ export default function ClientDetailPage() {
 
       {/* ── Contacts tab ───────────────────────────────────────────────────── */}
       {activeTab === 'contacts' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-700">Contacts</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Contacts</h2>
             <button
               onClick={() => { setShowContactForm((v) => !v); setContactError(null); }}
               className="inline-flex items-center gap-1 text-xs font-medium bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary/90 transition-colors"
@@ -608,14 +588,14 @@ export default function ClientDetailPage() {
           </div>
 
           {showContactForm && (
-            <form onSubmit={submitContact} className="px-4 py-4 border-b border-gray-100 bg-gray-50/50">
+            <form onSubmit={submitContact} className="px-4 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
               {contactError && (
                 <p className="text-red-600 text-xs mb-3">{contactError}</p>
               )}
               <div className="grid grid-cols-2 gap-3 mb-3">
                 {(['firstName', 'lastName', 'email', 'phone'] as const).map((f) => (
                   <div key={f}>
-                    <label className="block text-xs font-medium text-gray-500 mb-1 capitalize">
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 capitalize">
                       {f.replace(/([A-Z])/g, ' $1')}
                     </label>
                     <input
@@ -623,7 +603,7 @@ export default function ClientDetailPage() {
                       value={contactForm[f]}
                       onChange={(e) => setContactForm((p) => ({ ...p, [f]: e.target.value }))}
                       required={f === 'firstName' || f === 'lastName'}
-                      className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white"
+                      className="w-full px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white dark:bg-gray-900"
                     />
                   </div>
                 ))}
@@ -639,7 +619,7 @@ export default function ClientDetailPage() {
                 <button
                   type="button"
                   onClick={() => setShowContactForm(false)}
-                  className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+                  className="px-3 py-1.5 text-xs font-medium border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 >
                   Cancel
                 </button>
@@ -650,7 +630,7 @@ export default function ClientDetailPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                   <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3">Email</th>
                   <th className="px-4 py-3">Phone</th>
@@ -660,18 +640,18 @@ export default function ClientDetailPage() {
               <tbody>
                 {(!client.contacts || client.contacts.length === 0) ? (
                   <tr>
-                    <td colSpan={4} className="px-4 py-10 text-center text-sm text-gray-400">
+                    <td colSpan={4} className="px-4 py-10 text-center text-sm text-gray-400 dark:text-gray-500">
                       No contacts yet
                     </td>
                   </tr>
                 ) : (
                   client.contacts.map((c) => (
-                    <tr key={c.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50">
-                      <td className="px-4 py-3 font-medium text-gray-900">
+                    <tr key={c.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/50">
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                         {c.firstName} {c.lastName}
                       </td>
-                      <td className="px-4 py-3 text-gray-500">{c.email ?? <span className="text-gray-300">—</span>}</td>
-                      <td className="px-4 py-3 text-gray-500">{c.phone ?? <span className="text-gray-300">—</span>}</td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{c.email ?? <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{c.phone ?? <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                       <td className="px-4 py-3">
                         {c.isPrimary && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
@@ -690,14 +670,14 @@ export default function ClientDetailPage() {
 
       {/* ── Invoices tab ───────────────────────────────────────────────────── */}
       {activeTab === 'invoices' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-700">Invoices</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Invoices</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                   <th className="px-4 py-3">Number</th>
                   <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3 text-right">Total</th>
@@ -707,32 +687,32 @@ export default function ClientDetailPage() {
               <tbody>
                 {invoicesLoading ? (
                   Array.from({ length: 4 }).map((_, i) => (
-                    <tr key={i} className="border-b border-gray-100">
+                    <tr key={i} className="border-b border-gray-100 dark:border-gray-800">
                       {Array.from({ length: 4 }).map((__, j) => (
                         <td key={j} className="px-4 py-3">
-                          <div className="h-4 bg-gray-100 rounded animate-pulse" style={{ width: j === 2 ? '40%' : '60%' }} />
+                          <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" style={{ width: j === 2 ? '40%' : '60%' }} />
                         </td>
                       ))}
                     </tr>
                   ))
                 ) : invoices.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-4 py-10 text-center text-sm text-gray-400">
+                    <td colSpan={4} className="px-4 py-10 text-center text-sm text-gray-400 dark:text-gray-500">
                       No invoices found for this client
                     </td>
                   </tr>
                 ) : (
                   invoices.map((inv) => (
-                    <tr key={inv.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/50">
-                      <td className="px-4 py-3 font-medium text-gray-900">
+                    <tr key={inv.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/50">
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                         <Link href={`/invoices/${inv.id}`} className="text-primary hover:underline">
                           {inv.number}
                         </Link>
                       </td>
-                      <td className="px-4 py-3 text-gray-500">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                         {new Date(inv.date).toLocaleDateString()}
                       </td>
-                      <td className="px-4 py-3 text-right text-gray-900 font-medium">
+                      <td className="px-4 py-3 text-right text-gray-900 dark:text-gray-100 font-medium">
                         {Number(inv.total).toFixed(2)}
                       </td>
                       <td className="px-4 py-3">
@@ -749,16 +729,16 @@ export default function ClientDetailPage() {
 
       {/* ── Activity tab ──────────────────────────────────────────────────── */}
       {activeTab === 'activity' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-700">Activity Log</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Activity Log</h2>
           </div>
           {activitiesLoading ? (
-            <p className="p-6 text-sm text-gray-400">Loading...</p>
+            <p className="p-6 text-sm text-gray-400 dark:text-gray-500">Loading...</p>
           ) : activities.length === 0 ? (
-            <p className="p-6 text-sm text-gray-400 text-center">No activity recorded for this client.</p>
+            <p className="p-6 text-sm text-gray-400 dark:text-gray-500 text-center">No activity recorded for this client.</p>
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
               {activities.map((a) => (
                 <li key={a.id} className="p-4 flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold flex-shrink-0">
@@ -769,7 +749,7 @@ export default function ClientDetailPage() {
                   <div className="flex-1 min-w-0">
                     {a.action.endsWith('.field_changed') && a.additionalData?.field ? (
                       <>
-                        <p className="text-sm text-gray-800">
+                        <p className="text-sm text-gray-800 dark:text-gray-200">
                           {a.user && (
                             <span className="font-medium">
                               {a.user.firstName} {a.user.lastName}{' '}
@@ -781,14 +761,14 @@ export default function ClientDetailPage() {
                           <span className="line-through text-red-500 bg-red-50 px-1 rounded">
                             {a.additionalData.oldValue ?? '(empty)'}
                           </span>
-                          <span className="text-gray-400">-&gt;</span>
+                          <span className="text-gray-400 dark:text-gray-500">-&gt;</span>
                           <span className="text-green-700 bg-green-50 px-1 rounded">
                             {a.additionalData.newValue ?? '(empty)'}
                           </span>
                         </div>
                       </>
                     ) : (
-                      <p className="text-sm text-gray-800">
+                      <p className="text-sm text-gray-800 dark:text-gray-200">
                         {a.user && (
                           <span className="font-medium">
                             {a.user.firstName} {a.user.lastName}{' '}
@@ -797,7 +777,7 @@ export default function ClientDetailPage() {
                         {a.description ?? a.action}
                       </p>
                     )}
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                       {new Date(a.createdAt).toLocaleString()}
                     </p>
                   </div>
@@ -807,6 +787,6 @@ export default function ClientDetailPage() {
           )}
         </div>
       )}
-    </div>
+    </DetailPageLayout>
   );
 }

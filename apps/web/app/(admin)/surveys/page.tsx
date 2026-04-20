@@ -2,6 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { inputClass } from '@/components/ui/form-field';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -51,73 +55,77 @@ export default function SurveysPage() {
     load();
   }
 
+  const filtersNode = (
+    <input
+      aria-label="Search surveys"
+      type="text"
+      placeholder="Search surveys..."
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      className={`${inputClass} max-w-md`}
+    />
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Surveys</h1>
-        <Link
-          href="/surveys/new"
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          + New Survey
-        </Link>
-      </div>
-
-      <input
-        type="text"
-        placeholder="Search surveys..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="w-full max-w-md px-3 py-2 border rounded"
-      />
-
+    <ListPageLayout
+      title="Surveys"
+      primaryAction={{ label: 'New Survey', href: '/surveys/new' }}
+      filters={filtersNode}
+    >
       {loading ? (
         <p>Loading…</p>
       ) : data.length === 0 ? (
-        <p className="text-gray-500">No surveys yet.</p>
+        <Card>
+          <EmptyState
+            title="No surveys yet"
+            action={{ label: 'New Survey', href: '/surveys/new' }}
+          />
+        </Card>
       ) : (
-        <div className="bg-white rounded-lg shadow divide-y">
-          {data.map((s) => (
-            <div
-              key={s.id}
-              className="p-4 flex items-center justify-between"
-            >
-              <div>
-                <Link
-                  href={`/surveys/${s.id}`}
-                  className="font-semibold text-blue-700 hover:underline"
-                >
-                  {s.name}
-                </Link>
-                {s.description && (
-                  <p className="text-sm text-gray-600">{s.description}</p>
-                )}
-                <p className="text-xs text-gray-500 mt-1">
-                  {s._count?.questions ?? 0} questions ·{' '}
-                  {s._count?.submissions ?? 0} submissions ·{' '}
-                  {s.active ? 'Active' : 'Inactive'}
-                </p>
+        <Card>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {data.map((s) => (
+              <div
+                key={s.id}
+                className="p-4 flex items-center justify-between"
+              >
+                <div>
+                  <Link
+                    href={`/surveys/${s.id}`}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {s.name}
+                  </Link>
+                  {s.description && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{s.description}</p>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {s._count?.questions ?? 0} questions ·{' '}
+                    {s._count?.submissions ?? 0} submissions ·{' '}
+                    {s.active ? 'Active' : 'Inactive'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/survey/${s.hash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Public link
+                  </a>
+                  <button
+                    onClick={() => handleDelete(s.id)}
+                    className="text-sm text-red-600 hover:underline"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <a
-                  href={`/survey/${s.hash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm text-blue-600 hover:underline"
-                >
-                  Public link
-                </a>
-                <button
-                  onClick={() => handleDelete(s.id)}
-                  className="text-sm text-red-600 hover:underline"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </Card>
       )}
-    </div>
+    </ListPageLayout>
   );
 }

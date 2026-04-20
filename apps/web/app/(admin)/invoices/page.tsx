@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { FileText } from 'lucide-react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorBanner } from '@/components/ui/error-banner';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -11,10 +20,10 @@ type InvoiceStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'overdue' | 'cancel
 
 interface Invoice {
   id: string;
-  invoice_number: string;
-  client_name: string;
+  number: string;
+  client?: { id: string; company: string };
   date: string;        // ISO date string
-  due_date: string;    // ISO date string
+  dueDate: string;     // ISO date string
   total: number;
   currency: string;
   status: InvoiceStatus;
@@ -22,12 +31,10 @@ interface Invoice {
 
 interface InvoicesResponse {
   data: Invoice[];
-  meta: {
-    page: number;
-    per_page: number;
-    total: number;
-    total_pages: number;
-  };
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 interface InvoiceStats {
@@ -52,13 +59,13 @@ const STATUS_TABS: { value: InvoiceStatus | 'all'; label: string }[] = [
   { value: 'overdue',   label: 'Overdue' },
 ];
 
-const STATUS_BADGE: Record<InvoiceStatus, string> = {
-  draft:     'bg-gray-100 text-gray-600',
-  sent:      'bg-blue-100 text-blue-700',
-  partial:   'bg-orange-100 text-orange-700',
-  paid:      'bg-green-100 text-green-700',
-  overdue:   'bg-red-100 text-red-700',
-  cancelled: 'bg-gray-100 text-gray-400',
+const INVOICE_STATUS_VARIANT: Record<InvoiceStatus, 'default' | 'info' | 'warning' | 'success' | 'error' | 'muted'> = {
+  draft: 'default',
+  sent: 'info',
+  partial: 'warning',
+  paid: 'success',
+  overdue: 'error',
+  cancelled: 'muted',
 };
 
 // ---------------------------------------------------------------------------
@@ -105,14 +112,9 @@ function capitalize(s: string): string {
 
 function StatusBadge({ status }: { status: InvoiceStatus }) {
   return (
-    <span
-      className={[
-        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
-        STATUS_BADGE[status],
-      ].join(' ')}
-    >
+    <Badge variant={INVOICE_STATUS_VARIANT[status]}>
       {capitalize(status)}
-    </span>
+    </Badge>
   );
 }
 
@@ -126,34 +128,19 @@ function StatCard({
   colorClass: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">{label}</p>
+    <Card padding="lg">
+      <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">{label}</p>
       <p className={`text-xl font-bold ${colorClass}`}>{value}</p>
-    </div>
+    </Card>
   );
 }
 
 function StatCardSkeleton() {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 animate-pulse">
-      <div className="h-3 bg-gray-100 rounded w-1/2 mb-2" />
-      <div className="h-6 bg-gray-100 rounded w-3/4" />
-    </div>
-  );
-}
-
-function TableRowSkeleton() {
-  return (
-    <tr className="border-b border-gray-100 last:border-0">
-      {Array.from({ length: 7 }).map((_, i) => (
-        <td key={i} className="px-4 py-3">
-          <div
-            className="h-4 bg-gray-100 rounded animate-pulse"
-            style={{ width: i === 1 ? '55%' : '40%' }}
-          />
-        </td>
-      ))}
-    </tr>
+    <Card padding="lg" className="animate-pulse">
+      <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/2 mb-2" />
+      <div className="h-6 bg-gray-100 dark:bg-gray-800 rounded w-3/4" />
+    </Card>
   );
 }
 
@@ -174,7 +161,7 @@ function ActionButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className="text-xs text-gray-500 hover:text-primary font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+      className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
     >
       {children}
     </button>
@@ -186,10 +173,11 @@ function ActionButton({
 // ---------------------------------------------------------------------------
 
 export default function InvoicesPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<InvoiceStatus | 'all'>('all');
   const [page, setPage] = useState(1);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [meta, setMeta] = useState<InvoicesResponse['meta'] | null>(null);
+  const [meta, setMeta] = useState<{ totalPages: number; total: number } | null>(null);
   const [stats, setStats] = useState<InvoiceStats | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -236,7 +224,7 @@ export default function InvoicesPage() {
     setError(null);
     try {
       const token = getToken();
-      const params = new URLSearchParams({ page: String(page), per_page: '15' });
+      const params = new URLSearchParams({ page: String(page), limit: '15' });
       if (activeTab !== 'all') params.set('status', activeTab);
 
       const res = await fetch(`${API_BASE}/api/v1/invoices?${params.toString()}`, {
@@ -246,7 +234,7 @@ export default function InvoicesPage() {
 
       const json: InvoicesResponse = await res.json();
       setInvoices(json.data ?? []);
-      setMeta(json.meta ?? null);
+      setMeta({ totalPages: json.totalPages, total: json.total });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load invoices');
       setInvoices([]);
@@ -291,7 +279,7 @@ export default function InvoicesPage() {
     }
   }
 
-  const totalPages = meta?.total_pages ?? 1;
+  const totalPages = meta?.totalPages ?? 1;
   const statCurrency = stats?.currency ?? 'USD';
 
   const toggleSelect = (id: string) => {
@@ -348,22 +336,112 @@ export default function InvoicesPage() {
     window.open(`${API_BASE}/api/v1/exports/invoices?format=xlsx&ids=${ids}&token=${token}`, '_blank');
   };
 
-  return (
-    <div>
-      {/* ------------------------------------------------------------------ */}
-      {/* Header                                                               */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
-        <Link
-          href="/invoices/new"
-          className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          <span className="text-lg leading-none">+</span>
-          New Invoice
-        </Link>
-      </div>
+  const bulkMerge = async () => {
+    const picks = invoices.filter((i) => selected.has(i.id));
+    if (picks.length < 2) { alert('Select at least two invoices.'); return; }
+    const clientIds = new Set(picks.map((p) => p.client?.id).filter(Boolean));
+    const currencies = new Set(picks.map((p) => p.currency));
+    const nonDraft = picks.filter((p) => p.status !== 'draft');
+    if (clientIds.size !== 1) { alert('All selected invoices must share the same client.'); return; }
+    if (currencies.size !== 1) { alert('All selected invoices must share the same currency.'); return; }
+    if (nonDraft.length > 0) { alert('All selected invoices must be in draft status.'); return; }
+    if (!confirm(`Merge ${picks.length} draft invoice(s) into a single new draft?`)) return;
+    setBulkLoading(true);
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/api/v1/invoices/merge`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceIds: picks.map((p) => p.id) }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message ?? `Merge failed (${res.status})`);
+      }
+      const merged = await res.json();
+      setSelected(new Set());
+      router.push(`/invoices/${merged.id}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Merge failed');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
 
+  const bulkPdfExport = async () => {
+    if (selected.size === 0) return;
+    setBulkLoading(true);
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/api/v1/invoices/bulk-pdf`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceIds: Array.from(selected) }),
+      });
+      if (!res.ok) throw new Error(`Download failed (${res.status})`);
+      const blob = await res.blob();
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoices-${ts}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Download failed');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const filtersNode = (
+    <div className="flex gap-1 flex-wrap">
+      {STATUS_TABS.map((tab) => (
+        <button
+          key={tab.value}
+          onClick={() => setActiveTab(tab.value)}
+          className={[
+            'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
+            activeTab === tab.value
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100',
+          ].join(' ')}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const paginationNode =
+    !loadingList && meta && meta.total > 0 ? (
+      <div className="flex items-center justify-between px-4 py-3 border border-gray-100 dark:border-gray-800 rounded-xl bg-gray-50/50 dark:bg-gray-800/50">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {meta.total} invoice{meta.total !== 1 ? 's' : ''} total
+        </p>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+            Previous
+          </Button>
+          <span className="text-xs text-gray-600 dark:text-gray-400 min-w-[80px] text-center">
+            Page {page} of {totalPages}
+          </span>
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+            Next
+          </Button>
+        </div>
+      </div>
+    ) : null;
+
+  return (
+    <ListPageLayout
+      title="Invoices"
+      primaryAction={{ label: 'New Invoice', href: '/invoices/new', icon: <span className="text-lg leading-none">+</span> }}
+      filters={filtersNode}
+      pagination={paginationNode}
+    >
       {/* ------------------------------------------------------------------ */}
       {/* Stats row                                                            */}
       {/* ------------------------------------------------------------------ */}
@@ -396,60 +474,38 @@ export default function InvoicesPage() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Filter tabs                                                          */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="flex gap-1 mb-4 flex-wrap">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setActiveTab(tab.value)}
-            className={[
-              'px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
-              activeTab === tab.value
-                ? 'bg-primary text-white shadow-sm'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100',
-            ].join(' ')}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
       {/* Mobile card view                                                     */}
       {/* ------------------------------------------------------------------ */}
       <div className="md:hidden space-y-3">
-        {error && (
-          <div className="px-4 py-3 bg-red-50 border border-red-100 text-sm text-red-600 rounded-lg">
-            {error} — <button className="underline" onClick={fetchInvoices}>retry</button>
-          </div>
-        )}
+        {error && <ErrorBanner message={error} onRetry={fetchInvoices} />}
         {loadingList ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 animate-pulse">
-              <div className="h-4 bg-gray-100 rounded w-1/2 mb-2" />
-              <div className="h-3 bg-gray-100 rounded w-3/4" />
-            </div>
+            <Card key={i} padding="md" className="animate-pulse">
+              <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-1/2 mb-2" />
+              <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-3/4" />
+            </Card>
           ))
         ) : invoices.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">
-            No {activeTab !== 'all' ? `${activeTab} ` : ''}invoices found
-          </div>
+          <EmptyState
+            icon={<FileText className="w-10 h-10" />}
+            title={`No ${activeTab !== 'all' ? `${activeTab} ` : ''}invoices found`}
+            action={{ label: 'Create an invoice', href: '/invoices/new' }}
+          />
         ) : (
           invoices.map((invoice) => {
-            const isOverdue = invoice.status !== 'paid' && invoice.status !== 'cancelled' && new Date(invoice.due_date) < new Date();
+            const isOverdue = invoice.status !== 'paid' && invoice.status !== 'cancelled' && new Date(invoice.dueDate) < new Date();
             return (
-              <Link key={invoice.id} href={`/invoices/${invoice.id}`} className="block bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-gray-200 transition-colors">
+              <Link key={invoice.id} href={`/invoices/${invoice.id}`} className="block bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 hover:border-gray-200 transition-colors">
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="min-w-0">
-                    <p className="font-medium text-gray-900">{invoice.invoice_number}</p>
-                    <p className="text-xs text-gray-500 truncate">{invoice.client_name}</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{invoice.number}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{invoice.client?.company ?? '—'}</p>
                   </div>
                   <StatusBadge status={invoice.status} />
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-400">Due: {formatDate(invoice.due_date)}{isOverdue && <span className="ml-1 text-red-500 font-semibold">OVERDUE</span>}</span>
-                  <span className="font-semibold text-gray-900 text-sm">{formatCurrency(invoice.total, invoice.currency)}</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">Due: {formatDate(invoice.dueDate)}{isOverdue && <span className="ml-1 text-red-500 font-semibold">OVERDUE</span>}</span>
+                  <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{formatCurrency(invoice.total, invoice.currency)}</span>
                 </div>
               </Link>
             );
@@ -460,32 +516,28 @@ export default function InvoicesPage() {
       {/* ------------------------------------------------------------------ */}
       {/* Table card (desktop)                                                 */}
       {/* ------------------------------------------------------------------ */}
-      <div className="hidden md:block bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <Card className="hidden md:block">
         {error && (
-          <div className="px-4 py-3 bg-red-50 border-b border-red-100 text-sm text-red-600">
-            {error} —{' '}
-            <button className="underline" onClick={fetchInvoices}>
-              retry
-            </button>
-          </div>
+          <ErrorBanner message={error} onRetry={fetchInvoices} className="rounded-none border-0 border-b border-red-100" />
         )}
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                 <th className="px-4 py-3 w-10">
                   <input
                     type="checkbox"
                     checked={invoices.length > 0 && selected.size === invoices.length}
                     onChange={toggleAll}
+                    aria-label="Select all invoices"
                     className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
                   />
                 </th>
                 <th className="px-4 py-3">Invoice #</th>
                 <th className="px-4 py-3">Client</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Due Date</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Date</th>
+                <th className="px-4 py-3 hidden lg:table-cell">Due Date</th>
                 <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -493,32 +545,15 @@ export default function InvoicesPage() {
             </thead>
             <tbody>
               {loadingList ? (
-                Array.from({ length: 8 }).map((_, i) => <TableRowSkeleton key={i} />)
+                <TableSkeleton rows={8} columns={8} columnWidths={['16px', '30%', '40%', '30%', '30%', '25%', '20%', '30%']} />
               ) : invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-16 text-center">
-                    <div className="flex flex-col items-center gap-2 text-gray-400">
-                      <svg
-                        className="w-10 h-10 opacity-40"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0120 9.414V19a2 2 0 01-2 2z"
-                        />
-                      </svg>
-                      <p className="text-sm font-medium">
-                        No {activeTab !== 'all' ? `${activeTab} ` : ''}invoices found
-                      </p>
-                      <Link href="/invoices/new" className="text-sm text-primary hover:underline">
-                        Create an invoice
-                      </Link>
-                    </div>
+                  <td colSpan={8} className="px-4 py-8">
+                    <EmptyState
+                      icon={<FileText className="w-10 h-10" />}
+                      title={`No ${activeTab !== 'all' ? `${activeTab} ` : ''}invoices found`}
+                      action={{ label: 'Create an invoice', href: '/invoices/new' }}
+                    />
                   </td>
                 </tr>
               ) : (
@@ -526,49 +561,50 @@ export default function InvoicesPage() {
                   const isOverdue =
                     invoice.status !== 'paid' &&
                     invoice.status !== 'cancelled' &&
-                    new Date(invoice.due_date) < new Date();
+                    new Date(invoice.dueDate) < new Date();
 
                   return (
                     <tr
                       key={invoice.id}
-                      className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition-colors"
+                      className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60 transition-colors"
                     >
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
                           checked={selected.has(invoice.id)}
                           onChange={() => toggleSelect(invoice.id)}
+                          aria-label={`Select invoice ${invoice.number}`}
                           className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30"
                         />
                       </td>
-                      <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
                         <Link
                           href={`/invoices/${invoice.id}`}
                           className="hover:text-primary transition-colors"
                         >
-                          {invoice.invoice_number}
+                          {invoice.number}
                         </Link>
                       </td>
-                      <td className="px-4 py-3 text-gray-600 max-w-[160px] truncate">
-                        {invoice.client_name}
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-[160px] truncate">
+                        {invoice.client?.company ?? '—'}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap hidden lg:table-cell">
                         {formatDate(invoice.date)}
                       </td>
                       <td
                         className={[
-                          'px-4 py-3 whitespace-nowrap',
+                          'px-4 py-3 whitespace-nowrap hidden lg:table-cell',
                           isOverdue ? 'text-red-600 font-medium' : 'text-gray-500',
                         ].join(' ')}
                       >
-                        {formatDate(invoice.due_date)}
+                        {formatDate(invoice.dueDate)}
                         {isOverdue && (
                           <span className="ml-1 text-[10px] font-semibold text-red-500 uppercase">
                             overdue
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-800 whitespace-nowrap">
+                      <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">
                         {formatCurrency(invoice.total, invoice.currency)}
                       </td>
                       <td className="px-4 py-3">
@@ -578,7 +614,7 @@ export default function InvoicesPage() {
                         <div className="flex items-center justify-end gap-3">
                           <Link
                             href={`/invoices/${invoice.id}`}
-                            className="text-xs text-gray-500 hover:text-primary font-medium transition-colors"
+                            className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary font-medium transition-colors"
                           >
                             View
                           </Link>
@@ -608,49 +644,16 @@ export default function InvoicesPage() {
           </table>
         </div>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Pagination                                                         */}
-        {/* ---------------------------------------------------------------- */}
-        {!loadingList && meta && meta.total > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
-            <p className="text-xs text-gray-500">
-              {meta.total} invoice{meta.total !== 1 ? 's' : ''} total
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Previous
-              </button>
-              <span className="text-xs text-gray-600 min-w-[80px] text-center">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      </Card>
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 text-sm">
           <span className="font-medium">{selected.size} selected</span>
           <div className="w-px h-5 bg-gray-600" />
-          <button
-            onClick={bulkDeleteDraft}
-            disabled={bulkLoading}
-            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium disabled:opacity-50 transition-colors"
-          >
+          <Button variant="destructive" size="sm" onClick={bulkDeleteDraft} disabled={bulkLoading}>
             Delete Draft
-          </button>
+          </Button>
           <button
             onClick={bulkMarkSent}
             disabled={bulkLoading}
@@ -666,13 +669,27 @@ export default function InvoicesPage() {
             Export
           </button>
           <button
+            onClick={bulkMerge}
+            disabled={bulkLoading}
+            className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            Merge
+          </button>
+          <button
+            onClick={bulkPdfExport}
+            disabled={bulkLoading}
+            className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            {bulkLoading ? 'Working…' : 'Export PDFs'}
+          </button>
+          <button
             onClick={() => setSelected(new Set())}
-            className="ml-2 text-gray-400 hover:text-white text-xs transition-colors"
+            className="ml-2 text-gray-400 dark:text-gray-500 hover:text-white text-xs transition-colors"
           >
             Cancel
           </button>
         </div>
       )}
-    </div>
+    </ListPageLayout>
   );
 }

@@ -2,6 +2,9 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { FilePreviewModal } from '../../../components/file-preview-modal';
+import { PageHeader } from '@/components/ui/page-header';
+import { Button } from '@/components/ui/button';
+import { inputClass } from '@/components/ui/form-field';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -152,47 +155,36 @@ export default function MediaPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Media Manager</h1>
-        <div className="flex gap-2">
-          <button
-            onClick={createFolder}
-            className="px-4 py-2 border rounded hover:bg-gray-50"
-          >
-            New Folder
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Upload
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={onFileInputChange}
-          />
-        </div>
-      </div>
+      <PageHeader
+        title="Media Manager"
+        primaryAction={{ label: 'Upload', onClick: () => fileInputRef.current?.click() }}
+        secondaryActions={[{ label: 'New Folder', onClick: createFolder }]}
+      />
+      <input
+        ref={fileInputRef}
+        aria-label="Upload files"
+        type="file"
+        multiple
+        className="hidden"
+        onChange={onFileInputChange}
+      />
 
       {/* Breadcrumbs */}
       <div className="flex items-center gap-1 mb-4 text-sm">
         <button
           onClick={() => setFolder('')}
-          className="text-blue-600 hover:underline"
+          className="text-primary hover:underline"
         >
           root
         </button>
         {breadcrumbs.map((seg, i) => (
           <span key={i} className="flex items-center gap-1">
-            <span className="text-gray-400">/</span>
+            <span className="text-gray-400 dark:text-gray-500">/</span>
             <button
               onClick={() =>
                 setFolder(breadcrumbs.slice(0, i + 1).join('/'))
               }
-              className="text-blue-600 hover:underline"
+              className="text-primary hover:underline"
             >
               {seg}
             </button>
@@ -202,11 +194,12 @@ export default function MediaPage() {
 
       {/* Search */}
       <input
+        aria-label="Search files"
         type="text"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search files..."
-        className="w-full max-w-sm px-3 py-2 border rounded mb-4"
+        className={`${inputClass} max-w-sm mb-4`}
       />
 
       {/* Drop zone */}
@@ -218,13 +211,13 @@ export default function MediaPage() {
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={`border-2 border-dashed rounded-lg p-4 min-h-[400px] ${
-          dragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+          dragging ? 'border-primary bg-primary/5' : 'border-gray-300'
         }`}
       >
         {loading ? (
-          <div className="text-center text-gray-500 py-12">Loading...</div>
+          <div className="text-center text-gray-500 dark:text-gray-400 py-12">Loading...</div>
         ) : filtered.length === 0 ? (
-          <div className="text-center text-gray-500 py-12">
+          <div className="text-center text-gray-500 dark:text-gray-400 py-12">
             No files. Drop files here or click Upload.
           </div>
         ) : (
@@ -232,7 +225,7 @@ export default function MediaPage() {
             {filtered.map((f) => (
               <div
                 key={f.path}
-                className="border rounded-lg p-3 bg-white hover:shadow-md transition"
+                className="border rounded-lg p-3 bg-white dark:bg-gray-900 hover:shadow-md transition"
               >
                 <div
                   onClick={() => openFile(f)}
@@ -253,28 +246,22 @@ export default function MediaPage() {
                   >
                     {f.name}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
                     {formatSize(f.size)}
                   </div>
                   {f.lastModified && (
-                    <div className="text-xs text-gray-400">
+                    <div className="text-xs text-gray-400 dark:text-gray-500">
                       {new Date(f.lastModified).toLocaleDateString()}
                     </div>
                   )}
                 </div>
                 <div className="flex gap-1 mt-2">
-                  <button
-                    onClick={() => copyUrl(f)}
-                    className="flex-1 text-xs px-2 py-1 border rounded hover:bg-gray-50"
-                  >
+                  <Button variant="secondary" size="sm" onClick={() => copyUrl(f)} className="flex-1">
                     Copy URL
-                  </button>
-                  <button
-                    onClick={() => deleteFile(f)}
-                    className="text-xs px-2 py-1 border rounded text-red-600 hover:bg-red-50"
-                  >
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => deleteFile(f)} className="text-red-600">
                     Delete
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}

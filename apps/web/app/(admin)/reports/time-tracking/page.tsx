@@ -80,14 +80,14 @@ export default function TimeTrackingReportPage() {
               placeholder="Project ID"
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-36"
+              className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm w-36"
             />
             <input
               type="text"
               placeholder="User ID"
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-32"
+              className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm w-32"
             />
             <DateRangeFilter
               from={range.from}
@@ -123,13 +123,13 @@ export default function TimeTrackingReportPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Hours by User</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Hours by User</h2>
           <div style={{ width: '100%', height: 340 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 rounded animate-pulse" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 rounded animate-pulse" />
             ) : data.byUser.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">
                 No time entries.
               </p>
             ) : (
@@ -148,13 +148,13 @@ export default function TimeTrackingReportPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Hours by Project</h2>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">Hours by Project</h2>
           <div style={{ width: '100%', height: 340 }}>
             {loading || !data ? (
-              <div className="h-full bg-gray-50 rounded animate-pulse" />
+              <div className="h-full bg-gray-50 dark:bg-gray-900 rounded animate-pulse" />
             ) : data.byProject.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-10">
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">
                 No time entries.
               </p>
             ) : (

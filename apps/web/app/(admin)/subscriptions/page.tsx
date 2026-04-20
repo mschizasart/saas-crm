@@ -2,18 +2,36 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { Repeat } from 'lucide-react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { TableSkeleton } from '@/components/ui/table-skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorBanner } from '@/components/ui/error-banner';
 
 type Status = 'all' | 'active' | 'paused' | 'cancelled';
 
 interface Subscription {
   id: string;
   name: string;
-  amount: number;
+  unitPrice: number;
+  quantity: number;
+  total: number | null;
   currency: string;
-  frequency: string;
   status: string;
-  nextBillingDate: string | null;
+  nextDueDate: string | null;
+  nextInvoiceAt?: string | null;
+  interval?: string | null;
+  intervalCount?: number | null;
   client?: { id: string; company: string } | null;
+}
+
+function formatFrequency(s: Subscription): string {
+  const interval = s.interval ?? 'month';
+  const count = s.intervalCount ?? 1;
+  const noun = count > 1 ? `${interval}s` : interval;
+  return `Every ${count} ${noun}`;
 }
 
 interface Response {
@@ -26,19 +44,6 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 function authHeaders(): HeadersInit {
   const token = typeof window === 'undefined' ? null : localStorage.getItem('access_token');
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    active: 'bg-green-100 text-green-700',
-    paused: 'bg-yellow-100 text-yellow-700',
-    cancelled: 'bg-red-100 text-red-700',
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${map[status] ?? 'bg-gray-100 text-gray-500'}`}>
-      {status}
-    </span>
-  );
 }
 
 export default function SubscriptionsPage() {
@@ -77,76 +82,79 @@ export default function SubscriptionsPage() {
     { key: 'cancelled', label: 'Cancelled' },
   ];
 
+  const filtersNode = (
+    <div className="border-b border-gray-200 dark:border-gray-700">
+      <nav className="flex gap-1 -mb-px" role="tablist" aria-label="Subscription status filter">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setStatus(t.key)}
+            role="tab"
+            aria-selected={status === t.key}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              status === t.key ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Subscriptions</h1>
-        <Link
-          href="/subscriptions/new"
-          className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90"
-        >
-          <span className="text-lg leading-none">+</span>
-          New Subscription
-        </Link>
-      </div>
-
-      <div className="border-b border-gray-200 mb-4">
-        <nav className="flex gap-1 -mb-px">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setStatus(t.key)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                status === t.key ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+    <ListPageLayout
+      title="Subscriptions"
+      primaryAction={{ label: 'New Subscription', href: '/subscriptions/new', icon: <span className="text-lg leading-none">+</span> }}
+      filters={filtersNode}
+    >
+      <Card>
         {error && (
-          <div className="px-4 py-3 bg-red-50 border-b border-red-100 text-sm text-red-600">
-            {error} — <button className="underline" onClick={fetchItems}>retry</button>
-          </div>
+          <ErrorBanner message={error} onRetry={fetchItems} className="rounded-none border-0 border-b border-red-100" />
         )}
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <tr className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Client</th>
-                <th className="px-4 py-3 text-right">Amount</th>
+                <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3">Frequency</th>
-                <th className="px-4 py-3">Next Billing</th>
+                <th className="px-4 py-3">Next Due</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">Loading…</td></tr>
+                <TableSkeleton rows={6} columns={7} columnWidths={['40%', '40%', '30%', '30%', '30%', '25%', '20%']} />
               ) : items.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">No subscriptions found</td></tr>
+                <tr>
+                  <td colSpan={7} className="px-4 py-8">
+                    <EmptyState
+                      icon={<Repeat className="w-10 h-10" />}
+                      title="No subscriptions found"
+                      action={{ label: 'Create a subscription', href: '/subscriptions/new' }}
+                    />
+                  </td>
+                </tr>
               ) : (
                 items.map((s) => (
-                  <tr key={s.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60">
-                    <td className="px-4 py-3 font-medium text-gray-900">
+                  <tr key={s.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/60">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                       <Link href={`/subscriptions/${s.id}`} className="text-primary hover:underline">{s.name}</Link>
                     </td>
-                    <td className="px-4 py-3 text-gray-500">{s.client?.company ?? '—'}</td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900">
-                      {Number(s.amount).toFixed(2)} {s.currency}
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{s.client?.company ?? '—'}</td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-gray-100">
+                      {Number(s.total ?? s.unitPrice * s.quantity).toFixed(2)} {s.currency}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 capitalize">{s.frequency}</td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {s.nextBillingDate ? new Date(s.nextBillingDate).toLocaleDateString() : '—'}
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{formatFrequency(s)}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+                      {(s.nextInvoiceAt ?? s.nextDueDate) ? new Date((s.nextInvoiceAt ?? s.nextDueDate) as string).toLocaleDateString() : '—'}
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
                     <td className="px-4 py-3 text-right">
-                      <Link href={`/subscriptions/${s.id}`} className="text-xs text-gray-500 hover:text-primary">View</Link>
+                      <Link href={`/subscriptions/${s.id}`} className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary">View</Link>
                     </td>
                   </tr>
                 ))
@@ -154,7 +162,7 @@ export default function SubscriptionsPage() {
             </tbody>
           </table>
         </div>
-      </div>
-    </div>
+      </Card>
+    </ListPageLayout>
   );
 }
