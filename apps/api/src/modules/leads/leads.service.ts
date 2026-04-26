@@ -3,12 +3,44 @@ import {
   NotFoundException,
   BadRequestException,
   Inject,
+  Logger,
   Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EmailsService } from '../emails/emails.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { parse as parseCsvSync } from 'csv-parse/sync';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
+
+export interface ImportSkipped {
+  row: number;
+  reason: string;
+}
+
+export interface ImportError {
+  row: number;
+  field: string;
+  message: string;
+}
+
+export interface ImportResult {
+  imported: number;
+  skipped: ImportSkipped[];
+  errors: ImportError[];
+}
+
+/** Columns accepted by the leads CSV importer (case-insensitive, snake or camel). */
+const LEAD_CSV_COLUMNS = [
+  'name',
+  'email',
+  'phone',
+  'company',
+  'source',
+  'status',
+  'assigneeEmail',
+  'notes',
+] as const;
 
 export interface CreateLeadDto {
   name: string;
@@ -45,12 +77,56 @@ type LeadStatus = (typeof VALID_STATUSES)[number];
 
 @Injectable()
 export class LeadsService {
+  private readonly logger = new Logger(LeadsService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
     private activityLog: ActivityLogService,
     @Optional() private emailsService?: EmailsService,
   ) {}
+
+  // ─── Export ────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: { search?: string; status?: string; assignedToId?: string } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    const { search, status, assignedToId } = query;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { company: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+      if (status) {
+        where.status = { is: { name: { equals: status, mode: 'insensitive' } } };
+      }
+      if (assignedToId) where.assignedTo = assignedToId;
+
+      const rows = await tx.lead.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          status: { select: { name: true } },
+          source: { select: { name: true } },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `Leads export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   // ─── List / Find ────────────────────────────────────────────
 
@@ -648,6 +724,186 @@ export class LeadsService {
     this.events.emit('lead.created', { lead, orgId: org.id, createdBy: 'web_form' });
 
     return { success: true, leadId: lead.id };
+  }
+
+  // ─── CSV Import ──────────────────────────────────────────────
+
+  /** Exposed for the /import/template route so header stays in sync. */
+  static readonly CSV_COLUMNS = LEAD_CSV_COLUMNS;
+
+  /**
+   * Import leads from a raw CSV buffer.
+   *
+   * - Parses with `csv-parse/sync` (handles BOM, quoted commas, CRLF).
+   * - Header row is required; names match `LEAD_CSV_COLUMNS`
+   *   case-insensitively, with a few snake_case aliases.
+   * - `name` is required per row; missing → skipped.
+   * - `status` defaults to the org's first lead status if absent or unknown.
+   * - `source` / `assigneeEmail` are resolved to FK ids where possible;
+   *   unknown values degrade silently to null and produce an entry in
+   *   `errors` (without failing the row).
+   * - All rows insert inside a single transaction; per-row DB failures
+   *   end up in `errors` and processing continues.
+   */
+  async importFromCsv(orgId: string, csvBuffer: Buffer): Promise<ImportResult> {
+    let records: Record<string, string>[];
+    try {
+      records = parseCsvSync(csvBuffer, {
+        columns: (header: string[]) => header.map((h) => h.trim().toLowerCase()),
+        skip_empty_lines: true,
+        trim: true,
+        bom: true,
+        relax_column_count: true,
+      }) as Record<string, string>[];
+    } catch (err: any) {
+      throw new BadRequestException(`CSV parse failed: ${err.message}`);
+    }
+
+    if (records.length === 0) {
+      return { imported: 0, skipped: [], errors: [] };
+    }
+
+    // Pre-load statuses (with default), sources, and assignable staff users
+    // so per-row resolution is a cheap map lookup.
+    const [statuses, sources, staff] = await Promise.all([
+      this.prisma.leadStatus.findMany({
+        where: { organizationId: orgId },
+        orderBy: [{ isDefault: 'desc' }, { position: 'asc' }],
+      }),
+      this.prisma.leadSource.findMany({ where: { organizationId: orgId } }),
+      this.prisma.user.findMany({
+        where: { organizationId: orgId, type: 'staff', active: true },
+        select: { id: true, email: true },
+      }),
+    ]);
+
+    const defaultStatus = statuses[0] ?? null;
+    const statusIndex = new Map<string, string>(
+      statuses.map((s) => [s.name.toLowerCase(), s.id]),
+    );
+    const sourceIndex = new Map<string, string>(
+      sources.map((s) => [s.name.toLowerCase(), s.id]),
+    );
+    const staffIndex = new Map<string, string>(
+      staff.map((u) => [u.email.toLowerCase(), u.id]),
+    );
+
+    const skipped: ImportSkipped[] = [];
+    const errors: ImportError[] = [];
+    let imported = 0;
+
+    const pick = (row: Record<string, string>, ...keys: string[]) => {
+      for (const k of keys) {
+        const v = row[k.toLowerCase()];
+        if (v !== undefined && v !== null && String(v).trim() !== '') {
+          return String(v).trim();
+        }
+      }
+      return null;
+    };
+
+    await this.prisma.withOrganization(orgId, async (tx) => {
+      for (let i = 0; i < records.length; i++) {
+        const rowNum = i + 2;
+        const row = records[i];
+
+        const name = pick(row, 'name', 'lead_name', 'full_name');
+        if (!name) {
+          skipped.push({ row: rowNum, reason: 'missing required field: name' });
+          continue;
+        }
+
+        const email = pick(row, 'email');
+        const phone = pick(row, 'phone', 'telephone');
+        const company = pick(row, 'company', 'company_name');
+        const sourceRaw = pick(row, 'source');
+        const statusRaw = pick(row, 'status');
+        const assigneeEmailRaw = pick(
+          row,
+          'assigneeemail',
+          'assignee_email',
+          'assignee',
+          'owner_email',
+        );
+        const notes = pick(row, 'notes', 'note', 'description');
+
+        // Resolve status — fall back to default on missing/unknown
+        let statusId: string | null = null;
+        if (statusRaw) {
+          const match = statusIndex.get(statusRaw.toLowerCase());
+          if (match) {
+            statusId = match;
+          } else {
+            errors.push({
+              row: rowNum,
+              field: 'status',
+              message: `unknown status "${statusRaw}" — using default`,
+            });
+            statusId = defaultStatus?.id ?? null;
+          }
+        } else {
+          statusId = defaultStatus?.id ?? null;
+        }
+
+        // Resolve source (unknown → null, non-fatal)
+        let sourceId: string | null = null;
+        if (sourceRaw) {
+          sourceId = sourceIndex.get(sourceRaw.toLowerCase()) ?? null;
+          if (!sourceId) {
+            errors.push({
+              row: rowNum,
+              field: 'source',
+              message: `unknown source "${sourceRaw}" — ignored`,
+            });
+          }
+        }
+
+        // Resolve assignee email → staff user id (unknown → null, non-fatal)
+        let assignedTo: string | null = null;
+        if (assigneeEmailRaw) {
+          assignedTo = staffIndex.get(assigneeEmailRaw.toLowerCase()) ?? null;
+          if (!assignedTo) {
+            errors.push({
+              row: rowNum,
+              field: 'assigneeEmail',
+              message: `no staff user with email "${assigneeEmailRaw}" — left unassigned`,
+            });
+          }
+        }
+
+        try {
+          const created = await tx.lead.create({
+            data: {
+              organizationId: orgId,
+              name,
+              email,
+              phone,
+              company,
+              description: notes,
+              statusId,
+              sourceId,
+              assignedTo,
+            },
+          });
+          imported++;
+          // fire-and-forget event so downstream listeners (automations etc.)
+          // see the new lead, same as the public create() path.
+          this.events.emit('lead.created', {
+            lead: created,
+            orgId,
+            createdBy: 'csv_import',
+          });
+        } catch (err: any) {
+          errors.push({
+            row: rowNum,
+            field: 'row',
+            message: err?.message ?? 'Insert failed',
+          });
+        }
+      }
+    });
+
+    return { imported, skipped, errors };
   }
 
   // ─── Kanban Board ────────────────────────────────────────────

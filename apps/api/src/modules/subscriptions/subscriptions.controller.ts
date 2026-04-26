@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -21,6 +22,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Subscriptions')
 @Controller({ version: '1', path: 'subscriptions' })
@@ -38,6 +40,47 @@ export class SubscriptionsController {
     @Query('clientId') clientId?: string,
   ) {
     return this.service.findAll(org.id, { status, clientId });
+  }
+
+  // ─── CSV Export ────────────────────────────────────────────
+  @Get('export')
+  @Permissions('invoices.view')
+  @ApiOperation({ summary: 'Export subscriptions as CSV (respects current filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('status') status?: string,
+    @Query('clientId') clientId?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      status,
+      clientId,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'name', label: 'Name' },
+        { key: 'client.company', label: 'Client' },
+        { key: 'status', label: 'Status' },
+        { key: 'unitPrice', label: 'Unit Price' },
+        { key: 'quantity', label: 'Quantity' },
+        { key: 'total', label: 'Total' },
+        { key: 'currency', label: 'Currency' },
+        { key: 'interval', label: 'Interval' },
+        { key: 'intervalCount', label: 'Interval Count' },
+        { key: 'nextInvoiceAt', label: 'Next Invoice At' },
+        { key: 'createdAt', label: 'Created' },
+        { key: 'cancelledAt', label: 'Cancelled' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('subscriptions');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
   }
 
   @Get(':id')

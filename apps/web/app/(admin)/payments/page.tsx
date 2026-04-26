@@ -10,6 +10,7 @@ import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorBanner } from '@/components/ui/error-banner';
 import { FormField, inputClass } from '@/components/ui/form-field';
+import { exportCsv } from '@/lib/export-csv';
 
 interface Payment {
   id: string;
@@ -184,6 +185,17 @@ export default function PaymentsListPage() {
   return (
     <ListPageLayout
       title="Payments"
+      secondaryActions={[
+        {
+          label: 'Export CSV',
+          onClick: () =>
+            void exportCsv(
+              '/api/v1/payments/export',
+              `payments-${new Date().toISOString().slice(0, 10)}.csv`,
+              { entityLabel: 'payments' },
+            ),
+        },
+      ]}
       primaryAction={{ label: 'Batch record', href: '/payments/batch' }}
       pagination={paginationNode}
     >

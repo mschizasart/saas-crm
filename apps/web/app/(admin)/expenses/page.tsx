@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { ErrorBanner } from '@/components/ui/error-banner';
 import { inputClass } from '@/components/ui/form-field';
+import { exportCsv } from '@/lib/export-csv';
 
 interface Expense {
   id: string;
@@ -104,6 +105,24 @@ export default function ExpensesPage() {
   return (
     <ListPageLayout
       title="Expenses"
+      secondaryActions={[
+        {
+          label: 'Export CSV',
+          onClick: () => {
+            const params = new URLSearchParams();
+            if (categoryId) params.set('categoryId', categoryId);
+            if (clientId) params.set('clientId', clientId);
+            if (from) params.set('from', from);
+            if (to) params.set('to', to);
+            const qs = params.toString();
+            void exportCsv(
+              `/api/v1/expenses/export${qs ? `?${qs}` : ''}`,
+              `expenses-${new Date().toISOString().slice(0, 10)}.csv`,
+              { entityLabel: 'expenses' },
+            );
+          },
+        },
+      ]}
       primaryAction={{ label: 'New Expense', href: '/expenses/new' }}
       filters={filtersNode}
     >

@@ -7,7 +7,14 @@ import { useModalA11y } from '@components/ui/use-modal-a11y';
 import { ComplexFormPageLayout } from '@/components/layouts/complex-form-page-layout';
 
 interface ClientOption { id: string; company?: string; company_name?: string; name?: string; }
-interface LineItem { description: string; qty: string; rate: string; tax1: string; }
+interface LineItem {
+  description: string;
+  qty: string;
+  rate: string;
+  tax1: string;
+  /** Round-tripped FK to Product (if the line was picked from a product). */
+  _productId?: string | null;
+}
 interface InvoiceForm {
   clientId: string;
   date: string;
@@ -73,12 +80,13 @@ export default function EditInvoicePage() {
           terms: data.terms ?? '',
           discount: data.discount != null ? String(data.discount) : '0',
           items: (data.items ?? []).length > 0 ? data.items.map((it: {
-            description?: string; qty?: number; rate?: number; tax1?: number;
+            description?: string; qty?: number; rate?: number; tax1?: number; productId?: string | null;
           }) => ({
             description: it.description ?? '',
             qty: String(it.qty ?? 1),
             rate: String(it.rate ?? 0),
             tax1: String(it.tax1 ?? 0),
+            _productId: it.productId ?? null,
           })) : [{ ...EMPTY_ITEM }],
         });
         if (clientsRes.ok) {
@@ -179,6 +187,7 @@ export default function EditInvoicePage() {
           qty: String(it.qty ?? 1),
           rate: String(it.rate ?? 0),
           tax1: String(it.tax1 ?? 0),
+          _productId: it.productId ?? null,
         })),
       } : p);
       setShowExpensesModal(false);
@@ -208,6 +217,8 @@ export default function EditInvoicePage() {
           qty: Number(it.qty) || 0,
           rate: Number(it.rate) || 0,
           tax1: Number(it.tax1) || 0,
+          // Round-trip FK so a save from the basic edit page doesn't drop it.
+          productId: it._productId ?? null,
         })),
       };
       const res = await fetch(`${API_BASE}/api/v1/invoices/${id}`, {

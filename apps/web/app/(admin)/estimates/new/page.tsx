@@ -48,6 +48,8 @@ interface SavedItem {
   longDescription?: string;
   _source?: 'saved' | 'product';
   _productId?: string;
+  _trackInventory?: boolean;
+  _stockQuantity?: number;
 }
 
 interface LineItem {
@@ -59,6 +61,9 @@ interface LineItem {
   taxId: string;
   taxId2: string;
   unit: string;
+  _productId?: string;
+  _stockQuantity?: number;
+  _trackInventory?: boolean;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -250,6 +255,8 @@ export default function NewEstimatePage() {
           longDescription: p.description,
           _source: 'product' as const,
           _productId: p.id,
+          _trackInventory: p.trackInventory,
+          _stockQuantity: Number(p.stockQuantity ?? 0),
         }));
         allItems = [...allItems, ...productItems];
       }
@@ -276,6 +283,9 @@ export default function NewEstimatePage() {
               longDescription: saved.longDescription ?? '',
               rate: String(saved.rate),
               unit: saved.unit ?? '',
+              _productId: saved._productId,
+              _stockQuantity: saved._stockQuantity,
+              _trackInventory: saved._trackInventory,
             }
           : it,
       ),
@@ -372,6 +382,7 @@ export default function NewEstimatePage() {
           tax2: it.taxId2 || undefined,
           unit: it.unit || undefined,
           order: index,
+          productId: it._productId ?? null,
         })),
       };
 
@@ -621,20 +632,32 @@ export default function NewEstimatePage() {
                         />
                         {activeAutocomplete === idx && suggestions.length > 0 && (
                           <div className="absolute z-20 left-0 right-2 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                            {suggestions.map((s) => (
-                              <button
-                                key={s.id}
-                                type="button"
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-primary/5 border-b border-gray-50 last:border-0 flex items-center gap-2"
-                                onMouseDown={(e) => { e.preventDefault(); applySavedItem(idx, s); }}
-                              >
-                                <span className="font-medium text-gray-900 dark:text-gray-100 flex-1">{s.description}</span>
-                                <span className="text-gray-500 dark:text-gray-400 text-xs">{Number(s.rate).toFixed(2)}</span>
-                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${s._source === 'product' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
-                                  {s._source === 'product' ? 'Product' : 'Saved'}
-                                </span>
-                              </button>
-                            ))}
+                            {suggestions.map((s) => {
+                              const isProduct = s._source === 'product';
+                              const tracksStock = isProduct && s._trackInventory;
+                              const stock = Number(s._stockQuantity ?? 0);
+                              return (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-primary/5 border-b border-gray-50 last:border-0"
+                                  onMouseDown={(e) => { e.preventDefault(); applySavedItem(idx, s); }}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-gray-900 dark:text-gray-100 flex-1">{s.description}</span>
+                                    <span className="text-gray-500 dark:text-gray-400 text-xs">{Number(s.rate).toFixed(2)}</span>
+                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${isProduct ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                                      {isProduct ? 'Product' : 'Saved'}
+                                    </span>
+                                  </div>
+                                  {tracksStock && (
+                                    <div className={`text-[10px] mt-0.5 ${stock > 0 ? 'text-gray-500 dark:text-gray-400' : 'text-red-600 font-medium'}`}>
+                                      {stock > 0 ? `In stock: ${stock}` : 'Out of stock'}
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
                         <button type="button" className="text-[10px] text-primary hover:underline mt-1" onClick={() => updateItem(idx, 'showLongDesc', !item.showLongDesc)}>
@@ -649,6 +672,14 @@ export default function NewEstimatePage() {
                       </td>
                       <td className="py-3 pr-2">
                         <input type="number" step="0.01" min="0" value={item.qty} onChange={(e) => updateItem(idx, 'qty', e.target.value)} className={inputClass} />
+                        {item._productId &&
+                          item._trackInventory &&
+                          typeof item._stockQuantity === 'number' &&
+                          (parseFloat(item.qty) || 0) > item._stockQuantity && (
+                            <div className="text-[10px] text-amber-600 mt-1">
+                              ⚠ Only {item._stockQuantity} in stock
+                            </div>
+                          )}
                       </td>
                       <td className="py-3 pr-2">
                         <input type="number" step="0.01" min="0" value={item.rate} onChange={(e) => updateItem(idx, 'rate', e.target.value)} className={inputClass} />

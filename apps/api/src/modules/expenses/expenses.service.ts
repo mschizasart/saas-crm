@@ -2,9 +2,11 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
 export interface CreateExpenseDto {
   name: string;
@@ -24,10 +26,66 @@ export interface CreateExpenseDto {
 
 @Injectable()
 export class ExpensesService {
+  private readonly logger = new Logger(ExpensesService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
   ) {}
+
+  // ─── Export ────────────────────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: {
+      search?: string;
+      categoryId?: string;
+      clientId?: string;
+      projectId?: string;
+      billable?: boolean;
+      from?: string;
+      to?: string;
+    } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    const { search, categoryId, clientId, projectId, billable, from, to } = query;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+      if (categoryId) where.categoryId = categoryId;
+      if (clientId) where.clientId = clientId;
+      if (projectId) where.projectId = projectId;
+      if (billable !== undefined) where.billable = billable;
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { note: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+      if (from || to) {
+        where.date = {};
+        if (from) where.date.gte = new Date(from);
+        if (to) where.date.lte = new Date(to);
+      }
+
+      const rows = await tx.expense.findMany({
+        where,
+        orderBy: { date: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          category: { select: { name: true } },
+          client: { select: { company: true } },
+          project: { select: { name: true } },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `Expenses export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   // ─── Categories ────────────────────────────────────────────────────────────
 

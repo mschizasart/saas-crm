@@ -8,6 +8,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorBanner } from '@/components/ui/error-banner';
+import { ImportCsvModal } from '@/components/ui/import-csv-modal';
+import { exportCsv } from '@/lib/export-csv';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -278,6 +280,7 @@ export default function LeadsPage() {
   const [dragOverStatus, setDragOverStatus] = useState<LeadStatus | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Store dragged lead info in a ref to avoid stale closures
   const dragRef = useRef<{ leadId: string; fromStatus: LeadStatus } | null>(null);
@@ -470,7 +473,18 @@ export default function LeadsPage() {
     <ListPageLayout
       title="Leads"
       subtitle={!loading ? `${totalLeads} lead${totalLeads !== 1 ? 's' : ''} in pipeline` : undefined}
-      secondaryActions={[{ label: 'Import CSV', href: '/leads/import' }]}
+      secondaryActions={[
+        {
+          label: 'Export CSV',
+          onClick: () =>
+            void exportCsv(
+              '/api/v1/leads/export',
+              `leads-${new Date().toISOString().slice(0, 10)}.csv`,
+              { entityLabel: 'leads' },
+            ),
+        },
+        { label: 'Import CSV', onClick: () => setImportOpen(true) },
+      ]}
       primaryAction={{ label: 'New Lead', href: '/leads/new', icon: <span className="text-lg leading-none">+</span> }}
       filters={filtersNode}
       fullHeight={view === 'kanban'}
@@ -659,6 +673,20 @@ export default function LeadsPage() {
           </div>
         </Card>
       )}
+
+      {/* CSV import modal */}
+      <ImportCsvModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        title="Import Leads from CSV"
+        endpoint="/api/v1/leads/import"
+        templatePath="/api/v1/leads/import/template"
+        staticTemplateHref="/templates/leads-import.csv"
+        columnsHint="name (required), email, phone, company, source, status, assigneeEmail, notes"
+        onImported={(r) => {
+          if (r.imported > 0) window.location.reload();
+        }}
+      />
 
       {/* Bulk action bar */}
       {selected.size > 0 && view === 'list' && (

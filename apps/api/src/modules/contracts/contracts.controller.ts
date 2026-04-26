@@ -22,6 +22,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions, Public } from '../../common/decorators/permissions.decorator';
 import { PdfService } from '../pdf/pdf.service';
 import { renderContractHtml } from '../pdf/templates/contract.template';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Contracts')
 @Controller({ version: '1', path: 'contracts' })
@@ -94,6 +95,46 @@ export class ContractsController {
   @ApiOperation({ summary: 'Get contract status counts' })
   getStats(@CurrentOrg() org: any) {
     return this.service.getStats(org.id);
+  }
+
+  // ─── CSV Export ────────────────────────────────────────────────────────────
+  @Get('export')
+  @Permissions('clients.view')
+  @ApiOperation({ summary: 'Export contracts as CSV (respects current filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('clientId') clientId?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      search,
+      status,
+      clientId,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'subject', label: 'Subject' },
+        { key: 'client.company', label: 'Client' },
+        { key: 'type', label: 'Type' },
+        { key: 'status', label: 'Status' },
+        { key: 'value', label: 'Value' },
+        { key: 'startDate', label: 'Start Date' },
+        { key: 'endDate', label: 'End Date' },
+        { key: 'signedAt', label: 'Signed At' },
+        { key: 'createdAt', label: 'Created' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('contracts');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
   }
 
   // ─── Public signing page — must be above :id to avoid route shadowing ──────

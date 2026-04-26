@@ -56,6 +56,8 @@ interface SavedItem {
   _source?: 'saved' | 'product';
   _productId?: string;
   _trackInventory?: boolean;
+  /** Stock on hand. Only meaningful for product-sourced suggestions. */
+  _stockQuantity?: number;
 }
 
 interface LineItem {
@@ -67,6 +69,12 @@ interface LineItem {
   taxId: string;
   taxId2: string;
   unit: string;
+  /** FK to Product when this line was picked from a product result. */
+  _productId?: string;
+  /** Snapshot of stockQuantity at pick-time, for the over-stock warning. */
+  _stockQuantity?: number;
+  /** Whether the picked product tracks inventory. */
+  _trackInventory?: boolean;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -291,6 +299,7 @@ export default function NewInvoicePage() {
           _source: 'product' as const,
           _productId: p.id,
           _trackInventory: p.trackInventory,
+          _stockQuantity: Number(p.stockQuantity ?? 0),
         }));
         allItems = [...allItems, ...productItems];
       }
@@ -317,17 +326,16 @@ export default function NewInvoicePage() {
               longDescription: saved.longDescription ?? '',
               rate: String(saved.rate),
               unit: saved.unit ?? '',
+              _productId: saved._productId,
+              _stockQuantity: saved._stockQuantity,
+              _trackInventory: saved._trackInventory,
             }
           : it,
       ),
     );
-    if (saved._productId && saved._trackInventory) {
-      fetch(`${API_BASE}/api/v1/products/${saved._productId}/stock`, {
-        method: 'PATCH',
-        headers: authHeaders(),
-        body: JSON.stringify({ quantity: -1, reason: 'Added to invoice' }),
-      }).catch(() => {});
-    }
+    // NOTE: stock is now decremented server-side on `invoice.sent`, keyed by
+    // the productId FK we just attached to the line. No optimistic client
+    // adjustment here — that double-counted before.
     setSuggestions([]);
     setActiveAutocomplete(null);
   }
@@ -443,6 +451,7 @@ export default function NewInvoicePage() {
           tax2: it.taxId2 || undefined,
           unit: it.unit || undefined,
           order: index,
+          productId: it._productId ?? null,
         })),
       };
 
@@ -882,33 +891,51 @@ export default function NewInvoicePage() {
                         />
                         {activeAutocomplete === idx && suggestions.length > 0 && (
                           <div className="absolute z-20 left-0 right-2 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                            {suggestions.map((s) => (
-                              <button
-                                key={s.id}
-                                type="button"
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-primary/5 border-b border-gray-50 last:border-0 flex items-center gap-2"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  applySavedItem(idx, s);
-                                }}
-                              >
-                                <span className="font-medium text-gray-900 dark:text-gray-100 flex-1">
-                                  {s.description}
-                                </span>
-                                <span className="text-gray-500 dark:text-gray-400 text-xs">
-                                  {Number(s.rate).toFixed(2)}
-                                </span>
-                                <span
-                                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                                    s._source === 'product'
-                                      ? 'bg-blue-100 text-blue-700'
-                                      : 'bg-gray-100 text-gray-600'
-                                  }`}
+                            {suggestions.map((s) => {
+                              const isProduct = s._source === 'product';
+                              const tracksStock = isProduct && s._trackInventory;
+                              const stock = Number(s._stockQuantity ?? 0);
+                              return (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-primary/5 border-b border-gray-50 last:border-0"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    applySavedItem(idx, s);
+                                  }}
                                 >
-                                  {s._source === 'product' ? 'Product' : 'Saved'}
-                                </span>
-                              </button>
-                            ))}
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-gray-900 dark:text-gray-100 flex-1">
+                                      {s.description}
+                                    </span>
+                                    <span className="text-gray-500 dark:text-gray-400 text-xs">
+                                      {Number(s.rate).toFixed(2)}
+                                    </span>
+                                    <span
+                                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                        isProduct
+                                          ? 'bg-blue-100 text-blue-700'
+                                          : 'bg-gray-100 text-gray-600'
+                                      }`}
+                                    >
+                                      {isProduct ? 'Product' : 'Saved'}
+                                    </span>
+                                  </div>
+                                  {tracksStock && (
+                                    <div
+                                      className={`text-[10px] mt-0.5 ${
+                                        stock > 0
+                                          ? 'text-gray-500 dark:text-gray-400'
+                                          : 'text-red-600 font-medium'
+                                      }`}
+                                    >
+                                      {stock > 0 ? `In stock: ${stock}` : 'Out of stock'}
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
                         {/* Long description toggle */}
@@ -950,6 +977,14 @@ export default function NewInvoicePage() {
                           onChange={(e) => updateItem(idx, 'qty', e.target.value)}
                           className={inputClass}
                         />
+                        {item._productId &&
+                          item._trackInventory &&
+                          typeof item._stockQuantity === 'number' &&
+                          (parseFloat(item.qty) || 0) > item._stockQuantity && (
+                            <div className="text-[10px] text-amber-600 mt-1">
+                              ⚠ Only {item._stockQuantity} in stock
+                            </div>
+                          )}
                       </td>
 
                       {/* Rate */}

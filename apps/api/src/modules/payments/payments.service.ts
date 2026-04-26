@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
@@ -9,6 +10,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { GatewayFactory } from './gateways/gateway.factory';
 import { PdfService } from '../pdf/pdf.service';
 import { renderReceiptHtml } from '../pdf/templates/receipt.template';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
 export interface CreatePaymentDto {
   invoiceId: string;
@@ -33,12 +35,57 @@ export interface RefundPaymentDto {
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
     private gatewayFactory: GatewayFactory,
     private pdfService: PdfService,
   ) {}
+
+  // ─── Export ─────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: {
+      invoiceId?: string;
+      clientId?: string;
+      from?: string;
+      to?: string;
+    } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    const { invoiceId, clientId, from, to } = query;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+      if (invoiceId) where.invoiceId = invoiceId;
+      if (clientId) where.clientId = clientId;
+      if (from || to) {
+        where.paymentDate = {};
+        if (from) where.paymentDate.gte = new Date(from);
+        if (to) where.paymentDate.lte = new Date(to);
+      }
+
+      const rows = await tx.payment.findMany({
+        where,
+        orderBy: { paymentDate: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          invoice: { select: { number: true } },
+          client: { select: { company: true } },
+          paymentMode: { select: { name: true } },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `Payments export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   // ─── Gateway Checkout & Webhooks ───────────────────────────
 

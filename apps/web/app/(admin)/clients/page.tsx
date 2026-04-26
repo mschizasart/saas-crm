@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Search, Users } from 'lucide-react';
 import { apiFetch, API_BASE, getAccessToken } from '@/lib/api';
+import { exportCsv } from '@/lib/export-csv';
 import { ListPageLayout } from '@/components/layouts/list-page-layout';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,7 @@ import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorBanner } from '@/components/ui/error-banner';
 import { inputClass } from '@/components/ui/form-field';
+import { ImportCsvModal } from '@/components/ui/import-csv-modal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -106,6 +108,7 @@ export default function ClientsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [healthScores, setHealthScores] = useState<Map<string, HealthScore>>(new Map());
+  const [importOpen, setImportOpen] = useState(false);
 
   const debouncedSearch = useDebounce(search, 350);
 
@@ -254,7 +257,22 @@ export default function ClientsPage() {
   return (
     <ListPageLayout
       title="Clients"
-      secondaryActions={[{ label: 'Import CSV', href: '/clients/import' }]}
+      secondaryActions={[
+        {
+          label: 'Export CSV',
+          onClick: () => {
+            const params = new URLSearchParams();
+            if (debouncedSearch) params.set('search', debouncedSearch);
+            const qs = params.toString();
+            void exportCsv(
+              `/api/v1/clients/export${qs ? `?${qs}` : ''}`,
+              `clients-${new Date().toISOString().slice(0, 10)}.csv`,
+              { entityLabel: 'clients' },
+            );
+          },
+        },
+        { label: 'Import CSV', onClick: () => setImportOpen(true) },
+      ]}
       primaryAction={{ label: 'New Client', href: '/clients/new', icon: <span className="text-lg leading-none">+</span> }}
       filters={filtersNode}
       pagination={paginationNode}
@@ -429,6 +447,20 @@ export default function ClientsPage() {
         </div>
 
       </Card>
+
+      {/* CSV import modal */}
+      <ImportCsvModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        title="Import Clients from CSV"
+        endpoint="/api/v1/clients/import"
+        templatePath="/api/v1/clients/import/template"
+        staticTemplateHref="/templates/clients-import.csv"
+        columnsHint="company (required), email, phone, website, address, city, country, vatNumber, currency, notes"
+        onImported={(r) => {
+          if (r.imported > 0) fetchClients();
+        }}
+      />
 
       {/* Bulk action bar */}
       {selected.size > 0 && (

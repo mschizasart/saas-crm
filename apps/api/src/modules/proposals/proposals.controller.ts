@@ -25,6 +25,7 @@ import {
 import { PdfService } from '../pdf/pdf.service';
 import { renderProposalHtml } from '../pdf/templates/proposal.template';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Proposals')
 @Controller({ version: '1', path: 'proposals' })
@@ -44,6 +45,43 @@ export class ProposalsController {
   @ApiOperation({ summary: 'Get proposal status counts' })
   getStats(@CurrentOrg() org: any) {
     return this.service.getStats(org.id);
+  }
+
+  // ─── CSV Export ────────────────────────────────────────────────────────────
+  @Get('export')
+  @Permissions('clients.view')
+  @ApiOperation({ summary: 'Export proposals as CSV (respects current filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      search,
+      status,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'subject', label: 'Subject' },
+        { key: 'client.company', label: 'Client' },
+        { key: 'status', label: 'Status' },
+        { key: 'total', label: 'Value' },
+        { key: 'currency', label: 'Currency' },
+        { key: 'dateCreated', label: 'Created' },
+        { key: 'openTill', label: 'Open Till' },
+        { key: 'allowComments', label: 'Allow Comments' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('proposals');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
   }
 
   // ─── List ──────────────────────────────────────────────────────────────────
@@ -166,6 +204,27 @@ export class ProposalsController {
       // non-fatal
     }
     return updated;
+  }
+
+  // ─── Bulk Status Change ───────────────────────────────────────────────────
+
+  @Post('bulk/status')
+  @Permissions('proposals.edit')
+  @ApiOperation({
+    summary:
+      'Bulk-update proposal status. Accepts revised/revising (same normalization as the single-status route). Terminal statuses are skipped unless moving to revising.',
+  })
+  bulkStatus(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Body() body: { proposalIds: string[]; status: string },
+  ) {
+    return this.service.bulkUpdateStatus(
+      org.id,
+      body?.proposalIds ?? [],
+      body?.status,
+      user?.id,
+    );
   }
 
   // ─── Delete ────────────────────────────────────────────────────────────────

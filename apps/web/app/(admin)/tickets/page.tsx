@@ -11,6 +11,7 @@ import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorBanner } from '@/components/ui/error-banner';
 import { inputClass } from '@/components/ui/form-field';
+import { exportCsv } from '@/lib/export-csv';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -339,7 +340,23 @@ export default function TicketsPage() {
   return (
     <ListPageLayout
       title="Support Tickets"
-      secondaryActions={[{ label: 'Kanban', href: '/tickets/kanban' }]}
+      secondaryActions={[
+        {
+          label: 'Export CSV',
+          onClick: () => {
+            const params = new URLSearchParams();
+            if (statusFilter !== 'all') params.set('status', statusFilter);
+            if (debouncedSearch) params.set('search', debouncedSearch);
+            const qs = params.toString();
+            void exportCsv(
+              `/api/v1/tickets/export${qs ? `?${qs}` : ''}`,
+              `tickets-${new Date().toISOString().slice(0, 10)}.csv`,
+              { entityLabel: 'tickets' },
+            );
+          },
+        },
+        { label: 'Kanban', href: '/tickets/kanban' },
+      ]}
       primaryAction={{ label: 'New Ticket', href: '/tickets/new', icon: <span className="text-lg leading-none">+</span> }}
       filters={filtersNode}
       pagination={paginationNode}

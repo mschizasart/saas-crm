@@ -3,12 +3,14 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PdfService } from '../pdf/pdf.service';
 import { renderCreditNoteHtml } from '../pdf/templates/credit-note.template';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
 export interface CreateCreditNoteDto {
   clientId?: string;
@@ -28,11 +30,51 @@ export interface CreateCreditNoteDto {
 
 @Injectable()
 export class CreditNotesService {
+  private readonly logger = new Logger(CreditNotesService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
     private pdfService: PdfService,
   ) {}
+
+  // ─── Export ────────────────────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: { search?: string; status?: string; clientId?: string } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    const { search, status, clientId } = query;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+      if (status) where.status = status;
+      if (clientId) where.clientId = clientId;
+      if (search) {
+        where.OR = [
+          { number: { contains: search, mode: 'insensitive' } },
+          { client: { company: { contains: search, mode: 'insensitive' } } },
+        ];
+      }
+
+      const rows = await tx.creditNote.findMany({
+        where,
+        orderBy: { date: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          client: { select: { company: true } },
+          invoice: { select: { number: true } },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `CreditNotes export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   // ─── Private helpers ───────────────────────────────────────────────────────
 
@@ -269,6 +311,71 @@ export class CreditNotesService {
       await tx.creditNote.delete({ where: { id } });
     });
     this.events.emit('credit_note.deleted', { id, orgId });
+  }
+
+  // ─── bulkUpdateStatus ──────────────────────────────────────────────────────
+  // Credit notes legitimately transition `open → closed` or `open → void`.
+  // We refuse to bulk-modify `applied` credit notes (they have accounting
+  // side-effects tied to payments) and anything already at the target state.
+  async bulkUpdateStatus(
+    orgId: string,
+    creditNoteIds: string[],
+    status: string,
+    userId?: string,
+  ): Promise<{ updated: number; skipped: Array<{ id: string; reason: string }> }> {
+    const allowedTargets = ['open', 'closed', 'void'];
+    if (!allowedTargets.includes(status)) {
+      throw new BadRequestException(
+        `Invalid credit note status '${status}'. Allowed: ${allowedTargets.join(', ')}`,
+      );
+    }
+    const ids = Array.from(new Set(creditNoteIds ?? [])).filter(Boolean);
+    if (ids.length === 0) return { updated: 0, skipped: [] };
+
+    const skipped: Array<{ id: string; reason: string }> = [];
+    let updated = 0;
+
+    await this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.creditNote.findMany({
+        where: { id: { in: ids }, organizationId: orgId },
+        select: { id: true, status: true },
+      });
+      const foundIds = new Set(existing.map((e) => e.id));
+      for (const id of ids) {
+        if (!foundIds.has(id)) skipped.push({ id, reason: 'not found' });
+      }
+
+      for (const cn of existing) {
+        if (cn.status === status) {
+          skipped.push({ id: cn.id, reason: `already ${status}` });
+          continue;
+        }
+        if (cn.status === 'applied') {
+          skipped.push({
+            id: cn.id,
+            reason: 'applied credit notes cannot be bulk-modified',
+          });
+          continue;
+        }
+        if (cn.status === 'void') {
+          skipped.push({ id: cn.id, reason: 'voided credit notes are terminal' });
+          continue;
+        }
+        // At this point status is 'open' or 'closed' or 'draft'; all can
+        // legally move to any of the allowed targets.
+        await tx.creditNote.update({ where: { id: cn.id }, data: { status } });
+        updated += 1;
+        this.events.emit('credit_note.status_changed', {
+          creditNote: { ...cn, status },
+          orgId,
+          previousStatus: cn.status,
+          newStatus: status,
+          userId,
+        });
+      }
+    });
+
+    return { updated, skipped };
   }
 
   // ─── void ──────────────────────────────────────────────────────────────────

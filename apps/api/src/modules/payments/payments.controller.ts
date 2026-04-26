@@ -31,6 +31,7 @@ import {
   Permissions,
   Public,
 } from '../../common/decorators/permissions.decorator';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Payments')
 @Controller({ version: '1', path: 'payments' })
@@ -114,6 +115,49 @@ export class PaymentsController {
   @ApiOperation({ summary: 'Get payment stats for current and last month' })
   getStats(@CurrentOrg() org: any, @Query('month') month?: string) {
     return this.service.getStats(org.id, month);
+  }
+
+  // ─── CSV Export ────────────────────────────────────────────
+  @Get('export')
+  @Permissions('invoices.view')
+  @ApiOperation({ summary: 'Export payments as CSV (respects current filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('invoiceId') invoiceId?: string,
+    @Query('clientId') clientId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      invoiceId,
+      clientId,
+      from,
+      to,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'paymentDate', label: 'Date' },
+        { key: 'invoice.number', label: 'Invoice' },
+        { key: 'client.company', label: 'Client' },
+        { key: 'amount', label: 'Amount' },
+        { key: 'currency', label: 'Currency' },
+        { key: 'paymentMode.name', label: 'Method' },
+        { key: 'transactionId', label: 'Transaction ID' },
+        { key: 'refundedAmount', label: 'Refunded' },
+        { key: 'refundedAt', label: 'Refunded At' },
+        { key: 'note', label: 'Note' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('payments');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
   }
 
   // ─── Payment Modes ─────────────────────────────────────────

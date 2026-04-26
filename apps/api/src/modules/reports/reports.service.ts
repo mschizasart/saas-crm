@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 
 export interface DateRangeQuery {
@@ -711,7 +712,339 @@ export class ReportsService {
   }
 
   // ──────────────────────────────────────────────────────────────
-  // 7. Profit & Loss report
+  // 7. Items report (invoiced line items aggregated by description,
+  //     cross-matched to Products for stock visibility)
+  // ──────────────────────────────────────────────────────────────
+
+  async getItemsReport(
+    orgId: string,
+    query: DateRangeQuery & { status?: string | string[] },
+  ) {
+    const { from, to } = parseRange(query);
+
+    // Default statuses that count as "sold"
+    const defaultStatuses = ['paid', 'partial', 'sent', 'overdue'];
+    let statuses: string[] | undefined;
+    if (Array.isArray(query.status)) {
+      statuses = query.status.filter(Boolean);
+    } else if (typeof query.status === 'string' && query.status.length > 0) {
+      statuses =
+        query.status === 'all'
+          ? undefined
+          : query.status.split(',').map((s) => s.trim()).filter(Boolean);
+    } else {
+      statuses = defaultStatuses;
+    }
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      // Aggregate invoice items grouped by description
+      const statusFilter =
+        statuses && statuses.length
+          ? Prisma.sql`AND i."status" IN (${Prisma.join(statuses)})`
+          : Prisma.empty;
+
+      const rows = await tx.$queryRaw<
+        Array<{
+          description: string;
+          totalQty: any;
+          totalRevenue: any;
+          invoiceCount: bigint;
+        }>
+      >`
+        SELECT
+          ii."description"               AS description,
+          COALESCE(SUM(ii."qty"), 0)     AS "totalQty",
+          COALESCE(SUM(ii."qty" * ii."rate"), 0) AS "totalRevenue",
+          COUNT(DISTINCT i."id")::bigint AS "invoiceCount"
+        FROM "invoice_items" ii
+        JOIN "invoices" i ON i."id" = ii."invoiceId"
+        WHERE i."organizationId" = ${orgId}
+          AND i."date" >= ${from}
+          AND i."date" <= ${to}
+          ${statusFilter}
+        GROUP BY ii."description"
+        ORDER BY "totalRevenue" DESC
+      `;
+
+      // Cross-match to products (case-insensitive exact name) for stock & sku
+      const names = rows.map((r) => r.description).filter(Boolean);
+      const products = names.length
+        ? await tx.product.findMany({
+            where: {
+              organizationId: orgId,
+              name: { in: names, mode: 'insensitive' as const },
+            },
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              stockQuantity: true,
+              trackInventory: true,
+            },
+          })
+        : [];
+      const productMap = new Map(
+        products.map((p) => [p.name.toLowerCase(), p]),
+      );
+
+      return rows.map((r) => {
+        const match = productMap.get((r.description ?? '').toLowerCase());
+        return {
+          description: r.description,
+          totalQty: Number(r.totalQty ?? 0),
+          totalRevenue: Number(r.totalRevenue ?? 0),
+          invoiceCount: Number(r.invoiceCount ?? 0),
+          productId: match?.id ?? null,
+          sku: match?.sku ?? null,
+          stockQuantity: match?.trackInventory ? match.stockQuantity : null,
+          trackInventory: match?.trackInventory ?? false,
+        };
+      });
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // 8. Payment modes report
+  // ──────────────────────────────────────────────────────────────
+
+  async getPaymentModesReport(orgId: string, query: DateRangeQuery) {
+    const { from, to } = parseRange(query);
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const grouped = await tx.payment.groupBy({
+        by: ['paymentModeId'],
+        where: {
+          organizationId: orgId,
+          paymentDate: { gte: from, lte: to },
+        },
+        _sum: { amount: true },
+        _count: { _all: true },
+      });
+
+      const modeIds = (grouped as any[])
+        .map((g) => g.paymentModeId)
+        .filter(Boolean);
+      const modes = modeIds.length
+        ? await tx.paymentMode.findMany({
+            where: { id: { in: modeIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const modeMap = new Map(modes.map((m: any) => [m.id, m.name]));
+
+      const totalAmount = (grouped as any[]).reduce(
+        (sum, g) => sum + Number(g._sum.amount ?? 0),
+        0,
+      );
+
+      const byMode = (grouped as any[])
+        .map((g) => ({
+          paymentModeId: g.paymentModeId,
+          name: g.paymentModeId
+            ? (modeMap.get(g.paymentModeId) ?? 'Unknown')
+            : 'Unspecified',
+          amount: Number(g._sum.amount ?? 0),
+          count: g._count._all,
+        }))
+        .sort((a, b) => b.amount - a.amount);
+
+      return {
+        totalAmount,
+        totalTransactions: byMode.reduce((n, m) => n + m.count, 0),
+        byMode,
+      };
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // 9. Expenses by category report
+  // ──────────────────────────────────────────────────────────────
+
+  async getExpensesByCategory(
+    orgId: string,
+    query: DateRangeQuery & { billable?: boolean; clientId?: string },
+  ) {
+    const { from, to } = parseRange(query);
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = {
+        organizationId: orgId,
+        date: { gte: from, lte: to },
+      };
+      if (typeof query.billable === 'boolean') where.billable = query.billable;
+      if (query.clientId) where.clientId = query.clientId;
+
+      // Group by (categoryId, currencyId) so we can preserve per-currency detail
+      const grouped = await tx.expense.groupBy({
+        by: ['categoryId', 'currencyId'],
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+      });
+
+      // Fetch categories & currencies in one pass
+      const catIds = Array.from(
+        new Set(
+          (grouped as any[])
+            .map((g) => g.categoryId)
+            .filter((x): x is string => Boolean(x)),
+        ),
+      );
+      const currencyIds = Array.from(
+        new Set(
+          (grouped as any[])
+            .map((g) => g.currencyId)
+            .filter((x): x is string => Boolean(x)),
+        ),
+      );
+
+      const [categories, currencies, defaultCurrency] = await Promise.all([
+        catIds.length
+          ? tx.expenseCategory.findMany({
+              where: { id: { in: catIds } },
+              select: { id: true, name: true, color: true },
+            })
+          : Promise.resolve([] as { id: string; name: string; color: string | null }[]),
+        currencyIds.length
+          ? tx.currency.findMany({
+              where: { id: { in: currencyIds } },
+              select: { id: true, code: true, symbol: true, name: true },
+            })
+          : Promise.resolve(
+              [] as { id: string; code: string | null; symbol: string; name: string }[],
+            ),
+        tx.currency.findFirst({
+          where: { organizationId: orgId, isDefault: true },
+          select: { id: true, code: true, symbol: true, name: true },
+        }),
+      ]);
+
+      const catMap = new Map(categories.map((c: any) => [c.id, c]));
+      const currencyMap = new Map(currencies.map((c: any) => [c.id, c]));
+
+      const defaultCurrencyId = defaultCurrency?.id ?? null;
+      const defaultCurrencyCode = defaultCurrency?.code ?? null;
+
+      // Fold into category-keyed buckets
+      type CurrencySlice = {
+        currencyId: string | null;
+        currency: string;
+        count: number;
+        total: number;
+      };
+      type CategoryBucket = {
+        categoryId: string | null;
+        categoryName: string;
+        categoryColor: string;
+        count: number;
+        total: number;
+        hasMixedCurrency: boolean;
+        byCurrency: CurrencySlice[];
+      };
+
+      const UNCATEGORIZED_COLOR = '#94A3B8'; // slate-400 neutral
+      const buckets = new Map<string, CategoryBucket>();
+
+      for (const g of grouped as any[]) {
+        const key = g.categoryId ?? '__uncategorized__';
+        const cat = g.categoryId ? catMap.get(g.categoryId) : null;
+        const currency = g.currencyId ? currencyMap.get(g.currencyId) : null;
+        const currencyCode =
+          currency?.code ||
+          currency?.name ||
+          (g.currencyId ? 'UNKNOWN' : (defaultCurrencyCode ?? 'DEFAULT'));
+
+        const bucket =
+          buckets.get(key) ??
+          ({
+            categoryId: g.categoryId ?? null,
+            categoryName: cat?.name ?? 'Uncategorized',
+            categoryColor: cat?.color || (g.categoryId ? '#64748B' : UNCATEGORIZED_COLOR),
+            count: 0,
+            total: 0,
+            hasMixedCurrency: false,
+            byCurrency: [],
+          } as CategoryBucket);
+
+        const amount = Number(g._sum.amount ?? 0);
+        const count = Number(g._count?._all ?? 0);
+
+        bucket.count += count;
+        bucket.total += amount; // naive sum — no FX conversion
+        bucket.byCurrency.push({
+          currencyId: g.currencyId ?? null,
+          currency: currencyCode,
+          count,
+          total: amount,
+        });
+
+        buckets.set(key, bucket);
+      }
+
+      // Compute mixed-currency flag and sort per-currency slices
+      for (const b of buckets.values()) {
+        const codes = new Set(
+          b.byCurrency
+            .map((s) => (s.currencyId ?? defaultCurrencyId ?? 'default') + ':' + s.currency)
+            .filter(Boolean),
+        );
+        // Mixed if more than one distinct currency slice, OR any slice whose
+        // currency differs from the org default.
+        const distinctCurrencies = new Set(b.byCurrency.map((s) => s.currency));
+        b.hasMixedCurrency =
+          distinctCurrencies.size > 1 ||
+          (defaultCurrencyCode != null &&
+            b.byCurrency.some(
+              (s) => s.currency && s.currency !== defaultCurrencyCode,
+            ));
+        // If we only have a single unknown slice and a default currency exists,
+        // don't flag as mixed.
+        if (
+          distinctCurrencies.size === 1 &&
+          defaultCurrencyCode == null
+        ) {
+          b.hasMixedCurrency = false;
+        }
+        b.byCurrency.sort((a, c) => c.total - a.total);
+        void codes;
+      }
+
+      const rows = Array.from(buckets.values()).sort((a, b) => b.total - a.total);
+
+      const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+      const uncategorized = rows.find((r) => r.categoryId === null);
+      const uncategorizedTotal = uncategorized?.total ?? 0;
+      const uncategorizedCount = uncategorized?.count ?? 0;
+
+      // Attach percentage
+      const byCategory = rows.map((r) => ({
+        ...r,
+        percentage:
+          grandTotal > 0 ? +((r.total / grandTotal) * 100).toFixed(2) : 0,
+      }));
+
+      const hasMixedCurrency = byCategory.some((r) => r.hasMixedCurrency);
+
+      return {
+        grandTotal,
+        uncategorizedTotal,
+        uncategorizedCount,
+        categoryCount: byCategory.filter((r) => r.categoryId !== null).length,
+        hasMixedCurrency,
+        defaultCurrency: defaultCurrency
+          ? {
+              code: defaultCurrency.code,
+              symbol: defaultCurrency.symbol,
+              name: defaultCurrency.name,
+            }
+          : null,
+        byCategory,
+      };
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // 10. Profit & Loss report
   // ──────────────────────────────────────────────────────────────
 
   async getProfitLossReport(

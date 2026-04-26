@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../database/prisma.service';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
 export interface CreateSubscriptionDto {
   clientId: string;
@@ -86,6 +87,35 @@ export class SubscriptionsService {
     private prisma: PrismaService,
     private events: EventEmitter2,
   ) {}
+
+  // ─── Export ────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: { status?: string; clientId?: string } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+      if (query.status) where.status = query.status;
+      if (query.clientId) where.clientId = query.clientId;
+
+      const rows = await tx.clientSubscription.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          client: { select: { company: true } },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `Subscriptions export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   // ─── List / Detail ────────────────────────────────────────
 

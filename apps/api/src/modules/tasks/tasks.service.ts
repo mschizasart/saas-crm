@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../database/prisma.service';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
 export interface CreateTaskDto {
   name: string;
@@ -16,10 +17,64 @@ export interface CreateTaskDto {
 
 @Injectable()
 export class TasksService {
+  private readonly logger = new Logger(TasksService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
   ) {}
+
+  // ─── Export ────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: {
+      search?: string;
+      status?: string;
+      assignedToId?: string;
+      projectId?: string;
+      dueBefore?: string;
+    } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    const { search, status, assignedToId, projectId, dueBefore } = query;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+      if (status) where.status = status;
+      if (projectId) where.projectId = projectId;
+      if (dueBefore) where.dueDate = { lte: new Date(dueBefore) };
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+      if (assignedToId) {
+        where.assignments = { some: { userId: assignedToId } };
+      }
+
+      const rows = await tx.task.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          project: { select: { name: true } },
+          assignments: {
+            include: {
+              user: { select: { firstName: true, lastName: true, email: true } },
+            },
+          },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `Tasks export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   async findAll(
     orgId: string,

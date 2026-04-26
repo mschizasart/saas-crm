@@ -7,13 +7,15 @@ import {
   Body,
   Param,
   Query,
+  Req,
   Res,
   UseGuards,
   HttpCode,
   HttpStatus,
   BadRequestException,
+  PayloadTooLargeException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { ClientsService, CreateClientDto, CreateContactDto } from './clients.service';
 import { HealthScoreService } from './health-score.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -23,6 +25,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PdfService } from '../pdf/pdf.service';
 import { renderStatementHtml } from '../pdf/templates/statement.template';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Clients')
 @Controller({ version: '1', path: 'clients' })
@@ -87,6 +90,123 @@ export class ClientsController {
     @Body() dto: CreateClientDto,
   ) {
     return this.service.create(org.id, dto, user.id);
+  }
+
+  // ─── CSV Import ────────────────────────────────────────────
+
+  /**
+   * Upload a CSV and bulk-create clients for the current organisation.
+   *
+   * The request is `multipart/form-data` with a single `file` field.
+   * Fastify's `@fastify/multipart` is registered globally in main.ts, so
+   * we consume the request parts directly (see storage.controller.ts for
+   * the canonical pattern).
+   */
+  @Post('import')
+  @Permissions('clients.create')
+  @ApiOperation({ summary: 'Import clients from a CSV file (multipart/form-data)' })
+  @ApiConsumes('multipart/form-data')
+  async importCsv(@CurrentOrg() org: any, @Req() req: any) {
+    if (typeof req.file !== 'function' && typeof req.parts !== 'function') {
+      throw new BadRequestException(
+        'Multipart not supported — @fastify/multipart not registered',
+      );
+    }
+
+    const MAX_BYTES = 5 * 1024 * 1024; // 5MB
+    let buffer: Buffer | null = null;
+    let filename = '';
+
+    const parts = req.parts();
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        filename = part.filename || 'upload.csv';
+        const buf = await part.toBuffer();
+        if (buf.length > MAX_BYTES) {
+          throw new PayloadTooLargeException(
+            `CSV file exceeds 5MB limit (${buf.length} bytes)`,
+          );
+        }
+        buffer = buf;
+      }
+      // ignore other fields
+    }
+
+    if (!buffer) {
+      throw new BadRequestException('No CSV file uploaded (field name: "file")');
+    }
+
+    // Light sanity check on mimetype / extension — accept text/csv,
+    // application/vnd.ms-excel, or any *.csv suffix.
+    if (filename && !filename.toLowerCase().endsWith('.csv')) {
+      // don't reject — tolerate odd extensions like .txt if the content parses
+    }
+
+    return this.service.importFromCsv(org.id, buffer);
+  }
+
+  // ─── CSV Export ────────────────────────────────────────────
+  // Streams the current filter set as RFC-4180 CSV (with UTF-8 BOM). Uses the
+  // same filter signature as GET /clients, but ignores pagination and caps
+  // the result at EXPORT_ROW_CAP rows (X-Export-Truncated header indicates
+  // when the cap was hit). Same permission as the list endpoint.
+  @Get('export')
+  @Permissions('clients.view')
+  @ApiOperation({ summary: 'Export clients as CSV (respects search/active filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('search') search?: string,
+    @Query('active') active?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      search,
+      active: active !== undefined ? active === 'true' : undefined,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'company', label: 'Company' },
+        { key: 'group.name', label: 'Group' },
+        { key: 'phone', label: 'Phone' },
+        { key: 'website', label: 'Website' },
+        { key: 'address', label: 'Address' },
+        { key: 'city', label: 'City' },
+        { key: 'country', label: 'Country' },
+        { key: 'vat', label: 'VAT' },
+        { key: 'currency.code', label: 'Currency' },
+        { key: 'active', label: 'Active' },
+        { key: 'createdAt', label: 'Created At' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('clients');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
+  }
+
+  /**
+   * Download a CSV template with the header row only.
+   * Marked as a logged-in-only but otherwise permission-lite route so
+   * users can grab the template even if they haven't been granted
+   * `clients.create` yet.
+   */
+  @Get('import/template')
+  @Permissions('clients.view')
+  @ApiOperation({ summary: 'Download a blank clients CSV import template' })
+  getImportTemplate(@Res() res: any) {
+    const header = ClientsService.CSV_COLUMNS.join(',');
+    const csv = header + '\n';
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="clients-import-template.csv"',
+    );
+    res.end(csv);
   }
 
   @Patch(':id')

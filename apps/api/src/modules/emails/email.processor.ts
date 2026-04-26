@@ -8,6 +8,8 @@ export interface EmailJobData {
   subject: string;
   html: string;
   attachments?: any[];
+  /** When present, EmailsService resolves per-org SMTP; else env fallback. */
+  orgId?: string;
 }
 
 @Processor('emails')

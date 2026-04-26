@@ -27,7 +27,8 @@ export class TenantInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest();
 
     // Skip for platform-admin routes
-    if (request.url?.startsWith('/api/platform')) {
+    const url = request.url ?? '';
+    if (url.startsWith('/api/platform') || url.startsWith('/api/v1/platform')) {
       return next.handle();
     }
 

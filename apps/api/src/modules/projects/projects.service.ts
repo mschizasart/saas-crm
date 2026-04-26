@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
 export interface CreateProjectDto {
   name: string;
@@ -76,6 +77,43 @@ export class ProjectsService {
     private prisma: PrismaService,
     private events: EventEmitter2,
   ) {}
+
+  // ─── Export ─────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: { search?: string; status?: string; clientId?: string } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    const { search, status, clientId } = query;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+      if (status) where.status = status;
+      if (clientId) where.clientId = clientId;
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+
+      const rows = await tx.project.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          client: { select: { company: true } },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `Projects export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   // ─── List / Find ────────────────────────────────────────────
 

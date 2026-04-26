@@ -20,6 +20,7 @@ import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Credit Notes')
 @Controller({ version: '1', path: 'credit-notes' })
@@ -57,6 +58,49 @@ export class CreditNotesController {
       limit: limit ? Number(limit) : undefined,
       contactClientId,
     });
+  }
+
+  // ─── CSV Export ────────────────────────────────────────────────────────────
+  // Staff-only export (dual-audience List is scoped for contacts; this export
+  // is not — it shares the `invoices.view` permission as everywhere else).
+  @Get('export')
+  @Permissions('invoices.view')
+  @ApiOperation({ summary: 'Export credit notes as CSV (respects current filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('clientId') clientId?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      search,
+      status,
+      clientId,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'number', label: 'Number' },
+        { key: 'client.company', label: 'Client' },
+        { key: 'invoice.number', label: 'Invoice' },
+        { key: 'date', label: 'Date' },
+        { key: 'status', label: 'Status' },
+        { key: 'subTotal', label: 'Subtotal' },
+        { key: 'totalTax', label: 'Tax' },
+        { key: 'total', label: 'Total' },
+        { key: 'remainingAmount', label: 'Remaining' },
+        { key: 'appliedTotal', label: 'Applied' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('credit-notes');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
   }
 
   // ─── PDF ───────────────────────────────────────────────────────────────────
@@ -146,6 +190,27 @@ export class CreditNotesController {
   @ApiOperation({ summary: 'Delete a draft credit note' })
   delete(@CurrentOrg() org: any, @Param('id') id: string) {
     return this.service.delete(org.id, id);
+  }
+
+  // ─── Bulk Status Change ───────────────────────────────────────────────────
+
+  @Post('bulk/status')
+  @Permissions('invoices.edit')
+  @ApiOperation({
+    summary:
+      'Bulk-update credit note status between open/closed/void. Applied and already-void notes are skipped.',
+  })
+  bulkStatus(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Body() body: { creditNoteIds: string[]; status: string },
+  ) {
+    return this.service.bulkUpdateStatus(
+      org.id,
+      body?.creditNoteIds ?? [],
+      body?.status,
+      user?.id,
+    );
   }
 
   // ─── Void ──────────────────────────────────────────────────────────────────

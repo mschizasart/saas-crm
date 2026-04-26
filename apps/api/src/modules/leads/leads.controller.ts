@@ -7,19 +7,23 @@ import {
   Body,
   Param,
   Query,
+  Req,
   Res,
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
+  PayloadTooLargeException,
 } from '@nestjs/common';
 
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { LeadsService, CreateLeadDto } from './leads.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions, Public } from '../../common/decorators/permissions.decorator';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Leads')
 @Controller({ version: '1', path: 'leads' })
@@ -108,6 +112,105 @@ export class LeadsController {
     @Body() dto: CreateLeadDto,
   ) {
     return this.service.create(org.id, dto, user.id);
+  }
+
+  // ─── CSV Import ──────────────────────────────────────────────
+
+  /**
+   * Upload a CSV and bulk-create leads for the current organisation.
+   * Multipart/form-data with a single `file` field. See
+   * storage.controller.ts for the canonical Fastify pattern.
+   */
+  @Post('import')
+  @Permissions('leads.create')
+  @ApiOperation({ summary: 'Import leads from a CSV file (multipart/form-data)' })
+  @ApiConsumes('multipart/form-data')
+  async importCsv(@CurrentOrg() org: any, @Req() req: any) {
+    if (typeof req.file !== 'function' && typeof req.parts !== 'function') {
+      throw new BadRequestException(
+        'Multipart not supported — @fastify/multipart not registered',
+      );
+    }
+
+    const MAX_BYTES = 5 * 1024 * 1024;
+    let buffer: Buffer | null = null;
+
+    const parts = req.parts();
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        const buf = await part.toBuffer();
+        if (buf.length > MAX_BYTES) {
+          throw new PayloadTooLargeException(
+            `CSV file exceeds 5MB limit (${buf.length} bytes)`,
+          );
+        }
+        buffer = buf;
+      }
+    }
+
+    if (!buffer) {
+      throw new BadRequestException('No CSV file uploaded (field name: "file")');
+    }
+
+    return this.service.importFromCsv(org.id, buffer);
+  }
+
+  // ─── CSV Export ──────────────────────────────────────────────
+  @Get('export')
+  @Permissions('leads.view')
+  @ApiOperation({ summary: 'Export leads as CSV (respects search/status/assignedTo filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('assignedToId') assignedToId?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      search,
+      status,
+      assignedToId,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'name', label: 'Name' },
+        { key: 'company', label: 'Company' },
+        { key: 'email', label: 'Email' },
+        { key: 'phone', label: 'Phone' },
+        { key: 'status.name', label: 'Status' },
+        { key: 'source.name', label: 'Source' },
+        { key: 'value', label: 'Value' },
+        { key: 'country', label: 'Country' },
+        { key: 'city', label: 'City' },
+        { key: 'createdAt', label: 'Created At' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('leads');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
+  }
+
+  /**
+   * Download a CSV template with the header row only.
+   */
+  @Get('import/template')
+  @Permissions('leads.view')
+  @ApiOperation({ summary: 'Download a blank leads CSV import template' })
+  getImportTemplate(@Res() res: any) {
+    const header = LeadsService.CSV_COLUMNS.join(',');
+    const csv = header + '\n';
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="leads-import-template.csv"',
+    );
+    res.end(csv);
   }
 
   @Patch(':id')

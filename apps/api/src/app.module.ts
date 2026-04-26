@@ -13,6 +13,7 @@ import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { LeadFormsModule } from './modules/lead-forms/lead-forms.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { EstimatesModule } from './modules/estimates/estimates.module';
 import { ProposalsModule } from './modules/proposals/proposals.module';
@@ -28,6 +29,7 @@ import { ContractsModule } from './modules/contracts/contracts.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { EmailsModule } from './modules/emails/emails.module';
+import { EmailSettingsModule } from './modules/email-settings/email-settings.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ExportsModule } from './modules/exports/exports.module';
 import { BillingModule } from './modules/billing/billing.module';
@@ -87,6 +89,7 @@ import { SuggestionsModule } from './modules/suggestions/suggestions.module';
     RolesModule,
     ClientsModule,
     LeadsModule,
+    LeadFormsModule,
     InvoicesModule,
     EstimatesModule,
     ProposalsModule,
@@ -102,6 +105,7 @@ import { SuggestionsModule } from './modules/suggestions/suggestions.module';
     CustomFieldsModule,
     NotificationsModule,
     EmailsModule,
+    EmailSettingsModule,
     ReportsModule,
     ExportsModule,
     BillingModule,

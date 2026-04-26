@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorBanner } from '@/components/ui/error-banner';
+import { exportCsv } from '@/lib/export-csv';
 
 type Status = 'all' | 'active' | 'paused' | 'cancelled';
 
@@ -105,6 +106,21 @@ export default function SubscriptionsPage() {
   return (
     <ListPageLayout
       title="Subscriptions"
+      secondaryActions={[
+        {
+          label: 'Export CSV',
+          onClick: () => {
+            const params = new URLSearchParams();
+            if (status !== 'all') params.set('status', status);
+            const qs = params.toString();
+            void exportCsv(
+              `/api/v1/subscriptions/export${qs ? `?${qs}` : ''}`,
+              `subscriptions-${new Date().toISOString().slice(0, 10)}.csv`,
+              { entityLabel: 'subscriptions' },
+            );
+          },
+        },
+      ]}
       primaryAction={{ label: 'New Subscription', href: '/subscriptions/new', icon: <span className="text-lg leading-none">+</span> }}
       filters={filtersNode}
     >

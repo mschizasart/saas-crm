@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -22,6 +23,7 @@ import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Tickets')
 @Controller({ version: '1', path: 'tickets' })
@@ -46,6 +48,53 @@ export class TicketsController {
   @ApiOperation({ summary: 'Get SLA compliance report' })
   getSlaReport(@CurrentOrg() org: any) {
     return this.service.getSlaReport(org.id);
+  }
+
+  // ─── CSV Export ────────────────────────────────────────────────────────────
+  @Get('export')
+  @Permissions('tickets.view')
+  @ApiOperation({ summary: 'Export tickets as CSV (respects current filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('priority') priority?: string,
+    @Query('assignedTo') assignedTo?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('clientId') clientId?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      search,
+      status,
+      priority,
+      assignedTo,
+      departmentId,
+      clientId,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'subject', label: 'Subject' },
+        { key: 'client.company', label: 'Client' },
+        { key: 'department.name', label: 'Department' },
+        { key: 'status', label: 'Status' },
+        { key: 'priority', label: 'Priority' },
+        { key: 'service', label: 'Service' },
+        { key: 'source', label: 'Source' },
+        { key: 'createdAt', label: 'Created' },
+        { key: 'lastReplyAt', label: 'Last Reply' },
+        { key: 'closedAt', label: 'Closed' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('tickets');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
   }
 
   // ─── Departments ───────────────────────────────────────────────────────────

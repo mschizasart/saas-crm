@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search } from 'lucide-react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { Search, AlertTriangle, Boxes } from 'lucide-react';
 import { ListPageLayout } from '@/components/layouts/list-page-layout';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +12,9 @@ import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { ErrorBanner } from '@/components/ui/error-banner';
 import { Button } from '@/components/ui/button';
 import { inputClass } from '@/components/ui/form-field';
+import { useModalA11y } from '@/components/ui/use-modal-a11y';
+import { apiFetch } from '@/lib/api';
+import { exportCsv } from '@/lib/export-csv';
 
 interface Product {
   id: string;
@@ -26,13 +31,6 @@ interface Product {
   active: boolean;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
-
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('access_token');
-}
-
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -42,14 +40,28 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
+type StockModalState =
+  | { open: false }
+  | { open: true; product: Product };
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const searchParams = useSearchParams();
+  const initialTab =
+    searchParams?.get('tab') === 'low-stock' ? 'low-stock' : 'all';
+  const [tab, setTab] = useState<'all' | 'low-stock'>(initialTab);
+
+  useEffect(() => {
+    const urlTab = searchParams?.get('tab');
+    setTab(urlTab === 'low-stock' ? 'low-stock' : 'all');
+  }, [searchParams]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [lowStockCount, setLowStockCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
@@ -57,32 +69,57 @@ export default function ProductsPage() {
     name: '', description: '', sku: '', unitPrice: '0', costPrice: '', taxRate: '0',
     unit: '', stockQuantity: '0', lowStockAlert: '5', trackInventory: false, active: true,
   });
+  const [stockModal, setStockModal] = useState<StockModalState>({ open: false });
 
   const debouncedSearch = useDebounce(search, 350);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, tab]);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '20' });
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      const res = await fetch(`${API_BASE}/api/v1/products?${params}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
-      const json = await res.json();
-      setProducts(json.data ?? []);
-      setTotalPages(json.totalPages ?? 1);
-      setTotal(json.total ?? 0);
+      if (tab === 'low-stock') {
+        const res = await apiFetch(`/api/v1/products/low-stock`);
+        if (!res.ok) throw new Error(`Failed (${res.status})`);
+        const rows: Product[] = await res.json();
+        setProducts(rows);
+        setTotal(rows.length);
+        setTotalPages(1);
+        setLowStockCount(rows.length);
+      } else {
+        const params = new URLSearchParams({ page: String(page), limit: '20' });
+        if (debouncedSearch) params.set('search', debouncedSearch);
+        const res = await apiFetch(`/api/v1/products?${params}`);
+        if (!res.ok) throw new Error(`Failed (${res.status})`);
+        const json = await res.json();
+        setProducts(json.data ?? []);
+        setTotalPages(json.totalPages ?? 1);
+        setTotal(json.total ?? 0);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, page]);
+  }, [debouncedSearch, page, tab]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+  // Refresh low-stock count badge whenever anything changes
+  const refreshLowStockCount = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/v1/products/low-stock');
+      if (!res.ok) return;
+      const rows: Product[] = await res.json();
+      setLowStockCount(rows.length);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshLowStockCount();
+  }, [refreshLowStockCount]);
 
   function openNewForm() {
     setEditingProduct(null);
@@ -120,17 +157,18 @@ export default function ProductsPage() {
       };
 
       const url = editingProduct
-        ? `${API_BASE}/api/v1/products/${editingProduct.id}`
-        : `${API_BASE}/api/v1/products`;
+        ? `/api/v1/products/${editingProduct.id}`
+        : `/api/v1/products`;
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: editingProduct ? 'PATCH' : 'POST',
-        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Failed');
       setShowForm(false);
       fetchProducts();
+      refreshLowStockCount();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
@@ -141,30 +179,65 @@ export default function ProductsPage() {
   async function handleDelete(id: string) {
     if (!confirm('Delete this product?')) return;
     try {
-      await fetch(`${API_BASE}/api/v1/products/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
+      await apiFetch(`/api/v1/products/${id}`, { method: 'DELETE' });
       fetchProducts();
+      refreshLowStockCount();
     } catch { /* ignore */ }
   }
 
   const filtersNode = (
-    <div className="relative max-w-sm">
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 pointer-events-none" />
-      <input
-        aria-label="Search products"
-        type="text"
-        placeholder="Search products..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className={`${inputClass} pl-9`}
-      />
+    <div className="flex flex-col sm:flex-row gap-3">
+      <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-white dark:bg-gray-900">
+        <button
+          type="button"
+          onClick={() => setTab('all')}
+          className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
+            tab === 'all'
+              ? 'bg-primary text-white'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+          }`}
+        >
+          <Boxes className="w-3.5 h-3.5" /> All products
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('low-stock')}
+          className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
+            tab === 'low-stock'
+              ? 'bg-primary text-white'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+          }`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5" /> Low stock
+          {lowStockCount > 0 && (
+            <span className={`ml-1 inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 min-w-[18px] ${
+              tab === 'low-stock'
+                ? 'bg-white/25 text-white'
+                : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300'
+            }`}>
+              {lowStockCount}
+            </span>
+          )}
+        </button>
+      </div>
+      {tab === 'all' && (
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 pointer-events-none" />
+          <input
+            aria-label="Search products"
+            type="text"
+            placeholder="Search products..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className={`${inputClass} pl-9`}
+          />
+        </div>
+      )}
     </div>
   );
 
   const paginationNode =
-    !loading && total > 0 ? (
+    tab === 'all' && !loading && total > 0 ? (
       <div className="flex items-center justify-between px-4 py-3 border border-gray-100 dark:border-gray-800 rounded-xl bg-gray-50/50 dark:bg-gray-800/50">
         <p className="text-xs text-gray-500 dark:text-gray-400">{total} product{total !== 1 ? 's' : ''} total</p>
         <div className="flex items-center gap-2">
@@ -178,6 +251,21 @@ export default function ProductsPage() {
   return (
     <ListPageLayout
       title="Products"
+      secondaryActions={[
+        {
+          label: 'Export CSV',
+          onClick: () => {
+            const params = new URLSearchParams();
+            if (debouncedSearch) params.set('search', debouncedSearch);
+            const qs = params.toString();
+            void exportCsv(
+              `/api/v1/products/export${qs ? `?${qs}` : ''}`,
+              `products-${new Date().toISOString().slice(0, 10)}.csv`,
+              { entityLabel: 'products' },
+            );
+          },
+        },
+      ]}
       primaryAction={{ label: 'New Product', onClick: openNewForm }}
       filters={filtersNode}
       pagination={paginationNode}
@@ -208,19 +296,25 @@ export default function ProductsPage() {
                 <TableSkeleton rows={6} columns={7} />
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">No products found</td>
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
+                    {tab === 'low-stock' ? 'No low-stock products' : 'No products found'}
+                  </td>
                 </tr>
               ) : products.map((p) => {
                 const isLowStock = p.trackInventory && p.stockQuantity <= p.lowStockAlert;
                 return (
                   <tr key={p.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/60">
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{p.name}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                      <Link href={`/products/${p.id}`} className="hover:text-primary hover:underline">
+                        {p.name}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden md:table-cell">{p.sku || <span className="text-gray-300 dark:text-gray-600">--</span>}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{Number(p.unitPrice).toFixed(2)}</td>
                     <td className="px-4 py-3 text-right tabular-nums hidden md:table-cell">{Number(p.taxRate)}%</td>
                     <td className="px-4 py-3 text-right">
                       {p.trackInventory ? (
-                        <span className={`inline-flex items-center gap-1 ${isLowStock ? 'text-red-600 font-semibold' : 'text-gray-700'}`}>
+                        <span className={`inline-flex items-center gap-1 ${isLowStock ? 'text-red-600 font-semibold' : 'text-gray-700 dark:text-gray-300'}`}>
                           {p.stockQuantity}
                           {isLowStock && (
                             <Badge variant="error" className="text-[10px]">LOW</Badge>
@@ -237,6 +331,14 @@ export default function ProductsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-3">
+                        {p.trackInventory && (
+                          <button
+                            onClick={() => setStockModal({ open: true, product: p })}
+                            className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary font-medium"
+                          >
+                            Adjust stock
+                          </button>
+                        )}
                         <button onClick={() => openEditForm(p)} className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary font-medium">Edit</button>
                         <button onClick={() => handleDelete(p.id)} className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-600 font-medium">Delete</button>
                       </div>
@@ -247,7 +349,6 @@ export default function ProductsPage() {
             </tbody>
           </table>
         </div>
-
       </Card>
 
       {/* Create/Edit Modal */}
@@ -318,6 +419,124 @@ export default function ProductsPage() {
           </div>
         </div>
       )}
+
+      {/* Adjust Stock Modal */}
+      {stockModal.open && (
+        <AdjustStockModal
+          product={stockModal.product}
+          onClose={() => setStockModal({ open: false })}
+          onSuccess={() => {
+            setStockModal({ open: false });
+            fetchProducts();
+            refreshLowStockCount();
+          }}
+        />
+      )}
     </ListPageLayout>
+  );
+}
+
+function AdjustStockModal({
+  product,
+  onClose,
+  onSuccess,
+}: {
+  product: Product;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const containerRef = useModalA11y(true, onClose);
+  const [delta, setDelta] = useState('0');
+  const [reason, setReason] = useState('manual_adjustment');
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const delt = Number(delta);
+    if (!Number.isFinite(delt) || delt === 0) {
+      setError('Delta must be non-zero');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/v1/products/${product.id}/stock/adjust`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delta: delt, reason, note: note || undefined }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message ?? 'Failed to adjust stock');
+      }
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="adjust-stock-title"
+        className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md p-6 mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="adjust-stock-title" className={`${typography.h3} mb-1`}>Adjust stock</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          {product.name} — current: <span className="font-semibold">{product.stockQuantity}</span>
+        </p>
+
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Delta (positive to add, negative to subtract) *
+            </label>
+            <input
+              type="number"
+              step="1"
+              required
+              value={delta}
+              onChange={(e) => setDelta(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Reason *</label>
+            <select value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass}>
+              <option value="manual_adjustment">Manual adjustment</option>
+              <option value="purchase">Purchase / restock</option>
+              <option value="return">Return</option>
+              <option value="correction">Correction (allows negative)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Note</label>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Optional note for the audit log"
+              className={inputClass}
+            />
+          </div>
+          {error && (
+            <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button type="submit" variant="primary" loading={saving} disabled={saving}>
+              {saving ? 'Saving...' : 'Adjust stock'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

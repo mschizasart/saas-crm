@@ -6,7 +6,14 @@ import { useParams, useRouter } from 'next/navigation';
 import { ComplexFormPageLayout } from '@/components/layouts/complex-form-page-layout';
 
 interface ClientOption { id: string; company?: string; company_name?: string; name?: string; }
-interface LineItem { description: string; qty: string; rate: string; tax1: string; }
+interface LineItem {
+  description: string;
+  qty: string;
+  rate: string;
+  tax1: string;
+  /** Round-tripped FK to Product. */
+  _productId?: string | null;
+}
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 const EMPTY_ITEM: LineItem = { description: '', qty: '1', rate: '0', tax1: '0' };
@@ -49,11 +56,12 @@ export default function EditEstimatePage() {
         setClientNote(e.clientNote ?? e.notes ?? '');
         setTerms(e.terms ?? '');
         setDiscount(e.discount != null ? String(e.discount) : '0');
-        setItems((e.items ?? []).length > 0 ? e.items.map((it: { description?: string; qty?: number; rate?: number; tax1?: number }) => ({
+        setItems((e.items ?? []).length > 0 ? e.items.map((it: { description?: string; qty?: number; rate?: number; tax1?: number; productId?: string | null }) => ({
           description: it.description ?? '',
           qty: String(it.qty ?? 1),
           rate: String(it.rate ?? 0),
           tax1: String(it.tax1 ?? 0),
+          _productId: it.productId ?? null,
         })) : [{ ...EMPTY_ITEM }]);
         if (cRes.ok) setClients((await cRes.json()).data ?? []);
       } catch (err) {
@@ -92,6 +100,8 @@ export default function EditEstimatePage() {
           qty: Number(it.qty) || 0,
           rate: Number(it.rate) || 0,
           tax1: Number(it.tax1) || 0,
+          // Round-trip FK so saving from the basic edit page doesn't drop it.
+          productId: it._productId ?? null,
         })),
       };
       const res = await fetch(`${API_BASE}/api/v1/estimates/${id}`, {

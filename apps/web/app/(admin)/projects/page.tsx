@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorBanner } from '@/components/ui/error-banner';
+import { exportCsv } from '@/lib/export-csv';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -235,6 +236,21 @@ export default function ProjectsPage() {
   return (
     <ListPageLayout
       title="Projects"
+      secondaryActions={[
+        {
+          label: 'Export CSV',
+          onClick: () => {
+            const params = new URLSearchParams();
+            if (statusFilter !== 'all') params.set('status', statusFilter);
+            const qs = params.toString();
+            void exportCsv(
+              `/api/v1/projects/export${qs ? `?${qs}` : ''}`,
+              `projects-${new Date().toISOString().slice(0, 10)}.csv`,
+              { entityLabel: 'projects' },
+            );
+          },
+        },
+      ]}
       primaryAction={{ label: 'New Project', href: '/projects/new', icon: <span className="text-lg leading-none">+</span> }}
       filters={filtersNode}
       pagination={paginationNode}

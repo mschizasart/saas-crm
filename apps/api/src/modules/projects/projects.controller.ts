@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -26,6 +27,7 @@ import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Projects')
 @Controller({ version: '1', path: 'projects' })
@@ -41,6 +43,48 @@ export class ProjectsController {
   @ApiOperation({ summary: 'Get project counts grouped by status' })
   getStats(@CurrentOrg() org: any) {
     return this.service.getStats(org.id);
+  }
+
+  // ─── CSV Export ──────────────────────────────────────────────
+  @Get('export')
+  @Permissions('projects.view')
+  @ApiOperation({ summary: 'Export projects as CSV (respects current filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('clientId') clientId?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      search,
+      status,
+      clientId,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'name', label: 'Name' },
+        { key: 'client.company', label: 'Client' },
+        { key: 'status', label: 'Status' },
+        { key: 'progress', label: 'Progress %' },
+        { key: 'billingType', label: 'Billing' },
+        { key: 'fixedRate', label: 'Fixed Rate' },
+        { key: 'hourlyRate', label: 'Hourly Rate' },
+        { key: 'startDate', label: 'Start Date' },
+        { key: 'deadline', label: 'Deadline' },
+        { key: 'estimatedHours', label: 'Est. Hours' },
+        { key: 'createdAt', label: 'Created' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('projects');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
   }
 
   // ─── CRUD ────────────────────────────────────────────────────

@@ -99,6 +99,9 @@ model Organization {
   apiKeys            ApiKey[]
   appointments       Appointment[]
   products           Product[]
+  stockMovements     StockMovement[]
+  emailSettings      EmailSettings?
+  leadForms          LeadForm[]
 
   @@map("organizations")
 }
@@ -468,6 +471,32 @@ model LeadEmail {
   @@map("lead_emails")
 }
 
+// Public web-to-lead form. Each row is a form an org exposes on the
+// internet; submissions create a Lead row tied to `organizationId`.
+model LeadForm {
+  id               String   @id @default(uuid())
+  organizationId   String
+  slug             String                       // unique per org — used in public URL
+  name             String                       // internal name (for admin list)
+  title            String                       // heading shown on the public form
+  description      String?                      // optional intro copy
+  fields           Json                         // [{key,label,type,required,options?}]
+  redirectUrl      String?                      // optional URL to redirect to after submit
+  captchaEnabled   Boolean  @default(true)      // enables honeypot + any future captcha
+  notifyEmail      String?                      // staff email to notify on submit
+  assignToUserId   String?                      // default Lead.assignedTo for new submissions
+  isActive         Boolean  @default(true)
+  submissionCount  Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("lead_forms")
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  INVOICES
 // ═══════════════════════════════════════════════════════════════
@@ -529,6 +558,7 @@ model Invoice {
 model InvoiceItem {
   id          String   @id @default(uuid())
   invoiceId   String
+  productId   String?
   description String
   longDesc    String?
   qty         Decimal  @db.Decimal(10, 2) @default(1)
@@ -540,7 +570,9 @@ model InvoiceItem {
   createdAt   DateTime @default(now())
 
   invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
+  @@index([productId])
   @@map("invoice_items")
 }
 
@@ -684,6 +716,7 @@ model Estimate {
 model EstimateItem {
   id          String   @id @default(uuid())
   estimateId  String
+  productId   String?
   description String
   longDesc    String?
   qty         Decimal  @db.Decimal(10, 2) @default(1)
@@ -694,7 +727,9 @@ model EstimateItem {
   order       Int      @default(0)
 
   estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
+  @@index([productId])
   @@map("estimate_items")
 }
 
@@ -739,6 +774,7 @@ model Proposal {
 model ProposalItem {
   id          String   @id @default(uuid())
   proposalId  String
+  productId   String?
   description String
   longDesc    String?
   qty         Decimal  @db.Decimal(10, 2) @default(1)
@@ -749,7 +785,9 @@ model ProposalItem {
   order       Int      @default(0)
 
   proposal    Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
+  @@index([productId])
   @@map("proposal_items")
 }
 
@@ -1439,6 +1477,36 @@ model EmailTemplate {
   @@map("email_templates")
 }
 
+// Per-organization SMTP / sender configuration.
+// When absent OR provider = PLATFORM_DEFAULT, the app falls back to
+// process.env SMTP_* values.
+model EmailSettings {
+  id                    String    @id @default(uuid())
+  organizationId        String    @unique
+  // SMTP | PLATFORM_DEFAULT | GMAIL_OAUTH | MICROSOFT_OAUTH | SENDGRID (stub) | POSTMARK (stub)
+  provider              String    @default("PLATFORM_DEFAULT")
+  smtpHost              String?
+  smtpPort              Int?
+  smtpUser              String?
+  smtpPassword          String?   // AES-256-GCM encrypted (iv:tag:cipher hex)
+  smtpSecure            Boolean   @default(false)
+  fromName              String?
+  fromEmail             String?
+  replyToEmail          String?
+  // ── OAuth 2.0 (Gmail / Microsoft) ──────────────────────────────────────
+  oauthRefreshToken     String?   // AES-256-GCM encrypted
+  oauthAccessToken      String?   // AES-256-GCM encrypted (short-lived cache)
+  oauthTokenExpiresAt   DateTime?
+  oauthConnectedEmail   String?   // the mailbox address granted by consent
+  oauthConnectedAt      DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("email_settings")
+}
+
 model MailQueue {
   id             String   @id @default(uuid())
   organizationId String?
@@ -1903,8 +1971,37 @@ model Product {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  movements      StockMovement[]
+  invoiceItems   InvoiceItem[]
+  estimateItems  EstimateItem[]
+  proposalItems  ProposalItem[]
 
   @@index([organizationId])
   @@map("products")
+}
+
+model StockMovement {
+  id             String   @id @default(uuid())
+  organizationId String
+  productId      String
+  // Positive for increases, negative for decreases
+  delta          Int
+  // Stock level AFTER this movement (audit trail)
+  balanceAfter   Int
+  reason         String   // "invoice_sent" | "manual_adjustment" | "return" | "purchase" | "correction"
+  // Optional refs
+  invoiceId      String?
+  creditNoteId   String?
+  userId         String?
+  note           String?
+  createdAt      DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([productId])
+  @@index([organizationId, createdAt])
+  @@map("stock_movements")
 }

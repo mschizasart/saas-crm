@@ -2,10 +2,12 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomUUID } from 'crypto';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
 export interface CreateProposalDto {
   subject: string;
@@ -15,6 +17,51 @@ export interface CreateProposalDto {
   currency?: string;
   allowComments?: boolean;
   assignedTo?: string;
+  /**
+   * Optional line items. Most proposal flows are content-only (the rich-text
+   * editor carries the body), but the schema supports items so external
+   * callers (or a future quote-builder UI) can attach them. Each line may
+   * carry a productId FK validated against the same orgId.
+   */
+  items?: Array<{
+    description: string;
+    longDescription?: string;
+    qty?: number;
+    rate?: number;
+    tax1?: string;
+    tax2?: string;
+    unit?: string;
+    order?: number;
+    productId?: string | null;
+  }>;
+}
+
+/**
+ * Validate that every productId on a line refers to a product owned by this
+ * org. Done in a single query — never loop a per-id check.
+ */
+async function assertProductIdsBelongToOrg(
+  prisma: PrismaService,
+  orgId: string,
+  items: Array<{ productId?: string | null }>,
+): Promise<void> {
+  const ids = Array.from(
+    new Set(
+      items
+        .map((it) => it.productId)
+        .filter((v): v is string => typeof v === 'string' && v.length > 0),
+    ),
+  );
+  if (ids.length === 0) return;
+  const found = await prisma.product.findMany({
+    where: { id: { in: ids }, organizationId: orgId },
+    select: { id: true },
+  });
+  if (found.length !== ids.length) {
+    throw new BadRequestException(
+      'Product does not belong to your organization',
+    );
+  }
 }
 
 // Statuses that allow editing
@@ -22,10 +69,48 @@ const EDITABLE_STATUSES = ['draft', 'revising'];
 
 @Injectable()
 export class ProposalsService {
+  private readonly logger = new Logger(ProposalsService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
   ) {}
+
+  // ─── Export ────────────────────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: { search?: string; status?: string } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    const { search, status } = query;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+      if (status) where.status = status;
+      if (search) {
+        where.OR = [
+          { subject: { contains: search, mode: 'insensitive' } },
+          { client: { company: { contains: search, mode: 'insensitive' } } },
+        ];
+      }
+
+      const rows = await (tx as any).proposal.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          client: { select: { company: true } },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `Proposals export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   // ─── findAll ───────────────────────────────────────────────────────────────
 
@@ -78,6 +163,7 @@ export class ProposalsService {
         where: { id, organizationId: orgId },
         include: {
           client: true,
+          items: { orderBy: { order: 'asc' } },
           comments: {
             orderBy: { createdAt: 'asc' },
           },
@@ -91,6 +177,10 @@ export class ProposalsService {
   // ─── create ────────────────────────────────────────────────────────────────
 
   async create(orgId: string, dto: CreateProposalDto, createdBy: string) {
+    if (dto.items?.length) {
+      await assertProductIdsBelongToOrg(this.prisma, orgId, dto.items);
+    }
+
     const proposal = await this.prisma.withOrganization(orgId, async (tx) => {
       return (tx as any).proposal.create({
         data: {
@@ -104,6 +194,25 @@ export class ProposalsService {
           allowComments: dto.allowComments ?? true,
           hash: randomUUID(),
           dateCreated: new Date(),
+          ...(dto.items?.length
+            ? {
+                items: {
+                  createMany: {
+                    data: dto.items.map((item, index) => ({
+                      description: item.description,
+                      longDesc: item.longDescription ?? null,
+                      qty: Number(item.qty ?? 0),
+                      rate: Number(item.rate ?? 0),
+                      tax1: item.tax1 ?? null,
+                      tax2: item.tax2 ?? null,
+                      unit: item.unit ?? null,
+                      order: item.order ?? index,
+                      productId: item.productId ?? null,
+                    })),
+                  },
+                },
+              }
+            : {}),
         },
         include: {
           client: { select: { id: true, company: true } },
@@ -125,7 +234,34 @@ export class ProposalsService {
       );
     }
 
+    if (dto.items) {
+      await assertProductIdsBelongToOrg(this.prisma, orgId, dto.items);
+    }
+
     return this.prisma.withOrganization(orgId, async (tx) => {
+      // If items were provided, replace them wholesale (delete-then-recreate).
+      // Anything not present in the payload — including productId — is dropped,
+      // so the caller is responsible for round-tripping productId.
+      if (dto.items) {
+        await tx.proposalItem.deleteMany({ where: { proposalId: id } });
+        if (dto.items.length > 0) {
+          await tx.proposalItem.createMany({
+            data: dto.items.map((item, index) => ({
+              proposalId: id,
+              description: item.description,
+              longDesc: item.longDescription ?? null,
+              qty: Number(item.qty ?? 0),
+              rate: Number(item.rate ?? 0),
+              tax1: item.tax1 ?? null,
+              tax2: item.tax2 ?? null,
+              unit: item.unit ?? null,
+              order: item.order ?? index,
+              productId: item.productId ?? null,
+            })),
+          });
+        }
+      }
+
       return (tx as any).proposal.update({
         where: { id },
         data: {
@@ -155,10 +291,85 @@ export class ProposalsService {
 
     await this.prisma.withOrganization(orgId, async (tx) => {
       await tx.proposalComment.deleteMany({ where: { proposalId: id } });
+      await tx.proposalItem.deleteMany({ where: { proposalId: id } });
       await tx.proposal.delete({ where: { id } });
     });
 
     this.events.emit('proposal.deleted', { id, orgId });
+  }
+
+  // ─── bulkUpdateStatus ──────────────────────────────────────────────────────
+  // Like updateStatus, but for many ids at once. Accepts both `revised` and
+  // `revising`; normalizes to the canonical persisted value. Terminal statuses
+  // (`accepted`/`declined`) are skipped to avoid accidentally reversing a
+  // client decision via a mass action.
+  async bulkUpdateStatus(
+    orgId: string,
+    proposalIds: string[],
+    rawStatus: string,
+    userId?: string,
+  ): Promise<{ updated: number; skipped: Array<{ id: string; reason: string }> }> {
+    const normalized = rawStatus === 'revised' ? 'revising' : rawStatus;
+    const allowedTargets = [
+      'draft',
+      'sent',
+      'open',
+      'revising',
+      'declined',
+      'accepted',
+    ];
+    if (!allowedTargets.includes(normalized)) {
+      throw new BadRequestException(
+        `Invalid proposal status '${rawStatus}'. Allowed: draft | sent | open | revised | revising | declined | accepted`,
+      );
+    }
+    const ids = Array.from(new Set(proposalIds ?? [])).filter(Boolean);
+    if (ids.length === 0) return { updated: 0, skipped: [] };
+
+    const skipped: Array<{ id: string; reason: string }> = [];
+    let updated = 0;
+
+    await this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await (tx as any).proposal.findMany({
+        where: { id: { in: ids }, organizationId: orgId },
+        select: { id: true, status: true },
+      });
+      const foundIds = new Set<string>(existing.map((e: any) => e.id));
+      for (const id of ids) {
+        if (!foundIds.has(id)) skipped.push({ id, reason: 'not found' });
+      }
+
+      for (const p of existing as Array<{ id: string; status: string }>) {
+        if (p.status === normalized) {
+          skipped.push({ id: p.id, reason: `already ${normalized}` });
+          continue;
+        }
+        if (
+          (p.status === 'accepted' || p.status === 'declined') &&
+          normalized !== 'revising'
+        ) {
+          skipped.push({
+            id: p.id,
+            reason: `cannot transition from '${p.status}' to '${normalized}'`,
+          });
+          continue;
+        }
+        await (tx as any).proposal.update({
+          where: { id: p.id },
+          data: { status: normalized },
+        });
+        updated += 1;
+        this.events.emit('proposal.status_changed', {
+          proposal: { ...p, status: normalized },
+          orgId,
+          previousStatus: p.status,
+          newStatus: normalized,
+          userId,
+        });
+      }
+    });
+
+    return { updated, skipped };
   }
 
   // ─── updateStatus (generic, for kanban drops) ───────────────────────────

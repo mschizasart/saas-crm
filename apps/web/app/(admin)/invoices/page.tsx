@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FileText } from 'lucide-react';
+import { toast } from 'sonner';
 import { ListPageLayout } from '@/components/layouts/list-page-layout';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +12,9 @@ import { Button } from '@/components/ui/button';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorBanner } from '@/components/ui/error-banner';
+import { useModalA11y } from '@/components/ui/use-modal-a11y';
+import { apiFetch } from '@/lib/api';
+import { exportCsv } from '@/lib/export-csv';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -185,6 +189,10 @@ export default function InvoicesPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null); // invoice id
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<InvoiceStatus | null>(null);
+  const closeStatusModal = useCallback(() => setPendingStatus(null), []);
+  const statusModalRef = useModalA11y(pendingStatus !== null, closeStatusModal);
 
   // Reset page when filter changes
   useEffect(() => {
@@ -396,6 +404,51 @@ export default function InvoicesPage() {
     }
   };
 
+  // "paid" is intentionally omitted — it requires a payment row; use
+  // the per-row Mark Paid action for that.
+  const BULK_STATUS_OPTIONS: { value: InvoiceStatus; label: string }[] = [
+    { value: 'draft', label: 'Draft' },
+    { value: 'sent', label: 'Sent' },
+    { value: 'partial', label: 'Partial' },
+    { value: 'overdue', label: 'Overdue' },
+    { value: 'cancelled', label: 'Cancelled' },
+  ];
+
+  const confirmBulkStatus = async () => {
+    if (!pendingStatus || selected.size === 0) return;
+    setBulkLoading(true);
+    try {
+      const res = await apiFetch('/api/v1/invoices/bulk/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceIds: Array.from(selected),
+          status: pendingStatus,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message ?? `Bulk status failed (${res.status})`);
+      }
+      const json: { updated: number; skipped: Array<{ id: string; reason: string }> } = await res.json();
+      if (json.skipped.length > 0) {
+        toast.success(
+          `Updated ${json.updated}, skipped ${json.skipped.length}`,
+          { description: json.skipped.slice(0, 3).map((s) => s.reason).join('; ') },
+        );
+      } else {
+        toast.success(`Updated ${json.updated} invoice${json.updated !== 1 ? 's' : ''}`);
+      }
+      setSelected(new Set());
+      setPendingStatus(null);
+      fetchInvoices();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Bulk status change failed');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   const filtersNode = (
     <div className="flex gap-1 flex-wrap">
       {STATUS_TABS.map((tab) => (
@@ -438,6 +491,21 @@ export default function InvoicesPage() {
   return (
     <ListPageLayout
       title="Invoices"
+      secondaryActions={[
+        {
+          label: 'Export CSV',
+          onClick: () => {
+            const params = new URLSearchParams();
+            if (activeTab !== 'all') params.set('status', activeTab);
+            const qs = params.toString();
+            void exportCsv(
+              `/api/v1/invoices/export${qs ? `?${qs}` : ''}`,
+              `invoices-${new Date().toISOString().slice(0, 10)}.csv`,
+              { entityLabel: 'invoices' },
+            );
+          },
+        },
+      ]}
       primaryAction={{ label: 'New Invoice', href: '/invoices/new', icon: <span className="text-lg leading-none">+</span> }}
       filters={filtersNode}
       pagination={paginationNode}
@@ -661,6 +729,38 @@ export default function InvoicesPage() {
           >
             Mark as Sent
           </button>
+          <div className="relative">
+            <button
+              onClick={() => setStatusMenuOpen((v) => !v)}
+              disabled={bulkLoading}
+              className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium disabled:opacity-50 transition-colors inline-flex items-center gap-1"
+              aria-haspopup="menu"
+              aria-expanded={statusMenuOpen}
+            >
+              Change status
+              <span aria-hidden="true">▾</span>
+            </button>
+            {statusMenuOpen && (
+              <div
+                role="menu"
+                className="absolute bottom-full mb-2 right-0 min-w-[160px] bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+              >
+                {BULK_STATUS_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    role="menuitem"
+                    onClick={() => {
+                      setStatusMenuOpen(false);
+                      setPendingStatus(opt.value);
+                    }}
+                    className="block w-full text-left px-3 py-2 text-xs font-medium hover:bg-gray-100 dark:hover:bg-gray-800"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             onClick={bulkExport}
             disabled={bulkLoading}
@@ -688,6 +788,40 @@ export default function InvoicesPage() {
           >
             Cancel
           </button>
+        </div>
+      )}
+
+      {/* Bulk status confirm modal */}
+      {pendingStatus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div
+            ref={statusModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bulk-status-title"
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md"
+          >
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+              <h2 id="bulk-status-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                Change status
+              </h2>
+            </div>
+            <div className="px-6 py-5 text-sm text-gray-700 dark:text-gray-300">
+              Change {selected.size} selected invoice{selected.size !== 1 ? 's' : ''} to{' '}
+              <span className="font-semibold">{capitalize(pendingStatus)}</span>?
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Invoices that can&apos;t legally transition to this status will be skipped.
+              </p>
+            </div>
+            <div className="px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={closeStatusModal} disabled={bulkLoading}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="sm" onClick={confirmBulkStatus} loading={bulkLoading}>
+                Confirm
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </ListPageLayout>

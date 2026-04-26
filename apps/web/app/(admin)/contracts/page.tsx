@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { ErrorBanner } from '@/components/ui/error-banner';
 import { Button } from '@/components/ui/button';
+import { exportCsv } from '@/lib/export-csv';
 
 interface Contract {
   id: string;
@@ -82,6 +83,17 @@ export default function ContractsPage() {
   return (
     <ListPageLayout
       title="Contracts"
+      secondaryActions={[
+        {
+          label: 'Export CSV',
+          onClick: () =>
+            void exportCsv(
+              '/api/v1/contracts/export',
+              `contracts-${new Date().toISOString().slice(0, 10)}.csv`,
+              { entityLabel: 'contracts' },
+            ),
+        },
+      ]}
       primaryAction={{ label: 'New Contract', href: '/contracts/new' }}
       pagination={paginationNode}
     >

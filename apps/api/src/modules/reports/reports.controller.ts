@@ -98,4 +98,58 @@ export class ReportsController {
       taxPercent: taxPercent ? Number(taxPercent) : undefined,
     });
   }
+
+  @Get('items')
+  @Permissions('reports.view')
+  @ApiOperation({
+    summary:
+      'Items report — invoiced line items aggregated by description, cross-matched to products',
+  })
+  items(
+    @CurrentOrg() org: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.service.getItemsReport(org.id, { from, to, status });
+  }
+
+  @Get('payment-modes')
+  @Permissions('reports.view')
+  @ApiOperation({
+    summary:
+      'Payment modes report — revenue by payment method / gateway',
+  })
+  paymentModes(
+    @CurrentOrg() org: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getPaymentModesReport(org.id, { from, to });
+  }
+
+  @Get('expenses-by-category')
+  @Permissions('reports.view')
+  @ApiOperation({
+    summary:
+      'Expense category breakdown — spend grouped by category with optional billable/client filters',
+  })
+  expensesByCategory(
+    @CurrentOrg() org: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('billable') billable?: string,
+    @Query('clientId') clientId?: string,
+  ) {
+    let billableFlag: boolean | undefined;
+    if (billable === 'true' || billable === '1') billableFlag = true;
+    else if (billable === 'false' || billable === '0') billableFlag = false;
+
+    return this.service.getExpensesByCategory(org.id, {
+      from,
+      to,
+      billable: billableFlag,
+      clientId: clientId || undefined,
+    });
+  }
 }

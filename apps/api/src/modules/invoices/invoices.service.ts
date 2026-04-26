@@ -3,10 +3,12 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
 export interface CreateInvoiceDto {
   clientId: string;
@@ -46,7 +48,36 @@ export interface CreateInvoiceDto {
     tax2?: string;
     unit?: string;
     order?: number;
+    /** Optional FK to a Product. Validated against the same orgId. */
+    productId?: string | null;
   }>;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+// Validate that every productId on a line refers to a product owned by this
+// org. Done in a single query — never loop a per-id check.
+async function assertProductIdsBelongToOrg(
+  prisma: PrismaService,
+  orgId: string,
+  items: Array<{ productId?: string | null }>,
+): Promise<void> {
+  const ids = Array.from(
+    new Set(
+      items
+        .map((it) => it.productId)
+        .filter((v): v is string => typeof v === 'string' && v.length > 0),
+    ),
+  );
+  if (ids.length === 0) return;
+  const found = await prisma.product.findMany({
+    where: { id: { in: ids }, organizationId: orgId },
+    select: { id: true },
+  });
+  if (found.length !== ids.length) {
+    throw new BadRequestException(
+      'Product does not belong to your organization',
+    );
+  }
 }
 
 // ─── Date helpers ───────────────────────────────────────────────────────────
@@ -93,11 +124,64 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 
 @Injectable()
 export class InvoicesService {
+  private readonly logger = new Logger(InvoicesService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
     private activityLog: ActivityLogService,
   ) {}
+
+  // ─── Export ───────────────────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: {
+      search?: string;
+      status?: string;
+      clientId?: string;
+      recurring?: boolean;
+      dateFrom?: string;
+      dateTo?: string;
+    } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    const { search, status, clientId, recurring, dateFrom, dateTo } = query;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+      if (status) where.status = status;
+      if (clientId) where.clientId = clientId;
+      if (recurring !== undefined) where.isRecurring = recurring;
+      if (search) {
+        where.OR = [
+          { number: { contains: search, mode: 'insensitive' } },
+          { client: { company: { contains: search, mode: 'insensitive' } } },
+        ];
+      }
+      if (dateFrom || dateTo) {
+        where.date = {};
+        if (dateFrom) where.date.gte = new Date(dateFrom);
+        if (dateTo) where.date.lte = new Date(dateTo);
+      }
+
+      const rows = await tx.invoice.findMany({
+        where,
+        orderBy: { date: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          client: { select: { company: true } },
+          currency: { select: { code: true } },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `Invoices export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   // ─── Private helpers ───────────────────────────────────────────────────────
 
@@ -335,6 +419,10 @@ export class InvoicesService {
   // ─── create ────────────────────────────────────────────────────────────────
 
   async create(orgId: string, dto: CreateInvoiceDto, createdBy: string) {
+    // Validate any provided productIds against the tenant org BEFORE we open
+    // a transaction so the failure mode is a clean 400.
+    await assertProductIdsBelongToOrg(this.prisma, orgId, dto.items ?? []);
+
     const invoice = await this.prisma.withOrganization(orgId, async (tx) => {
       const number = dto.number || (await this.generateInvoiceNumber(orgId, tx));
 
@@ -349,6 +437,7 @@ export class InvoicesService {
         taxRate: item.taxRate ?? 0,
         unit: item.unit ?? undefined,
         order: item.order,
+        productId: item.productId ?? null,
       }));
 
       const totals = this.calculateTotals(
@@ -410,6 +499,7 @@ export class InvoicesService {
                 tax2: item.tax2 ?? null,
                 unit: item.unit ?? null,
                 order: item.order ?? index,
+                productId: item.productId ?? null,
               })),
             },
           },
@@ -448,6 +538,11 @@ export class InvoicesService {
       );
     }
 
+    // Validate any productIds on the new line items.
+    if (dto.items) {
+      await assertProductIdsBelongToOrg(this.prisma, orgId, dto.items);
+    }
+
     return this.prisma.withOrganization(orgId, async (tx) => {
       // Normalize items for totals calculation (support both old and new field names)
       const rawItems = dto.items ?? existing.items.map((i: any) => ({
@@ -474,6 +569,10 @@ export class InvoicesService {
       );
 
       if (dto.items) {
+        // Update is delete-all-and-recreate. Anything not present in the
+        // incoming payload (including productId) is dropped — the web edit
+        // page is responsible for round-tripping productId from the loaded
+        // invoice so it survives a save.
         await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
         await tx.invoiceItem.createMany({
           data: dto.items.map((item, index) => ({
@@ -486,6 +585,7 @@ export class InvoicesService {
             tax2: item.tax2 ?? null,
             unit: item.unit ?? null,
             order: item.order ?? index,
+            productId: item.productId ?? null,
           })),
         });
       }
@@ -592,6 +692,69 @@ export class InvoicesService {
     return updated;
   }
 
+  // ─── bulkUpdateStatus ──────────────────────────────────────────────────────
+  // Apply a target status to many invoices at once. We validate each candidate
+  // against the same ALLOWED_TRANSITIONS map used by updateStatus; invoices
+  // that fail validation are returned in `skipped` rather than aborting the
+  // whole operation. "paid" is not allowed via this bulk path — marking paid
+  // requires a payment row, which is what the individual /mark-paid route
+  // handles.
+  async bulkUpdateStatus(
+    orgId: string,
+    invoiceIds: string[],
+    status: string,
+    userId?: string,
+  ): Promise<{ updated: number; skipped: Array<{ id: string; reason: string }> }> {
+    const allowedTargets = ['draft', 'sent', 'cancelled', 'partial', 'overdue'];
+    if (!allowedTargets.includes(status)) {
+      throw new BadRequestException(
+        `Invalid bulk invoice status '${status}'. Allowed: ${allowedTargets.join(', ')}. (use /mark-paid for 'paid')`,
+      );
+    }
+    const ids = Array.from(new Set(invoiceIds ?? [])).filter(Boolean);
+    if (ids.length === 0) return { updated: 0, skipped: [] };
+
+    const skipped: Array<{ id: string; reason: string }> = [];
+    let updated = 0;
+
+    await this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.invoice.findMany({
+        where: { id: { in: ids }, organizationId: orgId },
+        select: { id: true, status: true, number: true },
+      });
+      const foundIds = new Set(existing.map((e) => e.id));
+      for (const id of ids) {
+        if (!foundIds.has(id)) skipped.push({ id, reason: 'not found' });
+      }
+
+      for (const inv of existing) {
+        if (inv.status === status) {
+          skipped.push({ id: inv.id, reason: `already ${status}` });
+          continue;
+        }
+        const allowed = ALLOWED_TRANSITIONS[inv.status] ?? [];
+        if (!allowed.includes(status)) {
+          skipped.push({
+            id: inv.id,
+            reason: `cannot transition from '${inv.status}' to '${status}'`,
+          });
+          continue;
+        }
+        await tx.invoice.update({ where: { id: inv.id }, data: { status } });
+        updated += 1;
+        this.events.emit('invoice.status_changed', {
+          invoice: { ...inv, status },
+          orgId,
+          previousStatus: inv.status,
+          newStatus: status,
+          userId,
+        });
+      }
+    });
+
+    return { updated, skipped };
+  }
+
   // ─── send ──────────────────────────────────────────────────────────────────
 
   async send(orgId: string, id: string) {
@@ -676,6 +839,7 @@ export class InvoicesService {
                 tax2: item.tax2 ?? null,
                 unit: item.unit ?? null,
                 order: item.order,
+                productId: item.productId ?? null,
               })),
             },
           },
@@ -776,6 +940,7 @@ export class InvoicesService {
                 tax2: item.tax2 ?? null,
                 unit: item.unit ?? null,
                 order: item.order,
+                productId: item.productId ?? null,
               })),
             },
           },
@@ -927,6 +1092,7 @@ export class InvoicesService {
             tax2: it.tax2 ?? null,
             unit: it.unit ?? null,
             order: running++,
+            productId: it.productId ?? null,
           });
         }
       }

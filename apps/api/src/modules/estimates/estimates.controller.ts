@@ -23,6 +23,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PdfService } from '../pdf/pdf.service';
 import { renderEstimateHtml } from '../pdf/templates/estimate.template';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Estimates')
 @Controller({ version: '1', path: 'estimates' })
@@ -63,6 +64,51 @@ export class EstimatesController {
   @ApiOperation({ summary: 'Get estimate status counts' })
   getStats(@CurrentOrg() org: any) {
     return this.service.getStats(org.id);
+  }
+
+  // ─── CSV Export ────────────────────────────────────────────────────────────
+  @Get('export')
+  @Permissions('invoices.view')
+  @ApiOperation({ summary: 'Export estimates as CSV (respects current filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('clientId') clientId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      search,
+      status,
+      clientId,
+      dateFrom,
+      dateTo,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'number', label: 'Number' },
+        { key: 'client.company', label: 'Client' },
+        { key: 'status', label: 'Status' },
+        { key: 'date', label: 'Date' },
+        { key: 'expiryDate', label: 'Expiry Date' },
+        { key: 'subTotal', label: 'Subtotal' },
+        { key: 'totalTax', label: 'Tax' },
+        { key: 'discount', label: 'Discount' },
+        { key: 'total', label: 'Total' },
+        { key: 'currency.code', label: 'Currency' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('estimates');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
   }
 
   // ─── List ──────────────────────────────────────────────────────────────────
@@ -156,6 +202,27 @@ export class EstimatesController {
       // non-fatal
     }
     return updated;
+  }
+
+  // ─── Bulk Status Change ───────────────────────────────────────────────────
+
+  @Post('bulk/status')
+  @Permissions('estimates.edit')
+  @ApiOperation({
+    summary:
+      'Bulk-update estimate status. Already-terminal estimates (accepted/declined) can only move to expired; others are skipped.',
+  })
+  bulkStatus(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Body() body: { estimateIds: string[]; status: string },
+  ) {
+    return this.service.bulkUpdateStatus(
+      org.id,
+      body?.estimateIds ?? [],
+      body?.status,
+      user?.id,
+    );
   }
 
   // ─── Delete ────────────────────────────────────────────────────────────────

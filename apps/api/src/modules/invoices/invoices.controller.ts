@@ -27,6 +27,7 @@ import { renderInvoiceHtml as renderClassic } from '../pdf/templates/invoice-cla
 import { EinvoiceService } from '../einvoice/einvoice.service';
 import { CreditNotesService } from '../credit-notes/credit-notes.service';
 import * as archiver from 'archiver';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Invoices')
 @Controller({ version: '1', path: 'invoices' })
@@ -92,6 +93,54 @@ export class InvoicesController {
       `attachment; filename="invoice-${invoice.number}.pdf"`,
     );
     res.end(pdf);
+  }
+
+  // ─── CSV Export ────────────────────────────────────────────────────────────
+  // Same filters as GET /invoices but without pagination. Capped at 10k rows.
+  @Get('export')
+  @Permissions('invoices.view')
+  @ApiOperation({ summary: 'Export invoices as CSV (respects current filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('clientId') clientId?: string,
+    @Query('recurring') recurring?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      search,
+      status,
+      clientId,
+      recurring: recurring !== undefined ? recurring === 'true' : undefined,
+      dateFrom,
+      dateTo,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'number', label: 'Number' },
+        { key: 'client.company', label: 'Client' },
+        { key: 'status', label: 'Status' },
+        { key: 'date', label: 'Issue Date' },
+        { key: 'dueDate', label: 'Due Date' },
+        { key: 'subTotal', label: 'Subtotal' },
+        { key: 'totalTax', label: 'Tax' },
+        { key: 'discount', label: 'Discount' },
+        { key: 'total', label: 'Total' },
+        { key: 'currency.code', label: 'Currency' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('invoices');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
   }
 
   // ─── Stats ─────────────────────────────────────────────────────────────────
@@ -186,6 +235,27 @@ export class InvoicesController {
     @Body() body: { status: string },
   ) {
     return this.service.updateStatus(org.id, id, body.status);
+  }
+
+  // ─── Bulk Status Change ───────────────────────────────────────────────────
+
+  @Post('bulk/status')
+  @Permissions('invoices.edit')
+  @ApiOperation({
+    summary:
+      'Bulk-update invoice status. Validates each id against the transition map; ineligible rows are skipped. Does not accept "paid" — use /mark-paid for that.',
+  })
+  bulkStatus(
+    @CurrentOrg() org: any,
+    @CurrentUser() user: any,
+    @Body() body: { invoiceIds: string[]; status: string },
+  ) {
+    return this.service.bulkUpdateStatus(
+      org.id,
+      body?.invoiceIds ?? [],
+      body?.status,
+      user?.id,
+    );
   }
 
   // ─── Send ──────────────────────────────────────────────────────────────────

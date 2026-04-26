@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { inputClass } from '@/components/ui/form-field';
+import { exportCsv } from '@/lib/export-csv';
 
 interface Task {
   id: string;
@@ -150,7 +151,24 @@ export default function TasksPage() {
   return (
     <ListPageLayout
       title="Tasks"
-      secondaryActions={[{ label: 'Kanban', href: '/tasks/kanban' }]}
+      secondaryActions={[
+        {
+          label: 'Export CSV',
+          onClick: () => {
+            const params = new URLSearchParams();
+            if (status) params.set('status', status);
+            if (search) params.set('search', search);
+            if (dueBefore) params.set('dueBefore', dueBefore);
+            const qs = params.toString();
+            void exportCsv(
+              `/api/v1/tasks/export${qs ? `?${qs}` : ''}`,
+              `tasks-${new Date().toISOString().slice(0, 10)}.csv`,
+              { entityLabel: 'tasks' },
+            );
+          },
+        },
+        { label: 'Kanban', href: '/tasks/kanban' },
+      ]}
       primaryAction={{ label: 'New Task', href: '/tasks/new', icon: <span className="text-lg leading-none">+</span> }}
       filters={filtersNode}
     >

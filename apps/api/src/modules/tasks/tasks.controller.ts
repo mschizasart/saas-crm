@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -16,6 +17,7 @@ import { TasksService, CreateTaskDto } from './tasks.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Tasks')
 @Controller({ version: '1', path: 'tasks' })
@@ -28,6 +30,65 @@ export class TasksController {
   @ApiOperation({ summary: 'Tasks assigned to the current user' })
   getMy(@CurrentOrg() org: any, @CurrentUser() user: any) {
     return this.service.getMyTasks(org.id, user.id);
+  }
+
+  // ─── CSV Export ────────────────────────────────────────────
+  @Get('export')
+  @ApiOperation({ summary: 'Export tasks as CSV (respects current filters)' })
+  async exportCsv(
+    @CurrentOrg() org: any,
+    @Res() res: any,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('assignedToId') assignedToId?: string,
+    @Query('projectId') projectId?: string,
+    @Query('dueBefore') dueBefore?: string,
+  ) {
+    const { rows, truncated } = await this.service.findAllForExport(org.id, {
+      search,
+      status,
+      assignedToId,
+      projectId,
+      dueBefore,
+    });
+
+    const csv = buildCsv({
+      columns: [
+        { key: 'name', label: 'Name' },
+        { key: 'project.name', label: 'Project' },
+        { key: 'status', label: 'Status' },
+        { key: 'priority', label: 'Priority' },
+        {
+          key: 'assignments',
+          label: 'Assignees',
+          format: (value: any) =>
+            Array.isArray(value)
+              ? value
+                  .map((a: any) =>
+                    a?.user
+                      ? `${a.user.firstName ?? ''} ${a.user.lastName ?? ''}`.trim() ||
+                        (a.user.email ?? '')
+                      : '',
+                  )
+                  .filter(Boolean)
+                  .join('; ')
+              : '',
+        },
+        { key: 'startDate', label: 'Start Date' },
+        { key: 'dueDate', label: 'Due Date' },
+        { key: 'estimatedHours', label: 'Est. Hours' },
+        { key: 'description', label: 'Description' },
+        { key: 'createdAt', label: 'Created' },
+      ],
+      rows,
+    });
+
+    const filename = csvFilename('tasks');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Export-Count', String(rows.length));
+    if (truncated) res.setHeader('X-Export-Truncated', 'true');
+    res.send(csv);
   }
 
   @Get()

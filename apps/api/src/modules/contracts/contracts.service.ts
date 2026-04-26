@@ -2,9 +2,11 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
 export interface CreateContractDto {
   subject: string;
@@ -34,10 +36,49 @@ export class ContractsService {
     return ContractsService.MERGE_FIELDS;
   }
 
+  private readonly logger = new Logger(ContractsService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
   ) {}
+
+  // ─── Export ────────────────────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: { search?: string; status?: string; clientId?: string } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    const { search, status, clientId } = query;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+      if (status) where.status = status;
+      if (clientId) where.clientId = clientId;
+      if (search) {
+        where.OR = [
+          { subject: { contains: search, mode: 'insensitive' } },
+          { client: { company: { contains: search, mode: 'insensitive' } } },
+        ];
+      }
+
+      const rows = await tx.contract.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          client: { select: { company: true } },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `Contracts export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   // ─── findAll ───────────────────────────────────────────────────────────────
 

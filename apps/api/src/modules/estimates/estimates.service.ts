@@ -2,9 +2,11 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
 export interface CreateEstimateDto {
   clientId?: string;
@@ -31,6 +33,8 @@ export interface CreateEstimateDto {
     tax2?: string;
     unit?: string;
     order?: number;
+    /** Optional FK to a Product. Validated against the same orgId. */
+    productId?: string | null;
   }>;
 }
 
@@ -45,6 +49,7 @@ interface NormalizedItem {
   order?: number;
   /** Percentage — used only for totals calculation, not stored to Prisma. */
   taxRate: number;
+  productId?: string | null;
 }
 
 function normalizeItems(items: CreateEstimateDto['items']): NormalizedItem[] {
@@ -58,15 +63,95 @@ function normalizeItems(items: CreateEstimateDto['items']): NormalizedItem[] {
     unit: item.unit,
     order: item.order,
     taxRate: Number(item.taxRate ?? 0),
+    productId: item.productId ?? null,
   }));
+}
+
+/**
+ * Validate that every productId on a line refers to a product owned by this
+ * org. Done in a single query — never loop a per-id check.
+ */
+async function assertProductIdsBelongToOrg(
+  prisma: PrismaService,
+  orgId: string,
+  items: Array<{ productId?: string | null }>,
+): Promise<void> {
+  const ids = Array.from(
+    new Set(
+      items
+        .map((it) => it.productId)
+        .filter((v): v is string => typeof v === 'string' && v.length > 0),
+    ),
+  );
+  if (ids.length === 0) return;
+  const found = await prisma.product.findMany({
+    where: { id: { in: ids }, organizationId: orgId },
+    select: { id: true },
+  });
+  if (found.length !== ids.length) {
+    throw new BadRequestException(
+      'Product does not belong to your organization',
+    );
+  }
 }
 
 @Injectable()
 export class EstimatesService {
+  private readonly logger = new Logger(EstimatesService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
   ) {}
+
+  // ─── Export ────────────────────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: {
+      search?: string;
+      status?: string;
+      clientId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    const { search, status, clientId, dateFrom, dateTo } = query;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+      if (status) where.status = status;
+      if (clientId) where.clientId = clientId;
+      if (search) {
+        where.OR = [
+          { number: { contains: search, mode: 'insensitive' } },
+          { client: { company: { contains: search, mode: 'insensitive' } } },
+        ];
+      }
+      if (dateFrom || dateTo) {
+        where.date = {};
+        if (dateFrom) where.date.gte = new Date(dateFrom);
+        if (dateTo) where.date.lte = new Date(dateTo);
+      }
+
+      const rows = await tx.estimate.findMany({
+        where,
+        orderBy: { date: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          client: { select: { company: true } },
+          currency: { select: { code: true } },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `Estimates export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   // ─── Private helpers ───────────────────────────────────────────────────────
 
@@ -161,6 +246,8 @@ export class EstimatesService {
   // ─── create ────────────────────────────────────────────────────────────────
 
   async create(orgId: string, dto: CreateEstimateDto, createdBy: string) {
+    await assertProductIdsBelongToOrg(this.prisma, orgId, dto.items ?? []);
+
     const estimate = await this.prisma.withOrganization(orgId, async (tx) => {
       const number = await this.generateEstimateNumber(orgId, tx);
       const normalized = normalizeItems(dto.items);
@@ -191,6 +278,7 @@ export class EstimatesService {
                 tax2: item.tax2,
                 unit: item.unit,
                 order: item.order ?? index,
+                productId: item.productId ?? null,
               })),
             },
           },
@@ -214,6 +302,10 @@ export class EstimatesService {
       throw new BadRequestException('Only draft estimates can be edited');
     }
 
+    if (dto.items) {
+      await assertProductIdsBelongToOrg(this.prisma, orgId, dto.items);
+    }
+
     return this.prisma.withOrganization(orgId, async (tx) => {
       const rawItems = dto.items ?? (existing.items as any[]).map((i: any) => ({
         description: i.description,
@@ -224,6 +316,7 @@ export class EstimatesService {
         tax2: i.tax2,
         unit: i.unit,
         order: i.order,
+        productId: i.productId,
       }));
       const normalized = normalizeItems(rawItems as CreateEstimateDto['items']);
 
@@ -233,6 +326,8 @@ export class EstimatesService {
       );
 
       if (dto.items) {
+        // Update is delete-all-and-recreate. The web edit page must
+        // round-trip productId from the loaded payload to keep the FK.
         await tx.estimateItem.deleteMany({ where: { estimateId: id } });
         await tx.estimateItem.createMany({
           data: normalized.map((item, index) => ({
@@ -245,6 +340,7 @@ export class EstimatesService {
             tax2: item.tax2,
             unit: item.unit,
             order: item.order ?? index,
+            productId: item.productId ?? null,
           })),
         });
       }
@@ -306,6 +402,71 @@ export class EstimatesService {
     });
 
     return updated;
+  }
+
+  // ─── bulkUpdateStatus ──────────────────────────────────────────────────────
+  // Apply a target status to many estimates in a single transaction.
+  // Terminal statuses (`accepted` / `declined`) can only move to `expired` in
+  // bulk — otherwise we skip them to avoid silently undoing a deliberate
+  // decision. `expired` can still be re-opened to draft if the user really
+  // wants to revive it.
+  async bulkUpdateStatus(
+    orgId: string,
+    estimateIds: string[],
+    status: string,
+    userId?: string,
+  ): Promise<{ updated: number; skipped: Array<{ id: string; reason: string }> }> {
+    const allowedTargets = ['draft', 'sent', 'accepted', 'declined', 'expired'];
+    if (!allowedTargets.includes(status)) {
+      throw new BadRequestException(
+        `Invalid estimate status '${status}'. Allowed: ${allowedTargets.join(', ')}`,
+      );
+    }
+    const ids = Array.from(new Set(estimateIds ?? [])).filter(Boolean);
+    if (ids.length === 0) return { updated: 0, skipped: [] };
+
+    const skipped: Array<{ id: string; reason: string }> = [];
+    let updated = 0;
+
+    await this.prisma.withOrganization(orgId, async (tx) => {
+      const existing = await tx.estimate.findMany({
+        where: { id: { in: ids }, organizationId: orgId },
+        select: { id: true, status: true },
+      });
+      const foundIds = new Set(existing.map((e) => e.id));
+      for (const id of ids) {
+        if (!foundIds.has(id)) skipped.push({ id, reason: 'not found' });
+      }
+
+      for (const est of existing) {
+        if (est.status === status) {
+          skipped.push({ id: est.id, reason: `already ${status}` });
+          continue;
+        }
+        // Block reversing a decision; allow letting them lapse to expired.
+        if (
+          (est.status === 'accepted' || est.status === 'declined') &&
+          status !== 'expired'
+        ) {
+          skipped.push({
+            id: est.id,
+            reason: `cannot transition from '${est.status}' to '${status}'`,
+          });
+          continue;
+        }
+        await tx.estimate.update({ where: { id: est.id }, data: { status } });
+        updated += 1;
+        this.events.emit('estimate.status_changed', {
+          estimate: { ...est, status },
+          orgId,
+          previousStatus: est.status,
+          newStatus: status,
+          userId,
+        });
+      }
+    });
+
+    return { updated, skipped };
   }
 
   // ─── delete ────────────────────────────────────────────────────────────────
@@ -424,6 +585,7 @@ export class EstimatesService {
           tax2: item.tax2,
           unit: item.unit,
           order: item.order,
+          productId: item.productId ?? null,
         })),
       });
 
@@ -482,6 +644,7 @@ export class EstimatesService {
                 tax2: item.tax2,
                 unit: item.unit,
                 order: item.order,
+                productId: item.productId ?? null,
               })),
             },
           },

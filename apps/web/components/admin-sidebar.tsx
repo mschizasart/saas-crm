@@ -156,7 +156,14 @@ function useNavItems(): NavItem[] {
       icon: DollarSign,
       children: [
         { label: t('nav.clients'), href: '/clients', icon: Building2 },
-        { label: t('nav.leads'), href: '/leads', icon: UserCircle },
+        {
+          label: t('nav.leads'),
+          icon: UserCircle,
+          children: [
+            { label: 'All leads', href: '/leads', icon: UserCircle },
+            { label: 'Forms', href: '/leads/forms', icon: ClipboardList },
+          ],
+        },
         { label: t('nav.proposals'), href: '/proposals', icon: FileCheck },
         { label: t('nav.estimates'), href: '/estimates', icon: Calculator },
         { label: t('nav.invoices'), href: '/invoices', icon: FileText },
@@ -203,7 +210,14 @@ function useNavItems(): NavItem[] {
       ],
     },
     { label: 'Appointments', href: '/appointments', icon: CalendarCheck },
-    { label: 'Products', href: '/products', icon: Package },
+    {
+      label: 'Products',
+      icon: Package,
+      children: [
+        { label: 'All products', href: '/products', icon: Package },
+        { label: 'Low stock', href: '/products?tab=low-stock', icon: Package },
+      ],
+    },
     { label: t('nav.contracts'), href: '/contracts', icon: FileSignature },
     { label: t('nav.vault'), href: '/vault', icon: Lock },
     {
@@ -220,6 +234,9 @@ function useNavItems(): NavItem[] {
       icon: BarChart3,
       children: [
         { label: t('nav.reportsHub'), href: '/reports', icon: BarChart3 },
+        { label: 'Items', href: '/reports/items', icon: Package },
+        { label: 'Payment modes', href: '/reports/payment-modes', icon: CreditCard },
+        { label: 'Expenses by Category', href: '/reports/expenses-by-category', icon: DollarSign },
         { label: t('nav.activityLog'), href: '/activity', icon: Activity },
       ],
     },
@@ -236,7 +253,7 @@ function useNavItems(): NavItem[] {
       icon: Settings,
       children: [
         { label: t('nav.general'), href: '/settings?tab=company', icon: Settings },
-        { label: t('nav.email'), href: '/settings?tab=email', icon: Bell },
+        { label: t('nav.email'), href: '/settings/email', icon: Bell },
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },
         { label: t('nav.customFields'), href: '/settings/custom-fields', icon: FileText },
         { label: t('nav.tags'), href: '/settings/tags', icon: Tag },

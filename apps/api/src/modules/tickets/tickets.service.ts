@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
 export interface CreateTicketDto {
   subject: string;
@@ -21,10 +22,68 @@ export interface CreateReplyDto {
 
 @Injectable()
 export class TicketsService {
+  private readonly logger = new Logger(TicketsService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
   ) {}
+
+  // ─── Export ────────────────────────────────────────────────────────────────
+  async findAllForExport(
+    orgId: string,
+    query: {
+      search?: string;
+      status?: string;
+      priority?: string;
+      assignedTo?: string;
+      departmentId?: string;
+      clientId?: string;
+    } = {},
+  ): Promise<{ rows: any[]; truncated: boolean }> {
+    const {
+      search,
+      status,
+      priority,
+      assignedTo,
+      departmentId,
+      clientId,
+    } = query;
+
+    return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+      if (status) where.status = status;
+      if (priority) where.priority = priority;
+      if (assignedTo) where.assignedTo = assignedTo;
+      if (departmentId) where.departmentId = departmentId;
+      if (clientId) where.clientId = clientId;
+      if (search) {
+        where.OR = [
+          { subject: { contains: search, mode: 'insensitive' } },
+          { message: { contains: search, mode: 'insensitive' } },
+          { client: { company: { contains: search, mode: 'insensitive' } } },
+        ];
+      }
+
+      const rows = await (tx as any).ticket.findMany({
+        where,
+        orderBy: { lastReplyAt: 'desc' },
+        take: EXPORT_ROW_CAP + 1,
+        include: {
+          client: { select: { company: true } },
+          department: { select: { name: true } },
+        },
+      });
+
+      const truncated = rows.length > EXPORT_ROW_CAP;
+      if (truncated) {
+        this.logger.warn(
+          `Tickets export truncated at ${EXPORT_ROW_CAP} rows for org ${orgId}`,
+        );
+      }
+      return { rows: truncated ? rows.slice(0, EXPORT_ROW_CAP) : rows, truncated };
+    });
+  }
 
   // ─── findAll ───────────────────────────────────────────────────────────────
 
