@@ -35,6 +35,15 @@ interface EmailSettings {
   oauthConnectedAt: string | null;
   oauthTokenExpiresAt: string | null;
   updatedAt: string | null;
+  // ─── Inbound (IMAP) — added in 2026-04 IMAP inbox feature ─────
+  imapEnabled?: boolean;
+  imapHost?: string | null;
+  imapPort?: number | null;
+  imapUser?: string | null;
+  imapPasswordSet?: boolean;
+  imapTls?: boolean;
+  imapLastSyncedAt?: string | null;
+  imapLastError?: string | null;
 }
 
 interface OAuthConfigStatus {
@@ -42,7 +51,10 @@ interface OAuthConfigStatus {
   microsoft: boolean;
 }
 
-const DEFAULT_FORM: EmailSettings & { smtpPassword: string } = {
+const DEFAULT_FORM: EmailSettings & {
+  smtpPassword: string;
+  imapPassword: string;
+} = {
   provider: 'PLATFORM_DEFAULT',
   smtpHost: '',
   smtpPort: 587,
@@ -58,6 +70,16 @@ const DEFAULT_FORM: EmailSettings & { smtpPassword: string } = {
   oauthConnectedAt: null,
   oauthTokenExpiresAt: null,
   updatedAt: null,
+  // IMAP defaults
+  imapEnabled: false,
+  imapHost: '',
+  imapPort: 993,
+  imapUser: '',
+  imapPassword: '',
+  imapPasswordSet: false,
+  imapTls: true,
+  imapLastSyncedAt: null,
+  imapLastError: null,
 };
 
 export default function EmailSettingsPage() {
@@ -67,6 +89,7 @@ export default function EmailSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingImap, setTestingImap] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [oauthConfig, setOAuthConfig] = useState<OAuthConfigStatus>({
     google: false,
@@ -83,7 +106,7 @@ export default function EmailSettingsPage() {
         ]);
         if (settingsRes.ok) {
           const data: EmailSettings = await settingsRes.json();
-          setForm({ ...DEFAULT_FORM, ...data, smtpPassword: '' });
+          setForm({ ...DEFAULT_FORM, ...data, smtpPassword: '', imapPassword: '' });
         }
         if (cfgRes.ok) {
           const cfg: OAuthConfigStatus = await cfgRes.json();
@@ -140,9 +163,20 @@ export default function EmailSettingsPage() {
         fromName: form.fromName || null,
         fromEmail: form.fromEmail || null,
         replyToEmail: form.replyToEmail || null,
+        // ─── Inbound (IMAP) ─────────────────────────────────────
+        imapEnabled: !!form.imapEnabled,
+        imapHost: form.imapHost || null,
+        imapPort: form.imapPort ? Number(form.imapPort) : null,
+        imapUser: form.imapUser || null,
+        imapTls: form.imapTls !== false,
       };
       if (form.smtpPassword && form.smtpPassword.length > 0) {
         body.smtpPassword = form.smtpPassword;
+      }
+      // Only include the IMAP password if the user typed a new one — the server
+      // keeps the existing encrypted value when this key is omitted.
+      if (form.imapPassword && form.imapPassword.length > 0) {
+        body.imapPassword = form.imapPassword;
       }
 
       const res = await apiFetch('/api/v1/email-settings', {
@@ -152,7 +186,7 @@ export default function EmailSettingsPage() {
       });
       if (!res.ok) throw new Error(`Save failed (${res.status})`);
       const data: EmailSettings = await res.json();
-      setForm((f) => ({ ...DEFAULT_FORM, ...data, smtpPassword: '' }));
+      setForm((f) => ({ ...DEFAULT_FORM, ...data, smtpPassword: '', imapPassword: '' }));
       toast.success('Email settings saved');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Save failed');
@@ -181,6 +215,46 @@ export default function EmailSettingsPage() {
       toast.error(err instanceof Error ? err.message : 'Test failed');
     } finally {
       setTesting(false);
+    }
+  }
+
+  /**
+   * Probe the IMAP connection. Sends the form's current values as an override
+   * so the user can test before saving. Empty body falls back to the saved row.
+   */
+  async function testImap() {
+    setTestingImap(true);
+    try {
+      const useOverride =
+        !!form.imapHost ||
+        !!form.imapUser ||
+        (form.imapPassword && form.imapPassword.length > 0);
+      const body: Record<string, unknown> = useOverride
+        ? {
+            host: form.imapHost || undefined,
+            port: form.imapPort ? Number(form.imapPort) : undefined,
+            user: form.imapUser || undefined,
+            password: form.imapPassword || undefined,
+            tls: form.imapTls !== false,
+          }
+        : {};
+      const res = await apiFetch('/api/v1/email-settings/imap/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data: { ok?: boolean; count?: number; error?: string } = await res
+        .json()
+        .catch(() => ({}));
+      if (res.ok && data.ok) {
+        toast.success(`Connected — INBOX has ${data.count ?? 0} messages`);
+      } else {
+        toast.error(`Failed: ${data.error ?? `HTTP ${res.status}`}`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'IMAP test failed');
+    } finally {
+      setTestingImap(false);
     }
   }
 
@@ -222,7 +296,7 @@ export default function EmailSettingsPage() {
       const settingsRes = await apiFetch('/api/v1/email-settings');
       if (settingsRes.ok) {
         const data: EmailSettings = await settingsRes.json();
-        setForm({ ...DEFAULT_FORM, ...data, smtpPassword: '' });
+        setForm({ ...DEFAULT_FORM, ...data, smtpPassword: '', imapPassword: '' });
       }
       toast.success('Mailbox disconnected');
     } catch (err) {
@@ -410,6 +484,21 @@ export default function EmailSettingsPage() {
         </SettingsSection>
       )}
 
+      {/* ─── Inbound (IMAP) ─────────────────────────────────────── */}
+      <SettingsSection
+        title="Inbound (IMAP)"
+        description="Pull inbound email into the CRM Inbox. Messages are auto-routed to the matching lead, client, ticket, invoice or estimate based on participants and quoted IDs."
+      >
+        <ImapPanel
+          form={form}
+          set={set}
+          isOAuth={isOAuth}
+          oauthConnected={form.oauthConnected}
+          testing={testingImap}
+          onTest={testImap}
+        />
+      </SettingsSection>
+
       <SettingsSection
         title="Sender"
         description="Applied to every outgoing email regardless of transport. Leave blank to use the platform default."
@@ -543,4 +632,155 @@ function Field({
       />
     </div>
   );
+}
+
+/**
+ * Inbound IMAP configuration panel — surgical addition for the IMAP inbox feature.
+ * When the provider is GMAIL_OAUTH or MICROSOFT_OAUTH, IMAP credentials are
+ * inherited from the OAuth refresh token and the host/port/user/password
+ * fields are disabled with an explanatory note.
+ */
+function ImapPanel({
+  form,
+  set,
+  isOAuth,
+  oauthConnected,
+  testing,
+  onTest,
+}: {
+  form: typeof DEFAULT_FORM;
+  set: <K extends keyof typeof DEFAULT_FORM>(
+    key: K,
+    value: (typeof DEFAULT_FORM)[K],
+  ) => void;
+  isOAuth: boolean;
+  oauthConnected: boolean;
+  testing: boolean;
+  onTest: () => void;
+}) {
+  const credsDisabled = isOAuth;
+
+  return (
+    <div className="space-y-4">
+      {/* Enabled toggle */}
+      <label className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+        <input
+          type="checkbox"
+          checked={!!form.imapEnabled}
+          onChange={(e) => set('imapEnabled', e.target.checked)}
+          className="mt-0.5 w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary/30"
+        />
+        <span>
+          <span className="font-medium">Enable IMAP sync</span>
+          <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            When on, the scheduler polls your INBOX every few minutes and stores
+            new messages in the CRM inbox.
+          </span>
+        </span>
+      </label>
+
+      {isOAuth && (
+        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-3 py-2 text-xs text-blue-800 dark:text-blue-300">
+          IMAP credentials inherited from your OAuth connection.
+          {!oauthConnected && (
+            <span className="block mt-1 text-amber-700 dark:text-amber-400">
+              You haven't completed the OAuth consent yet — connect the mailbox
+              above before enabling IMAP.
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field
+          label="Host"
+          value={form.imapHost ?? ''}
+          onChange={(v) => set('imapHost', v)}
+          placeholder="imap.example.com"
+          disabled={credsDisabled}
+        />
+        <Field
+          label="Port"
+          type="number"
+          value={form.imapPort ?? ''}
+          onChange={(v) =>
+            set('imapPort', (v === '' ? null : Number(v)) as any)
+          }
+          placeholder="993"
+          disabled={credsDisabled}
+        />
+        <Field
+          label="Username"
+          value={form.imapUser ?? ''}
+          onChange={(v) => set('imapUser', v)}
+          placeholder="you@example.com"
+          disabled={credsDisabled}
+        />
+        <Field
+          label={
+            form.imapPasswordSet && !form.imapPassword
+              ? 'Password (leave blank to keep current)'
+              : 'Password'
+          }
+          type="password"
+          value={form.imapPassword}
+          onChange={(v) => set('imapPassword', v)}
+          placeholder={form.imapPasswordSet ? '••••••••' : ''}
+          disabled={credsDisabled}
+        />
+        <label className="sm:col-span-2 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={form.imapTls !== false}
+            onChange={(e) => set('imapTls', e.target.checked)}
+            disabled={credsDisabled}
+            className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary/30 disabled:opacity-50"
+          />
+          Use TLS / SSL (recommended — required for port 993)
+        </label>
+      </div>
+
+      {/* Status row */}
+      <div className="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/40 px-3 py-2 text-xs space-y-1">
+        <div>
+          <span className="text-gray-500 dark:text-gray-400">Last synced:</span>{' '}
+          <span className="text-gray-700 dark:text-gray-300">
+            {form.imapLastSyncedAt
+              ? `${new Date(form.imapLastSyncedAt).toLocaleString()} (${relativeFromNow(form.imapLastSyncedAt)})`
+              : 'never'}
+          </span>
+        </div>
+        {form.imapLastError && (
+          <div className="text-red-600 dark:text-red-400">
+            <span className="font-medium">Last error:</span> {form.imapLastError}
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          onClick={onTest}
+          loading={testing}
+          disabled={credsDisabled && !oauthConnected}
+        >
+          Test connection
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Tiny inlined relative-time helper — avoids pulling date-fns into this page. */
+function relativeFromNow(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const diffSec = Math.round((Date.now() - t) / 1000);
+  const abs = Math.abs(diffSec);
+  const fmt = (n: number, unit: string) =>
+    `${n} ${unit}${n === 1 ? '' : 's'} ${diffSec >= 0 ? 'ago' : 'from now'}`;
+  if (abs < 60) return fmt(abs, 'second');
+  if (abs < 3600) return fmt(Math.round(abs / 60), 'minute');
+  if (abs < 86400) return fmt(Math.round(abs / 3600), 'hour');
+  return fmt(Math.round(abs / 86400), 'day');
 }

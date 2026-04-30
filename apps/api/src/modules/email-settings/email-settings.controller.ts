@@ -24,6 +24,7 @@ import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { ConfigService } from '@nestjs/config';
+import { ImapConnectorService } from '../inbox/imap-connector.service';
 
 @ApiTags('Email Settings')
 @Controller({ version: '1', path: 'email-settings' })
@@ -33,6 +34,7 @@ export class EmailSettingsController {
     private service: EmailSettingsService,
     private oauth: EmailOAuthService,
     private config: ConfigService,
+    private imap: ImapConnectorService,
   ) {}
 
   @Get()
@@ -61,6 +63,37 @@ export class EmailSettingsController {
     @Body() body: { to: string; override?: UpsertEmailSettingsDto },
   ) {
     return this.service.sendTest(org.id, body.to, body.override);
+  }
+
+  @Post('imap/test')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @Permissions('settings.edit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Test IMAP connection — uses saved config when body is empty, or override when host/user/etc. supplied',
+  })
+  testImap(
+    @CurrentOrg() org: any,
+    @Body()
+    body: {
+      host?: string;
+      port?: number;
+      user?: string;
+      password?: string;
+      tls?: boolean;
+    } = {},
+  ) {
+    const override = body.host
+      ? {
+          imapHost: body.host,
+          imapPort: body.port,
+          imapUser: body.user,
+          imapPassword: body.password,
+          imapTls: body.tls,
+        }
+      : undefined;
+    return this.imap.testConnection(org.id, override);
   }
 
   // ─── OAuth 2.0 flow ───────────────────────────────────────────────────

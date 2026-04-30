@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useModalA11y } from '@/components/ui/use-modal-a11y';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
+import { AiImproveButton } from '@/components/ui/ai-improve-button';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -550,6 +551,9 @@ export default function TicketDetailPage() {
           </div>
         )}
         <form onSubmit={handleSendReply}>
+          <div className="flex justify-end mb-1.5">
+            <AiImproveButton text={replyText} onAccept={setReplyText} />
+          </div>
           <textarea
             rows={4}
             value={replyText}

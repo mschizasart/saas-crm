@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, FormEvent } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { AiImproveButton } from '@/components/ui/ai-improve-button';
 
 interface Reply {
   id: string;
@@ -110,7 +111,10 @@ export default function PortalTicketDetailPage() {
 
       {ticket.status !== 'closed' && (
         <form onSubmit={sendReply} className="mt-6 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4">
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Reply</label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Reply</label>
+            <AiImproveButton text={reply} onAccept={setReply} />
+          </div>
           <textarea
             rows={4}
             value={reply}

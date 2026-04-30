@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
+import ClientStatementModal from './client-statement-modal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -143,8 +144,8 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Statement download
-  const [downloadingStatement, setDownloadingStatement] = useState(false);
+  // Statement modal
+  const [statementOpen, setStatementOpen] = useState(false);
 
   // Edit mode
   const [editing, setEditing] = useState(false);
@@ -246,31 +247,6 @@ export default function ClientDetailPage() {
       .finally(() => setActivitiesLoading(false));
   }, [activeTab, clientId]);
 
-  // ── Download statement ─────────────────────────────────────────────────────
-
-  async function downloadStatement() {
-    setDownloadingStatement(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/clients/${clientId}/statement/pdf`, {
-        headers: authHeaders(),
-      });
-      if (!res.ok) throw new Error(`Failed to download statement: ${res.status}`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `statement-${client?.company ?? clientId}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch {
-      // silent — could show toast in the future
-    } finally {
-      setDownloadingStatement(false);
-    }
-  }
-
   // ── Edit handlers ─────────────────────────────────────────────────────────
 
   function startEdit() {
@@ -362,9 +338,8 @@ export default function ClientDetailPage() {
   const actions = !editing
     ? [
         {
-          label: downloadingStatement ? 'Generating…' : 'Download Statement',
-          onClick: downloadStatement,
-          disabled: downloadingStatement,
+          label: 'Statement',
+          onClick: () => setStatementOpen(true),
           variant: 'secondary' as const,
         },
         { label: 'Edit', onClick: startEdit, variant: 'primary' as const },
@@ -787,6 +762,14 @@ export default function ClientDetailPage() {
           )}
         </div>
       )}
+
+      {/* ── Statement modal ───────────────────────────────────────────────── */}
+      <ClientStatementModal
+        open={statementOpen}
+        onClose={() => setStatementOpen(false)}
+        clientId={clientId}
+        clientCompany={client.company}
+      />
     </DetailPageLayout>
   );
 }

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { RichTextEditor } from '../../../../components/rich-text-editor';
 import { FormPageLayout } from '@/components/layouts/form-page-layout';
 import { Button } from '@/components/ui/button';
+import { AiImproveButton } from '@/components/ui/ai-improve-button';
 
 interface ClientOption { id: string; company?: string; company_name?: string; name?: string; }
 
@@ -103,7 +104,7 @@ export default function NewProposalPage() {
           </Field>
         </div>
 
-        <Field label="Content" required>
+        <Field label="Content" required action={<AiImproveButton text={content} onAccept={setContent} isHtml />}>
           <RichTextEditor value={content} onChange={setContent} placeholder="Write your proposal content here..." minHeight="250px" />
         </Field>
 
@@ -118,12 +119,15 @@ export default function NewProposalPage() {
 
 const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white';
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({ label, required, action, children }: { label: string; required?: boolean; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+          {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+        </label>
+        {action}
+      </div>
       {children}
     </div>
   );

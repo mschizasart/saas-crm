@@ -3,6 +3,7 @@ import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../database/prisma.service';
+import { TicketSpamFiltersService } from '../ticket-spam-filters/ticket-spam-filters.service';
 
 interface ImapPollJob {
   orgId: string;
@@ -19,6 +20,10 @@ interface ImapConfig {
 /**
  * Polls an organization's IMAP inbox and converts unseen messages into tickets.
  * Subjects matching `[#<ticketId>]` are appended as replies to the existing ticket.
+ *
+ * Inbound messages that don't match an existing ticket are run through the
+ * org's TicketSpamFilter rules before a ticket is created. Matched rules can
+ * mark the ticket as `spam`, auto-close it, or reject it entirely.
  */
 @Processor('imap-poll')
 export class ImapPollProcessor extends WorkerHost {
@@ -27,6 +32,7 @@ export class ImapPollProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
+    private readonly spamFilters: TicketSpamFiltersService,
   ) {
     super();
   }
@@ -125,12 +131,14 @@ export class ImapPollProcessor extends WorkerHost {
     subject: string,
     body: string,
   ) {
-    // Try to match an existing ticket via `[#<id>]` tag in the subject
+    // Try to match an existing ticket via `[#<id>]` tag in the subject.
+    // Replies to existing tickets bypass spam filtering — the conversation
+    // is already trusted.
     const tagMatch = subject.match(/\[#([a-zA-Z0-9-]+)\]/);
     const existingId = tagMatch?.[1];
 
-    await this.prisma.withOrganization(orgId, async (tx: any) => {
-      if (existingId) {
+    if (existingId) {
+      await this.prisma.withOrganization(orgId, async (tx: any) => {
         const existing = await tx.ticket.findFirst({
           where: { id: existingId, organizationId: orgId },
         });
@@ -154,9 +162,71 @@ export class ImapPollProcessor extends WorkerHost {
           });
           return;
         }
-      }
+        // Tag didn't resolve — fall through to spam-filter + new-ticket path
+        // by re-invoking on a fresh transaction.
+        await this.createInboundTicket(orgId, fromEmail, subject, body);
+      });
+      return;
+    }
 
-      // Match client by email if possible
+    await this.createInboundTicket(orgId, fromEmail, subject, body);
+  }
+
+  /**
+   * Run the inbound message through this org's spam filters, then either
+   * create the ticket (with status overridden by the matched rule) or skip
+   * it entirely (`reject`).
+   */
+  private async createInboundTicket(
+    orgId: string,
+    fromEmail: string,
+    subject: string,
+    body: string,
+  ) {
+    const fromDomain = fromEmail.includes('@')
+      ? fromEmail.split('@')[1] ?? ''
+      : '';
+
+    let evaluation:
+      | Awaited<ReturnType<TicketSpamFiltersService['evaluate']>>
+      | null = null;
+    try {
+      evaluation = await this.spamFilters.evaluate(orgId, {
+        subject,
+        fromEmail,
+        body,
+        fromDomain,
+      });
+    } catch (err) {
+      // Filter evaluation must never block ticket creation — log and proceed.
+      this.logger.warn(
+        `Spam-filter evaluation failed for org ${orgId}: ${(err as Error).message}`,
+      );
+    }
+
+    // ─── reject ─────────────────────────────────────────────────────────
+    if (evaluation?.matched && evaluation.action === 'reject') {
+      this.logger.log(
+        `Spam-filter REJECT (org ${orgId}, rule ${evaluation.filterName}): dropping message from ${fromEmail} subject "${subject}"`,
+      );
+      // Telemetry already bumped inside evaluate(). No ticket created, no
+      // ticket.created event, so no notification emails / webhooks fire.
+      return;
+    }
+
+    // ─── mark_spam | auto_close | none ──────────────────────────────────
+    let status: 'open' | 'spam' | 'closed' = 'open';
+    let autoCloseNote: string | null = null;
+    if (evaluation?.matched) {
+      if (evaluation.action === 'mark_spam') {
+        status = 'spam';
+      } else if (evaluation.action === 'auto_close') {
+        status = 'closed';
+        autoCloseNote = `[auto-closed by spam filter: ${evaluation.filterName ?? 'unnamed'}]`;
+      }
+    }
+
+    await this.prisma.withOrganization(orgId, async (tx: any) => {
       const contact = await tx.contact
         .findFirst({
           where: { organizationId: orgId, email: fromEmail },
@@ -172,17 +242,47 @@ export class ImapPollProcessor extends WorkerHost {
           contactId: contact?.id ?? null,
           priority: 'medium',
           source: 'email',
-          status: 'open',
+          status,
+          ...(status === 'closed' && { closedAt: new Date() }),
           lastReplyAt: new Date(),
         },
       });
 
-      this.events.emit('ticket.created', {
-        ticket,
-        orgId,
-        source: 'email',
-        fromEmail,
-      });
+      if (autoCloseNote) {
+        await tx.ticketReply
+          .create({
+            data: {
+              ticketId: ticket.id,
+              message: autoCloseNote,
+              isInternal: true,
+            },
+          })
+          .catch(() => {
+            // Non-critical: a missing internal note shouldn't block the close.
+          });
+      }
+
+      // Only emit the standard event for normal tickets — spam / auto-closed
+      // tickets shouldn't trigger assignment notifications, autoresponders,
+      // or webhooks downstream.
+      if (status === 'open') {
+        this.events.emit('ticket.created', {
+          ticket,
+          orgId,
+          source: 'email',
+          fromEmail,
+        });
+      } else {
+        this.events.emit('ticket.spam_filtered', {
+          ticket,
+          orgId,
+          source: 'email',
+          fromEmail,
+          filterId: evaluation?.filterId,
+          filterName: evaluation?.filterName,
+          action: evaluation?.action,
+        });
+      }
     });
   }
 }

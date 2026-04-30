@@ -28,6 +28,14 @@ export interface UpsertEmailSettingsDto {
   fromName?: string | null;
   fromEmail?: string | null;
   replyToEmail?: string | null;
+  // Inbound IMAP (added with the generic inbox feature). Same encrypt-on-write
+  // pattern as smtpPassword: omit to leave unchanged, null to clear, string to set.
+  imapEnabled?: boolean;
+  imapHost?: string | null;
+  imapPort?: number | null;
+  imapUser?: string | null;
+  imapPassword?: string | null;
+  imapTls?: boolean;
 }
 
 export interface ResolvedMailConfig {
@@ -65,6 +73,15 @@ export interface EmailSettingsResponse {
   oauthConnectedEmail: string | null;
   oauthConnectedAt: string | null;
   oauthTokenExpiresAt: string | null;
+  // IMAP — passwordSet boolean only; never the actual password.
+  imapEnabled: boolean;
+  imapHost: string | null;
+  imapPort: number | null;
+  imapUser: string | null;
+  imapTls: boolean;
+  imapPasswordSet: boolean;
+  imapLastSyncedAt: string | null;
+  imapLastError: string | null;
   updatedAt: string | null;
 }
 
@@ -102,6 +119,16 @@ export class EmailSettingsService {
       oauthTokenExpiresAt: row?.oauthTokenExpiresAt
         ? new Date(row.oauthTokenExpiresAt).toISOString()
         : null,
+      imapEnabled: !!row?.imapEnabled,
+      imapHost: row?.imapHost ?? null,
+      imapPort: row?.imapPort ?? null,
+      imapUser: row?.imapUser ?? null,
+      imapTls: row?.imapTls ?? true,
+      imapPasswordSet: !!row?.imapPassword,
+      imapLastSyncedAt: row?.imapLastSyncedAt
+        ? new Date(row.imapLastSyncedAt).toISOString()
+        : null,
+      imapLastError: row?.imapLastError ?? null,
       updatedAt: row?.updatedAt ? new Date(row.updatedAt).toISOString() : null,
     };
   }
@@ -149,6 +176,24 @@ export class EmailSettingsService {
       };
     }
 
+    // Same pattern for the IMAP password.
+    let imapPasswordUpdate: { imapPassword?: string | null } = {};
+    if (dto.imapPassword === null) {
+      imapPasswordUpdate = { imapPassword: null };
+    } else if (typeof dto.imapPassword === 'string' && dto.imapPassword.length > 0) {
+      imapPasswordUpdate = {
+        imapPassword: encrypt(dto.imapPassword, this.encKey()),
+      };
+    }
+
+    // Build IMAP fields conditionally so undefined keys don't overwrite existing values.
+    const imapData: Record<string, any> = {};
+    if (dto.imapEnabled !== undefined) imapData.imapEnabled = dto.imapEnabled;
+    if (dto.imapHost !== undefined) imapData.imapHost = dto.imapHost;
+    if (dto.imapPort !== undefined) imapData.imapPort = dto.imapPort;
+    if (dto.imapUser !== undefined) imapData.imapUser = dto.imapUser;
+    if (dto.imapTls !== undefined) imapData.imapTls = dto.imapTls;
+
     const data = {
       provider,
       smtpHost: dto.smtpHost ?? null,
@@ -159,6 +204,8 @@ export class EmailSettingsService {
       fromEmail: dto.fromEmail ?? null,
       replyToEmail: dto.replyToEmail ?? null,
       ...passwordUpdate,
+      ...imapData,
+      ...imapPasswordUpdate,
     };
 
     const row = await this.prisma.withOrganization(orgId, (tx) =>

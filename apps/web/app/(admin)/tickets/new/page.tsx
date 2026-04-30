@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 import { FormPageLayout } from '@/components/layouts/form-page-layout';
 import { Button } from '@/components/ui/button';
+import { AiImproveButton } from '@/components/ui/ai-improve-button';
 
 interface ClientOption { id: string; company?: string; company_name?: string; name?: string; }
 interface Department { id: string; name: string; }
@@ -129,7 +130,7 @@ export default function NewTicketPage() {
           </Field>
         </div>
 
-        <Field label="Message" required>
+        <Field label="Message" required action={<AiImproveButton text={message} onAccept={setMessage} />}>
           <textarea required rows={8} value={message} onChange={(e) => setMessage(e.target.value)} className={inputClass} />
         </Field>
 
@@ -141,12 +142,15 @@ export default function NewTicketPage() {
 
 const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white';
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({ label, required, action, children }: { label: string; required?: boolean; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+          {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+        </label>
+        {action}
+      </div>
       {children}
     </div>
   );

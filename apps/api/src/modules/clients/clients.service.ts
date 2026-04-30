@@ -71,6 +71,65 @@ export interface CreateContactDto {
   isPrimary?: boolean;
 }
 
+// ─── Statement types ─────────────────────────────────────────
+// Shape returned by getStatement(). The PDF renderer and the web preview
+// both consume this; the controller injects `organization` before passing
+// to the PDF template.
+
+export type StatementTxType = 'invoice' | 'payment' | 'credit_note';
+
+export interface StatementTransaction {
+  date: string;
+  type: StatementTxType;
+  reference: string;
+  description: string;
+  debit: number;
+  credit: number;
+  balance: number;
+  meta?: Record<string, any>;
+}
+
+export interface StatementResult {
+  client: {
+    id: string;
+    company: string;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    zipCode: string | null;
+    country: string | null;
+    vat: string | null;
+  };
+  organization: {
+    id: string;
+    name: string;
+    logo: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    zipCode: string | null;
+    country: string | null;
+    phone: string | null;
+    website: string | null;
+    vatNumber: string | null;
+  } | null;
+  currency: {
+    id: string;
+    code: string | null;
+    name: string;
+    symbol: string;
+  } | null;
+  dateRange: { from: string | null; to: string | null };
+  openingBalance: number;
+  closingBalance: number;
+  transactions: StatementTransaction[];
+  totals: { debit: number; credit: number };
+  /** Count of transactions in other currencies that were excluded. */
+  skipCount: number;
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
 @Injectable()
 export class ClientsService {
   private readonly logger = new Logger(ClientsService.name);
@@ -313,37 +372,288 @@ export class ClientsService {
   }
 
   // ─── Statement ─────────────────────────────────────────────
+  //
+  // A "statement of account" is the per-client ledger:
+  //   opening balance (everything dated BEFORE `from`)
+  //   + chronological list of invoices, payments, credit-notes between
+  //     `from` and `to`, each with running balance
+  //   = closing balance.
+  //
+  // Numbers:
+  //   - Debit  = invoice.total            (what the client OWES us)
+  //   - Credit = payment.amount           (what they paid)
+  //              + creditNote.total       (what we wrote off)
+  //   - Cancelled invoices are excluded.
+  //
+  // Currency:
+  //   - Locked to the client's default currency (Client.currencyId).
+  //   - If the client has no default currency, falls back to the org's
+  //     default currency (Currency.isDefault) — and if that's missing too,
+  //     we include all transactions and skipCount stays 0.
+  //   - Transactions in OTHER currencies are skipped and surfaced via
+  //     `skipCount` so the PDF/HTML view can show a footnote.
 
   async getStatement(
     orgId: string,
     clientId: string,
     options?: { from?: Date; to?: Date },
-  ) {
-    await this.findOne(orgId, clientId);
-    const dateFilter: any = {};
-    if (options?.from) dateFilter.gte = options.from;
-    if (options?.to) dateFilter.lte = options.to;
-    const hasDateFilter = Object.keys(dateFilter).length > 0;
+  ): Promise<StatementResult> {
+    const client = await this.findOne(orgId, clientId);
+    const from = options?.from;
+    const to = options?.to;
 
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const invoiceWhere: any = { clientId, organizationId: orgId };
-      if (hasDateFilter) invoiceWhere.date = dateFilter;
-      const paymentWhere: any = { clientId, organizationId: orgId };
-      if (hasDateFilter) paymentWhere.paymentDate = dateFilter;
+      // Pick the statement currency: client default → org default → null.
+      let currency = (client as any).currency ?? null;
+      if (!currency) {
+        currency = await tx.currency.findFirst({
+          where: { organizationId: orgId, isDefault: true },
+          select: { id: true, code: true, name: true, symbol: true },
+        });
+      }
+      const currencyId: string | null = currency?.id ?? null;
 
-      const [invoices, payments] = await Promise.all([
+      // Build the where-clauses. We always pull the full history (no `from`)
+      // because we need everything before `from` to compute the opening
+      // balance; we filter on the JS side instead. The `to` upper bound *is*
+      // applied at the DB level to keep payloads small.
+      const invoiceWhere: any = {
+        clientId,
+        organizationId: orgId,
+        status: { not: 'cancelled' },
+      };
+      if (currencyId) invoiceWhere.currencyId = currencyId;
+      if (to) invoiceWhere.date = { lte: to };
+
+      const paymentWhere: any = { clientId, organizationId: orgId };
+      if (to) paymentWhere.paymentDate = { lte: to };
+
+      const creditNoteWhere: any = {
+        clientId,
+        organizationId: orgId,
+        status: { not: 'void' },
+      };
+      if (to) creditNoteWhere.date = { lte: to };
+
+      // Pull invoices, payments, credit-notes — only those in the chosen
+      // currency (where applicable). Payments don't have a currencyId FK, so
+      // we filter them via their parent invoice.
+      const [invoices, payments, creditNotes] = await Promise.all([
         tx.invoice.findMany({
           where: invoiceWhere,
-          select: { id: true, number: true, date: true, total: true, status: true },
-          orderBy: { date: 'desc' },
+          select: {
+            id: true,
+            number: true,
+            date: true,
+            dueDate: true,
+            total: true,
+            status: true,
+            currencyId: true,
+          },
+          orderBy: { date: 'asc' },
         }),
         tx.payment.findMany({
           where: paymentWhere,
-          select: { id: true, amount: true, paymentDate: true, transactionId: true },
-          orderBy: { paymentDate: 'desc' },
+          select: {
+            id: true,
+            amount: true,
+            paymentDate: true,
+            transactionId: true,
+            note: true,
+            invoice: {
+              select: {
+                id: true,
+                number: true,
+                currencyId: true,
+              },
+            },
+          },
+          orderBy: { paymentDate: 'asc' },
         }),
+        // CreditNote has no currencyId in the current schema — we trust
+        // it's in the same currency as its parent invoice / the client.
+        tx.creditNote
+          .findMany({
+            where: creditNoteWhere,
+            select: {
+              id: true,
+              number: true,
+              date: true,
+              total: true,
+              status: true,
+              invoice: { select: { currencyId: true } },
+            },
+            orderBy: { date: 'asc' },
+          })
+          .catch(() => [] as any[]),
       ]);
-      return { invoices, payments };
+
+      // Filter payments to the chosen currency via their invoice. Payments
+      // whose invoice has no currencyId (or whose invoice was deleted but
+      // payment kept around) are assumed to be in the client's currency.
+      const filteredPayments = currencyId
+        ? payments.filter((p) => {
+            const c = p.invoice?.currencyId;
+            return c == null ? true : c === currencyId;
+          })
+        : payments;
+
+      // Filter credit-notes to the chosen currency via their parent invoice
+      // (CreditNote has no currencyId of its own). Standalone credit-notes
+      // (no invoice) are always included — assumed to be in the client's
+      // currency.
+      const filteredCreditNotes = currencyId
+        ? creditNotes.filter((c: any) => {
+            const cnCur = c.invoice?.currencyId;
+            return cnCur == null ? true : cnCur === currencyId;
+          })
+        : creditNotes;
+
+      // Tally how many rows we dropped because of currency mismatch — used
+      // for the "X transactions in other currencies are not shown" footnote.
+      // Invoices were filtered at the DB level, so we have to count the
+      // ones we excluded separately. We treat invoices with a non-null
+      // currencyId different from ours as "other currency"; invoices with
+      // a null currencyId are assumed to be in the org default.
+      const otherCurrencyInvoices = currencyId
+        ? await tx.invoice.count({
+            where: {
+              clientId,
+              organizationId: orgId,
+              status: { not: 'cancelled' },
+              ...(to ? { date: { lte: to } } : {}),
+              // Invoices that have a currencyId AND it differs from ours.
+              AND: [
+                { currencyId: { not: null } },
+                { currencyId: { not: currencyId } },
+              ],
+            },
+          })
+        : 0;
+
+      const skipCount =
+        (payments.length - filteredPayments.length) +
+        (creditNotes.length - filteredCreditNotes.length) +
+        otherCurrencyInvoices;
+
+      // Build a unified, chronologically-sorted ledger.
+      type Tx = {
+        date: Date;
+        type: 'invoice' | 'payment' | 'credit_note';
+        reference: string;
+        description: string;
+        debit: number;
+        credit: number;
+        balance: number; // filled below
+        meta?: Record<string, any>;
+      };
+      const all: Tx[] = [];
+
+      for (const inv of invoices) {
+        all.push({
+          date: new Date(inv.date),
+          type: 'invoice',
+          reference: inv.number,
+          description: `Invoice ${inv.number}`,
+          debit: Number(inv.total ?? 0),
+          credit: 0,
+          balance: 0,
+          meta: { id: inv.id, status: inv.status, dueDate: inv.dueDate },
+        });
+      }
+      for (const pay of filteredPayments) {
+        all.push({
+          date: new Date(pay.paymentDate),
+          type: 'payment',
+          reference:
+            pay.transactionId ?? pay.invoice?.number ?? pay.id.slice(0, 8),
+          description: `Payment${pay.invoice?.number ? ` for ${pay.invoice.number}` : ''}`,
+          debit: 0,
+          credit: Number(pay.amount ?? 0),
+          balance: 0,
+          meta: { id: pay.id, invoiceId: pay.invoice?.id ?? null },
+        });
+      }
+      for (const cn of filteredCreditNotes as any[]) {
+        all.push({
+          date: new Date(cn.date),
+          type: 'credit_note',
+          reference: cn.number,
+          description: `Credit Note ${cn.number}`,
+          debit: 0,
+          credit: Number(cn.total ?? 0),
+          balance: 0,
+          meta: { id: cn.id, status: cn.status },
+        });
+      }
+
+      all.sort((a, b) => {
+        const t = a.date.getTime() - b.date.getTime();
+        if (t !== 0) return t;
+        // Stable secondary sort: invoices first, then credits, then payments
+        // (so a same-day payment shows up after the invoice it pays).
+        const order = { invoice: 0, credit_note: 1, payment: 2 } as const;
+        return order[a.type] - order[b.type];
+      });
+
+      // Split into "before from" (opening) vs "in range" (transactions).
+      const before = from ? all.filter((t) => t.date < from) : [];
+      const inRange = from ? all.filter((t) => t.date >= from) : all;
+
+      const openingBalance = before.reduce(
+        (s, t) => s + t.debit - t.credit,
+        0,
+      );
+
+      let running = openingBalance;
+      for (const t of inRange) {
+        running += t.debit - t.credit;
+        t.balance = round2(running);
+      }
+      const closingBalance = round2(running);
+
+      return {
+        client: {
+          id: client.id,
+          company: client.company,
+          address: client.address,
+          city: client.city,
+          state: client.state,
+          zipCode: client.zipCode,
+          country: client.country,
+          vat: client.vat,
+        },
+        organization: null, // filled in by the controller for PDF use
+        currency: currency
+          ? {
+              id: currency.id,
+              code: currency.code,
+              name: currency.name,
+              symbol: currency.symbol,
+            }
+          : null,
+        dateRange: {
+          from: from ? from.toISOString() : null,
+          to: to ? to.toISOString() : null,
+        },
+        openingBalance: round2(openingBalance),
+        closingBalance,
+        transactions: inRange.map((t) => ({
+          date: t.date.toISOString(),
+          type: t.type,
+          reference: t.reference,
+          description: t.description,
+          debit: round2(t.debit),
+          credit: round2(t.credit),
+          balance: t.balance,
+          meta: t.meta,
+        })),
+        totals: {
+          debit: round2(inRange.reduce((s, t) => s + t.debit, 0)),
+          credit: round2(inRange.reduce((s, t) => s + t.credit, 0)),
+        },
+        skipCount,
+      };
     });
   }
 

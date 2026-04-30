@@ -9,7 +9,8 @@ import {
   Headphones, BookOpen, FileSignature, Receipt, Target,
   BarChart3, Settings, Bell, Building2, Zap, ClipboardList,
   ChevronDown, ChevronRight, ListTodo, Calendar, Megaphone,
-  Activity, Tag, Lock, MessageCircle, Workflow, Webhook, Key, CalendarCheck, Package, X,
+  Activity, Tag, Lock, MessageCircle, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
+  ShieldX, Inbox,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -147,10 +148,60 @@ interface NavItem {
   badge?: string;
 }
 
+/**
+ * Pulls the unread inbox count once on mount and on a 60s interval.
+ * Stays silent on errors — the badge just won't render.
+ */
+function useInboxUnreadCount(): number {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const token = () =>
+      typeof window === 'undefined' ? null : localStorage.getItem('access_token');
+
+    const load = async () => {
+      try {
+        const t = token();
+        if (!t) return;
+        // The list endpoint doesn't expose an unread-only count, so we
+        // approximate by counting unread rows on the first page (cap 50).
+        // v2: add a dedicated /inbox/unread-count endpoint for accuracy.
+        const res = await fetch(
+          `${API_BASE}/api/v1/inbox?isArchived=false&limit=50`,
+          { headers: { Authorization: `Bearer ${t}` } },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data?.data)) {
+          const unread = data.data.filter(
+            (m: { isRead?: boolean }) => !m.isRead,
+          ).length;
+          setCount(unread);
+        }
+      } catch {
+        /* silent */
+      }
+    };
+
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  return count;
+}
+
 function useNavItems(): NavItem[] {
   const { t } = useI18n();
+  const inboxUnread = useInboxUnreadCount();
   return [
     { label: t('nav.dashboard'), href: '/dashboard', icon: LayoutDashboard },
+    {
+      label: 'Inbox',
+      href: '/inbox',
+      icon: Inbox,
+      badge: inboxUnread > 0 ? (inboxUnread > 99 ? '99+' : String(inboxUnread)) : undefined,
+    },
     {
       label: t('nav.sales'),
       icon: DollarSign,
@@ -165,7 +216,14 @@ function useNavItems(): NavItem[] {
           ],
         },
         { label: t('nav.proposals'), href: '/proposals', icon: FileCheck },
-        { label: t('nav.estimates'), href: '/estimates', icon: Calculator },
+        {
+          label: t('nav.estimates'),
+          icon: Calculator,
+          children: [
+            { label: 'All estimates', href: '/estimates', icon: Calculator },
+            { label: 'Request forms', href: '/estimates/forms', icon: ClipboardList },
+          ],
+        },
         { label: t('nav.invoices'), href: '/invoices', icon: FileText },
         {
           label: t('nav.payments'),
@@ -254,12 +312,14 @@ function useNavItems(): NavItem[] {
       children: [
         { label: t('nav.general'), href: '/settings?tab=company', icon: Settings },
         { label: t('nav.email'), href: '/settings/email', icon: Bell },
+        { label: 'E-Invoice', href: '/settings/einvoice', icon: FileCode },
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },
         { label: t('nav.customFields'), href: '/settings/custom-fields', icon: FileText },
         { label: t('nav.tags'), href: '/settings/tags', icon: Tag },
         { label: t('nav.roles'), href: '/staff/roles', icon: Users },
         { label: t('nav.savedItems'), href: '/settings/saved-items', icon: BookOpen },
         { label: t('nav.predefinedReplies'), href: '/settings/predefined-replies', icon: FileCheck },
+        { label: 'Spam filters', href: '/settings/spam-filters', icon: ShieldX },
         { label: t('nav.leadStatuses'), href: '/settings/lead-statuses', icon: Target },
         { label: t('nav.leadSources'), href: '/settings/lead-sources', icon: UserCircle },
         { label: t('nav.emailTemplates'), href: '/settings/email-templates', icon: FileCheck },

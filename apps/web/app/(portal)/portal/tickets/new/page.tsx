@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { AiImproveButton } from '@/components/ui/ai-improve-button';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -62,7 +63,10 @@ export default function PortalNewTicketPage() {
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Describe your issue <span className="text-red-500">*</span></label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Describe your issue <span className="text-red-500">*</span></label>
+            <AiImproveButton text={message} onAccept={setMessage} />
+          </div>
           <textarea required rows={8} value={message} onChange={(e) => setMessage(e.target.value)} className={inputClass} />
         </div>
 

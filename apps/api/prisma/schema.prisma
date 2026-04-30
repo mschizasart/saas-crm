@@ -101,7 +101,12 @@ model Organization {
   products           Product[]
   stockMovements     StockMovement[]
   emailSettings      EmailSettings?
+  einvoiceSettings   EInvoiceSettings?
   leadForms          LeadForm[]
+  estimateRequestForms EstimateRequestForm[]
+  ticketSpamFilters  TicketSpamFilter[]
+  inboxMessages      InboxMessage[]
+  outboundMessages   OutboundMessage[]
 
   @@map("organizations")
 }
@@ -495,6 +500,35 @@ model LeadForm {
   @@unique([organizationId, slug])
   @@index([organizationId])
   @@map("lead_forms")
+}
+
+// Public "Request a quote" form. Submissions create draft Estimates that
+// the tenant reviews and finalises. Mirrors LeadForm in shape; differs by
+// also tracking a default client + currency to seed the resulting estimate.
+model EstimateRequestForm {
+  id                 String   @id @default(uuid())
+  organizationId     String
+  slug               String                       // unique per org — used in public URL
+  name               String                       // internal name (for admin list)
+  title              String                       // heading shown on the public form
+  description        String?                      // optional intro copy
+  fields             Json                         // [{key,label,type,required,options?}]
+  defaultClientId    String?                      // if set, requests attach to this existing client
+  defaultCurrencyId  String?                      // override org default currency for the estimate
+  redirectUrl        String?                      // optional URL to redirect to after submit
+  captchaEnabled     Boolean  @default(true)      // enables honeypot + any future captcha
+  notifyEmail        String?                      // staff email to notify on submit
+  assignToUserId     String?                      // hint for assignee (free-text; estimate has no assignee column)
+  isActive           Boolean  @default(true)
+  submissionCount    Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("estimate_request_forms")
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1237,6 +1271,34 @@ model TicketAttachment {
   @@map("ticket_attachments")
 }
 
+model TicketSpamFilter {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  // Field to inspect: "subject" | "fromEmail" | "body" | "fromDomain"
+  field          String
+  // Match operator: "contains" | "equals" | "startsWith" | "endsWith" | "regex"
+  operator       String
+  pattern        String
+  caseSensitive  Boolean  @default(false)
+  // Action on match: "mark_spam" | "auto_close" | "reject"
+  action         String
+  isActive       Boolean  @default(true)
+  // Lower priority is checked first; first match wins.
+  priority       Int      @default(0)
+  // Telemetry: how many inbound mails this rule caught.
+  matchCount     Int      @default(0)
+  lastMatchedAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, isActive, priority])
+  @@map("ticket_spam_filters")
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  CONTRACTS
 // ═══════════════════════════════════════════════════════════════
@@ -1499,12 +1561,59 @@ model EmailSettings {
   oauthTokenExpiresAt   DateTime?
   oauthConnectedEmail   String?   // the mailbox address granted by consent
   oauthConnectedAt      DateTime?
+  // ── IMAP inbox sync ────────────────────────────────────────────────────
+  // For OAuth providers, IMAP authenticates via XOAUTH2 using the existing
+  // oauthRefreshToken — no separate IMAP credentials needed for those.
+  imapHost              String?
+  imapPort              Int?
+  imapUser              String?
+  imapPassword          String?   // AES-256-GCM encrypted (iv:tag:cipher hex)
+  imapTls               Boolean   @default(true)
+  imapEnabled           Boolean   @default(false)
+  imapLastUidNext       Int?      // INBOX UIDNEXT high-water mark
+  imapLastSyncedAt      DateTime?
+  imapLastError         String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("email_settings")
+}
+
+// Per-organization e-invoice / UBL XML configuration.
+// When absent, EinvoiceService falls back to its built-in defaults so
+// non-EU tenants are unaffected. Targeted at tenants that need to issue
+// PEPPOL BIS Billing 3.0 / Factur-X / generic UBL invoices.
+model EInvoiceSettings {
+  id                  String    @id @default(uuid())
+  organizationId      String    @unique
+  // Allowed: 'PEPPOL_UBL_2_1' | 'FACTUR_X' | 'GENERIC_UBL'
+  format              String    @default("PEPPOL_UBL_2_1")
+  // PEPPOL participant id, e.g. "0088:1234567890123" (GLN). Includes the scheme prefix.
+  senderId            String?
+  // ICD scheme code from the PEPPOL list: '0088' (GLN), '0184' (DK CVR), '0007' (SE Org), …
+  senderIdScheme      String?
+  senderName          String?
+  senderTaxId         String?
+  senderAddress       String?
+  senderCity          String?
+  senderPostcode      String?
+  // ISO 3166-1 alpha-2 country code.
+  senderCountry       String?
+  defaultCurrency     String?   @default("EUR")
+  // UN/CEFACT 4461 payment means code, e.g. '30' = credit transfer.
+  paymentMeansCode    String?   @default("30")
+  // Free-form XML appended into a designated extension point of the document.
+  // Validated for well-formedness only; tenants are responsible for schema compliance.
+  customXmlSnippet    String?
+  enabled             Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("einvoice_settings")
 }
 
 model MailQueue {
@@ -2004,4 +2113,64 @@ model StockMovement {
   @@index([productId])
   @@index([organizationId, createdAt])
   @@map("stock_movements")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  INBOX (generic IMAP sync) — v1, INBOUND only.
+//  Outbound mail flows through EmailsService / nodemailer; we
+//  record only its Message-ID in OutboundMessage so the inbox
+//  router can thread inbound replies back to the originating record.
+// ═══════════════════════════════════════════════════════════════
+
+model InboxMessage {
+  id               String   @id @default(uuid())
+  organizationId   String
+  // RFC822 Message-ID (incl. angle brackets) — used for dedup + threading.
+  messageId        String
+  inReplyTo        String?
+  referenceIds     String[] @default([])
+  fromEmail        String
+  fromName         String?
+  toEmails         String[] @default([])
+  ccEmails         String[] @default([])
+  subject          String?
+  bodyText         String?
+  bodyHtml         String?
+  receivedAt       DateTime
+  attachmentCount  Int      @default(0)
+  // [{filename, contentType, size}] — bodies are NOT fetched in v1.
+  attachmentsJson  Json     @default("[]")
+  // 'lead' | 'client' | 'invoice' | 'estimate' | 'ticket' | 'unmatched'
+  routedTo         String   @default("unmatched")
+  routedToId       String?
+  isRead           Boolean  @default(false)
+  isStarred        Boolean  @default(false)
+  isArchived       Boolean  @default(false)
+  rawHeadersJson   Json     @default("{}")
+  createdAt        DateTime @default(now())
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, messageId])
+  @@index([organizationId, routedTo, routedToId])
+  @@index([organizationId, isArchived, receivedAt(sort: Desc)])
+  @@map("inbox_messages")
+}
+
+model OutboundMessage {
+  id               String   @id @default(uuid())
+  organizationId   String
+  messageId        String   // RFC822 Message-ID returned by nodemailer
+  // 'lead' | 'client' | 'invoice' | 'estimate' | 'ticket'
+  routedTo         String
+  routedToId       String
+  subject          String?
+  sentAt           DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, messageId])
+  @@index([organizationId, routedTo, routedToId])
+  @@map("outbound_messages")
 }

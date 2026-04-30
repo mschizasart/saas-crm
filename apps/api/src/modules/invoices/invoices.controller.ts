@@ -52,7 +52,9 @@ export class InvoicesController {
     @Res() res: any,
   ) {
     const invoice = await this.service.findOne(org.id, id);
-    const xml = this.einvoiceService.generateUblXml(invoice, org);
+    // Pull tenant settings (falls back to historical defaults when no row).
+    const settings = await this.einvoiceService.resolveSettings(org.id);
+    const xml = this.einvoiceService.generateUblXml(invoice, org, settings);
     res.setHeader('Content-Type', 'application/xml');
     res.setHeader(
       'Content-Disposition',

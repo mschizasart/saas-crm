@@ -16,6 +16,7 @@ import { LeadsModule } from './modules/leads/leads.module';
 import { LeadFormsModule } from './modules/lead-forms/lead-forms.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { EstimatesModule } from './modules/estimates/estimates.module';
+import { EstimateRequestFormsModule } from './modules/estimate-request-forms/estimate-request-forms.module';
 import { ProposalsModule } from './modules/proposals/proposals.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { CreditNotesModule } from './modules/credit-notes/credit-notes.module';
@@ -24,12 +25,14 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
 import { ProjectsModule } from './modules/projects/projects.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
+import { TicketSpamFiltersModule } from './modules/ticket-spam-filters/ticket-spam-filters.module';
 import { KnowledgeBaseModule } from './modules/knowledge-base/knowledge-base.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { EmailsModule } from './modules/emails/emails.module';
 import { EmailSettingsModule } from './modules/email-settings/email-settings.module';
+import { InboxModule } from './modules/inbox/inbox.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ExportsModule } from './modules/exports/exports.module';
 import { BillingModule } from './modules/billing/billing.module';
@@ -92,6 +95,7 @@ import { SuggestionsModule } from './modules/suggestions/suggestions.module';
     LeadFormsModule,
     InvoicesModule,
     EstimatesModule,
+    EstimateRequestFormsModule,
     ProposalsModule,
     PaymentsModule,
     CreditNotesModule,
@@ -100,12 +104,14 @@ import { SuggestionsModule } from './modules/suggestions/suggestions.module';
     ProjectsModule,
     TasksModule,
     TicketsModule,
+    TicketSpamFiltersModule,
     KnowledgeBaseModule,
     ContractsModule,
     CustomFieldsModule,
     NotificationsModule,
     EmailsModule,
     EmailSettingsModule,
+    InboxModule,
     ReportsModule,
     ExportsModule,
     BillingModule,

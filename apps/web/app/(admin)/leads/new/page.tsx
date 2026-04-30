@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 import { FormPageLayout } from '@/components/layouts/form-page-layout';
 import { Button } from '@/components/ui/button';
+import { AiImproveButton } from '@/components/ui/ai-improve-button';
 
 interface LeadForm {
   name: string;
@@ -162,7 +163,11 @@ export default function NewLeadPage() {
           <Field label="Budget">
             <input type="number" value={form.budget} onChange={(e) => update('budget', e.target.value)} className={inputClass} />
           </Field>
-          <Field label="Description" className="sm:col-span-2">
+          <Field
+            label="Description"
+            className="sm:col-span-2"
+            action={<AiImproveButton text={form.description} onAccept={(t) => update('description', t)} />}
+          >
             <textarea rows={4} value={form.description} onChange={(e) => update('description', e.target.value)} className={inputClass} />
           </Field>
         </div>

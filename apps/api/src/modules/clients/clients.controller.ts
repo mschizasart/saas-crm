@@ -26,6 +26,7 @@ import { Permissions } from '../../common/decorators/permissions.decorator';
 import { PdfService } from '../pdf/pdf.service';
 import { renderStatementHtml } from '../pdf/templates/statement.template';
 import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
+import { PrismaService } from '../../database/prisma.service';
 
 @ApiTags('Clients')
 @Controller({ version: '1', path: 'clients' })
@@ -36,6 +37,7 @@ export class ClientsController {
     private service: ClientsService,
     private pdfService: PdfService,
     private healthScoreService: HealthScoreService,
+    private prisma: PrismaService,
   ) {}
 
   // ─── Health Scores (must be before :id to avoid param conflict) ──
@@ -257,39 +259,67 @@ export class ClientsController {
   }
 
   // ─── Statement ─────────────────────────────────────────────
+  //
+  // GET /api/v1/clients/:id/statement?from=YYYY-MM-DD&to=YYYY-MM-DD&format=
+  //   format=html (or omitted) → JSON shape consumed by the web preview
+  //   format=pdf               → application/pdf, downloadable
 
   @Get(':id/statement')
   @Permissions('clients.view')
-  @ApiOperation({ summary: 'Get client financial statement (invoices + payments)' })
-  getStatement(
+  @ApiOperation({
+    summary:
+      'Client account statement (opening balance, ledger, closing balance). format=pdf for downloadable PDF.',
+  })
+  async getStatement(
     @CurrentOrg() org: any,
     @Param('id') id: string,
+    @Res({ passthrough: false }) res: any,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('format') format?: 'html' | 'pdf',
   ) {
     const opts = this.parseStatementRange(from, to);
-    return this.service.getStatement(org.id, id, opts);
-  }
+    const statement = await this.service.getStatement(org.id, id, opts);
 
-  @Get(':id/statement/pdf')
-  @Permissions('clients.view')
-  @ApiOperation({ summary: 'Download client statement as PDF' })
-  async getStatementPdf(
-    @CurrentOrg() org: any,
-    @Param('id') id: string,
-    @Res() res: any,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
-    const opts = this.parseStatementRange(from, to);
-    const client = await this.service.findOne(org.id, id);
-    const { invoices, payments } = await this.service.getStatement(org.id, id, opts);
-    const html = renderStatementHtml(client, invoices, payments, org);
+    if (format !== 'pdf') {
+      // JSON path — let Nest serialize. We can't return directly because
+      // we already pulled `res` for PDF support; use res.send.
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.send(JSON.stringify(statement));
+      return;
+    }
+
+    // PDF path — load the full org row (the JWT payload only carries id +
+    // slug) so the header can render logo/address.
+    const orgFull = await this.prisma.organization.findUnique({
+      where: { id: org.id },
+      select: {
+        id: true,
+        name: true,
+        logo: true,
+        address: true,
+        city: true,
+        state: true,
+        zipCode: true,
+        country: true,
+        phone: true,
+        website: true,
+        vatNumber: true,
+      },
+    });
+
+    const html = renderStatementHtml({ ...statement, organization: orgFull });
     const pdf = await this.pdfService.generatePdf(html);
+
+    const slug = (statement.client.company || id)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'client';
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="statement-${(client as any).company?.replace(/\s+/g, '-') ?? id}.pdf"`,
+      `attachment; filename="statement-${slug}-${stamp}.pdf"`,
     );
     res.end(pdf);
   }
@@ -301,6 +331,9 @@ export class ClientsController {
       if (Number.isNaN(d.getTime())) {
         throw new BadRequestException('Invalid "from" date');
       }
+      // Normalise to start-of-day in UTC so a "2026-04-01" filter includes
+      // anything stamped that day regardless of TZ.
+      d.setUTCHours(0, 0, 0, 0);
       opts.from = d;
     }
     if (to) {
@@ -308,6 +341,8 @@ export class ClientsController {
       if (Number.isNaN(d.getTime())) {
         throw new BadRequestException('Invalid "to" date');
       }
+      // End-of-day UTC for the upper bound.
+      d.setUTCHours(23, 59, 59, 999);
       opts.to = d;
     }
     return opts;
