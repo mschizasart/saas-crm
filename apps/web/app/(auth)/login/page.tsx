@@ -24,8 +24,13 @@ export default function LoginPage() {
   const { t } = useI18n();
   const [showPassword, setShowPassword] = useState(false);
   const [requires2fa, setRequires2fa] = useState(false);
+  // Legacy step-1 token (old field name `tempToken`) is kept for backward
+  // compatibility with previously-enrolled users; new TOTP flow uses
+  // `twoFactorToken`. Whichever the API returns is what we send back.
   const [tempToken, setTempToken] = useState('');
+  const [twoFactorToken, setTwoFactorToken] = useState('');
   const [twoFaCode, setTwoFaCode] = useState('');
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
@@ -57,7 +62,9 @@ export default function LoginPage() {
         return;
       }
       if (body.requires2fa) {
-        setTempToken(body.tempToken);
+        // New TOTP flow returns `twoFactorToken`; legacy flow returns `tempToken`.
+        if (body.twoFactorToken) setTwoFactorToken(body.twoFactorToken);
+        if (body.tempToken) setTempToken(body.tempToken);
         setRequires2fa(true);
         return;
       }
@@ -72,16 +79,28 @@ export default function LoginPage() {
   };
 
   const handle2faVerify = async () => {
-    if (twoFaCode.length !== 6) {
-      toast.error('Please enter a 6-digit code');
+    if (!useRecoveryCode && twoFaCode.length !== 6) {
+      toast.error('Please enter the 6-digit code');
+      return;
+    }
+    if (useRecoveryCode && twoFaCode.replace(/[\s-]/g, '').length < 8) {
+      toast.error('Enter a recovery code');
       return;
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/auth/2fa/verify`, {
+      const useNewFlow = !!twoFactorToken;
+      const url = useNewFlow
+        ? `${API_BASE}/api/v1/auth/2fa/login`
+        : `${API_BASE}/api/v1/auth/2fa/verify`;
+      const payload = useNewFlow
+        ? { twoFactorToken, code: twoFaCode }
+        : { tempToken, code: twoFaCode };
+
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tempToken, code: twoFaCode }),
+        body: JSON.stringify(payload),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || body.success === false) {
@@ -98,30 +117,60 @@ export default function LoginPage() {
   };
 
   if (requires2fa) {
+    const supportsRecovery = !!twoFactorToken; // recovery codes only work with the new flow
     return (
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-8">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">{t('auth.twoFactor')}</h2>
-        <p className="text-gray-500 dark:text-gray-400 mb-6">{t('auth.twoFactorPrompt')}</p>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+          {t('auth.twoFactor')}
+        </h2>
+        <p className="text-gray-500 dark:text-gray-400 mb-6">
+          {useRecoveryCode
+            ? 'Enter one of your saved recovery codes.'
+            : t('auth.twoFactorPrompt')}
+        </p>
         <input
           type="text"
-          inputMode="numeric"
-          maxLength={6}
+          inputMode={useRecoveryCode ? 'text' : 'numeric'}
+          maxLength={useRecoveryCode ? 12 : 6}
           value={twoFaCode}
-          onChange={(e) => setTwoFaCode(e.target.value.replace(/\D/g, ''))}
-          placeholder="000000"
-          className="w-full px-4 py-3 text-center text-2xl tracking-widest border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 mb-4"
+          onChange={(e) =>
+            setTwoFaCode(
+              useRecoveryCode
+                ? e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '')
+                : e.target.value.replace(/\D/g, ''),
+            )
+          }
+          placeholder={useRecoveryCode ? 'XXXXX-XXXXX' : '000000'}
+          className="w-full px-4 py-3 text-center text-2xl tracking-widest border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 mb-4 font-mono"
         />
         <button
           onClick={handle2faVerify}
-          disabled={loading || twoFaCode.length !== 6}
+          disabled={loading}
           className="w-full py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
         >
           {loading && <Loader2 className="w-4 h-4 animate-spin" />}
           {t('auth.verify')}
         </button>
+        {supportsRecovery && (
+          <button
+            onClick={() => {
+              setUseRecoveryCode((v) => !v);
+              setTwoFaCode('');
+            }}
+            className="w-full mt-3 py-2 text-primary text-sm hover:underline"
+          >
+            {useRecoveryCode ? 'Use authenticator code instead' : 'Use a recovery code'}
+          </button>
+        )}
         <button
-          onClick={() => setRequires2fa(false)}
-          className="w-full mt-3 py-3 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 text-sm"
+          onClick={() => {
+            setRequires2fa(false);
+            setUseRecoveryCode(false);
+            setTwoFaCode('');
+            setTempToken('');
+            setTwoFactorToken('');
+          }}
+          className="w-full mt-1 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 text-sm"
         >
           {t('auth.backToLogin')}
         </button>

@@ -13,9 +13,36 @@ import {
   Req,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, MinLength } from 'class-validator';
 import { PlatformService, CreatePlatformAdminDto } from './platform.service';
 import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { Public } from '../../common/decorators/permissions.decorator';
+
+class PlatformCodeOnlyDto {
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
+}
+
+class PlatformDisableTwoFaDto {
+  @IsString()
+  @MinLength(1)
+  password!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
+}
+
+class PlatformTwoFaLoginDto {
+  @IsString()
+  @IsNotEmpty()
+  twoFactorToken!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  code!: string;
+}
 
 @ApiTags('Platform Admin')
 @Controller({ version: '1', path: 'platform' })
@@ -30,6 +57,82 @@ export class PlatformController {
   @ApiOperation({ summary: 'Platform admin login' })
   async login(@Body() dto: { email: string; password: string }) {
     return this.service.login(dto.email, dto.password);
+  }
+
+  // ─── Platform admin 2FA ────────────────────────────────────
+
+  @Get('2fa/status')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Current platform admin 2FA status (no secret returned)' })
+  async statusTwoFa(@Req() req: any) {
+    return this.service.getTwoFaStatus(req.platformAdmin.sub);
+  }
+
+  @Post('2fa/setup')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Generate a TOTP secret + QR code for the current platform admin' })
+  async setupTwoFa(@Req() req: any) {
+    return this.service.setupTwoFa(req.platformAdmin.sub);
+  }
+
+  @Post('2fa/verify-setup')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Confirm the first TOTP code, enable 2FA, return recovery codes' })
+  async verifySetupTwoFa(@Req() req: any, @Body() dto: PlatformCodeOnlyDto) {
+    return this.service.verifySetupTwoFa(req.platformAdmin.sub, dto.code);
+  }
+
+  @Post('2fa/disable')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Disable 2FA (requires password + current TOTP code)' })
+  async disableTwoFa(@Req() req: any, @Body() dto: PlatformDisableTwoFaDto) {
+    return this.service.disableTwoFa(req.platformAdmin.sub, dto.password, dto.code);
+  }
+
+  @Post('2fa/regenerate-recovery')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Regenerate recovery codes (requires current TOTP code)' })
+  async regenerateRecoveryTwoFa(@Req() req: any, @Body() dto: PlatformCodeOnlyDto) {
+    return this.service.regenerateRecoveryTwoFa(req.platformAdmin.sub, dto.code);
+  }
+
+  @Post('2fa/login')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Complete platform login by providing the TOTP / recovery code' })
+  async loginTwoFa(@Body() dto: PlatformTwoFaLoginDto) {
+    return this.service.loginTwoFa(dto.twoFactorToken, dto.code);
+  }
+
+  // ─── Operator: reset 2FA on a tenant user ──────────────────
+  // For when a staff user loses BOTH their authenticator and recovery
+  // codes. Intentionally only exposed to platform admins.
+
+  @Post('users/:id/reset-2fa')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset 2FA on a tenant user (escape hatch when codes lost)' })
+  async resetUserTwoFa(@Param('id') id: string) {
+    return this.service.resetUserTwoFa(id);
+  }
+
+  @Post('admins/:id/reset-2fa')
+  @UseGuards(PlatformAdminGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset 2FA on another platform admin (escape hatch)' })
+  async resetAdminTwoFa(@Param('id') id: string, @Req() req: any) {
+    return this.service.resetAdminTwoFa(id, req.platformAdmin.sub);
   }
 
   // ─── Platform admin management ─────────────────────────────

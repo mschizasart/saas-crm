@@ -9,6 +9,14 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
 import * as bcrypt from 'bcryptjs';
+import { authenticator } from 'otplib';
+import * as QRCode from 'qrcode';
+import { encrypt, decrypt } from '../../common/crypto/encrypt';
+import {
+  generateRecoveryCodes,
+  hashRecoveryCodes,
+  consumeRecoveryCode,
+} from '../auth/twofa.util';
 
 export interface CreatePlatformAdminDto {
   email: string;
@@ -38,6 +46,20 @@ export class PlatformService {
     const admin = await this.validate(email, password);
     if (!admin) throw new UnauthorizedException('Invalid credentials');
 
+    if ((admin as any).twoFactorEnabled) {
+      // Defer the real session — caller must complete 2FA via /platform/2fa/login
+      const twoFactorToken = this.jwt.sign(
+        { sub: admin.id, purpose: '2fa', aud: 'platform' },
+        { expiresIn: '5m' },
+      );
+      return { requires2fa: true, twoFactorToken };
+    }
+
+    return this.issueAdminTokens(admin);
+  }
+
+  /** Internal: mint the platform-admin access token + admin payload. */
+  private issueAdminTokens(admin: { id: string; email: string; name: string }) {
     const accessToken = this.jwt.sign(
       {
         sub: admin.id,
@@ -53,6 +75,248 @@ export class PlatformService {
       accessToken,
       admin: { id: admin.id, email: admin.email, name: admin.name },
     };
+  }
+
+  // ─── Platform admin 2FA ────────────────────────────────────────
+
+  async getTwoFaStatus(adminId: string) {
+    const admin = await this.prisma.platformAdmin.findUnique({
+      where: { id: adminId },
+      select: {
+        twoFactorEnabled: true,
+        twoFactorEnrolledAt: true,
+        twoFactorRecoveryCodes: true,
+      },
+    });
+    if (!admin) throw new NotFoundException();
+    const recoveryCount = Array.isArray(admin.twoFactorRecoveryCodes)
+      ? (admin.twoFactorRecoveryCodes as unknown[]).length
+      : 0;
+    return {
+      enabled: !!admin.twoFactorEnabled,
+      enrolledAt: admin.twoFactorEnrolledAt,
+      recoveryCodesRemaining: recoveryCount,
+    };
+  }
+
+
+  private getEncryptionKey(): string {
+    const key = this.config.get<string>('ENCRYPTION_KEY');
+    if (!key) {
+      throw new BadRequestException(
+        'Server is missing ENCRYPTION_KEY — 2FA cannot be enabled.',
+      );
+    }
+    return key;
+  }
+
+  /** Generate + persist (unverified) a fresh TOTP secret for a platform admin. */
+  async setupTwoFa(adminId: string) {
+    const admin = await this.prisma.platformAdmin.findUnique({
+      where: { id: adminId },
+    });
+    if (!admin) throw new NotFoundException();
+
+    const secret = authenticator.generateSecret();
+    const otpauthUrl = authenticator.keyuri(
+      admin.email,
+      this.config.get('APP_NAME', 'AppoinlyCRM') + ' (Platform)',
+      secret,
+    );
+    const qrDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+    const encrypted = encrypt(secret, this.getEncryptionKey());
+
+    await this.prisma.platformAdmin.update({
+      where: { id: adminId },
+      data: {
+        twoFactorSecret: encrypted,
+        twoFactorEnabled: false,
+        twoFactorRecoveryCodes: [] as any,
+        twoFactorEnrolledAt: null,
+      },
+    });
+
+    return { secret, otpauthUrl, qrDataUrl };
+  }
+
+  async verifySetupTwoFa(adminId: string, code: string) {
+    const admin = await this.prisma.platformAdmin.findUnique({
+      where: { id: adminId },
+    });
+    if (!admin?.twoFactorSecret) {
+      throw new BadRequestException('2FA setup has not been initialised.');
+    }
+
+    const secret = decrypt(admin.twoFactorSecret, this.getEncryptionKey());
+    if (!authenticator.verify({ token: code.trim(), secret })) {
+      throw new BadRequestException('Invalid verification code.');
+    }
+
+    const recoveryCodes = generateRecoveryCodes(10);
+    const hashed = await hashRecoveryCodes(recoveryCodes);
+
+    await this.prisma.platformAdmin.update({
+      where: { id: adminId },
+      data: {
+        twoFactorEnabled: true,
+        twoFactorEnrolledAt: new Date(),
+        twoFactorRecoveryCodes: hashed,
+      },
+    });
+
+    return { recoveryCodes };
+  }
+
+  async disableTwoFa(adminId: string, password: string, code: string) {
+    const admin = await this.prisma.platformAdmin.findUnique({
+      where: { id: adminId },
+    });
+    if (!admin) throw new UnauthorizedException();
+    if (!admin.twoFactorEnabled || !admin.twoFactorSecret) {
+      throw new BadRequestException('2FA is not enabled.');
+    }
+
+    const passwordOk = await bcrypt.compare(password, admin.password);
+    if (!passwordOk) throw new UnauthorizedException('Invalid password.');
+
+    const secret = decrypt(admin.twoFactorSecret, this.getEncryptionKey());
+    if (!authenticator.verify({ token: code.trim(), secret })) {
+      throw new UnauthorizedException('Invalid verification code.');
+    }
+
+    await this.prisma.platformAdmin.update({
+      where: { id: adminId },
+      data: {
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+        twoFactorRecoveryCodes: [] as any,
+        twoFactorEnrolledAt: null,
+      },
+    });
+
+    return { ok: true };
+  }
+
+  async regenerateRecoveryTwoFa(adminId: string, code: string) {
+    const admin = await this.prisma.platformAdmin.findUnique({
+      where: { id: adminId },
+    });
+    if (!admin?.twoFactorEnabled || !admin.twoFactorSecret) {
+      throw new BadRequestException('2FA is not enabled.');
+    }
+    const secret = decrypt(admin.twoFactorSecret, this.getEncryptionKey());
+    if (!authenticator.verify({ token: code.trim(), secret })) {
+      throw new UnauthorizedException('Invalid verification code.');
+    }
+
+    const recoveryCodes = generateRecoveryCodes(10);
+    const hashed = await hashRecoveryCodes(recoveryCodes);
+
+    await this.prisma.platformAdmin.update({
+      where: { id: adminId },
+      data: { twoFactorRecoveryCodes: hashed },
+    });
+
+    return { recoveryCodes };
+  }
+
+  /** Step 2 of platform login when admin has 2FA enabled. */
+  async loginTwoFa(twoFactorToken: string, code: string) {
+    let payload: any;
+    try {
+      payload = this.jwt.verify(twoFactorToken);
+    } catch {
+      throw new UnauthorizedException('Invalid or expired 2FA token.');
+    }
+    if (payload.purpose !== '2fa' || payload.aud !== 'platform' || !payload.sub) {
+      throw new UnauthorizedException('Invalid 2FA token.');
+    }
+
+    const admin = await this.prisma.platformAdmin.findUnique({
+      where: { id: payload.sub },
+    });
+    if (!admin || !admin.twoFactorEnabled || !admin.twoFactorSecret) {
+      throw new UnauthorizedException();
+    }
+
+    const secret = decrypt(admin.twoFactorSecret, this.getEncryptionKey());
+    const trimmed = (code ?? '').trim();
+    const totpOk =
+      trimmed.length === 6 && /^\d{6}$/.test(trimmed)
+        ? authenticator.verify({ token: trimmed, secret })
+        : false;
+
+    if (!totpOk) {
+      const hashes = Array.isArray(admin.twoFactorRecoveryCodes)
+        ? (admin.twoFactorRecoveryCodes as unknown as string[])
+        : [];
+      const idx = await consumeRecoveryCode(trimmed, hashes);
+      if (idx === -1) {
+        throw new UnauthorizedException('Invalid verification code.');
+      }
+      const remaining = [...hashes];
+      remaining.splice(idx, 1);
+      await this.prisma.platformAdmin.update({
+        where: { id: admin.id },
+        data: { twoFactorRecoveryCodes: remaining as any },
+      });
+    }
+
+    return this.issueAdminTokens(admin);
+  }
+
+  // ─── Operator: reset 2FA on a tenant user (escape hatch) ─────────
+  //
+  // When a staff user loses both their authenticator AND their recovery
+  // codes, they cannot self-recover. A platform admin can wipe their
+  // 2FA settings here so they can log in with just the password and
+  // re-enrol. This is intentionally only exposed to platform admins
+  // (NOT to org admins), to keep the blast radius small.
+
+  async resetUserTwoFa(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+        twoFactorRecoveryCodes: [] as any,
+        twoFactorEnrolledAt: null,
+        // Also clear the legacy fields to be safe.
+        twoFaEnabled: false,
+        twoFaSecret: null,
+      },
+    });
+
+    return { ok: true, userId };
+  }
+
+  /** Reset 2FA on another platform admin (cannot reset yourself this way). */
+  async resetAdminTwoFa(targetAdminId: string, requesterId: string) {
+    if (targetAdminId === requesterId) {
+      throw new BadRequestException(
+        'Use the disable-2FA flow from your own account instead.',
+      );
+    }
+    const admin = await this.prisma.platformAdmin.findUnique({
+      where: { id: targetAdminId },
+    });
+    if (!admin) throw new NotFoundException('Platform admin not found');
+
+    await this.prisma.platformAdmin.update({
+      where: { id: targetAdminId },
+      data: {
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+        twoFactorRecoveryCodes: [] as any,
+        twoFactorEnrolledAt: null,
+      },
+    });
+
+    return { ok: true, adminId: targetAdminId };
   }
 
   async createAdmin(dto: CreatePlatformAdminDto) {

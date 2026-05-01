@@ -317,12 +317,13 @@ export default function OrgDetailPage() {
                   <th className="px-4 py-2.5">Admin</th>
                   <th className="px-4 py-2.5">Active</th>
                   <th className="px-4 py-2.5">Last Login</th>
+                  <th className="px-4 py-2.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {org.users.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
                       No users.
                     </td>
                   </tr>
@@ -354,6 +355,35 @@ export default function OrgDetailPage() {
                       </td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                         {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={async () => {
+                            if (
+                              !window.confirm(
+                                `Reset 2FA for ${u.email}? They will be able to sign in with just their password and re-enrol.`,
+                              )
+                            )
+                              return;
+                            const t = token();
+                            if (!t) return;
+                            const res = await fetch(
+                              `${API_BASE}/api/v1/platform/users/${u.id}/reset-2fa`,
+                              {
+                                method: 'POST',
+                                headers: { Authorization: `Bearer ${t}` },
+                              },
+                            );
+                            if (res.ok) {
+                              setActionMessage(`2FA reset for ${u.email}`);
+                            } else {
+                              setActionError('Failed to reset 2FA');
+                            }
+                          }}
+                          className="text-xs text-indigo-600 hover:underline"
+                        >
+                          Reset 2FA
+                        </button>
                       </td>
                     </tr>
                   ))

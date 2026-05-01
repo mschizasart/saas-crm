@@ -4,9 +4,9 @@ import {
   ServiceUnavailableException,
   BadRequestException,
   HttpException,
-  TooManyRequestsException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { enforceAiRateLimit } from './rate-limit.util';
 
 /**
  * Stateless AI text-tone enhancement service.
@@ -44,11 +44,6 @@ const SYSTEM_PROMPT_TEMPLATE =
 const MIN_INPUT_LEN = 1;
 const MAX_INPUT_LEN = 12_000;
 
-// Rate limit: 30 calls per user per rolling 60s window.
-const RATE_LIMIT = 30;
-const RATE_WINDOW_MS = 60_000;
-const userHits = new Map<string, number[]>();
-
 @Injectable()
 export class AiImproveService {
   private readonly logger = new Logger(AiImproveService.name);
@@ -84,7 +79,7 @@ export class AiImproveService {
       );
     }
 
-    this.checkRateLimit(userId);
+    enforceAiRateLimit(userId);
 
     const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
     if (!apiKey) {
@@ -151,26 +146,6 @@ export class AiImproveService {
     }
   }
 
-  private checkRateLimit(userId: string) {
-    const now = Date.now();
-    const arr = userHits.get(userId) ?? [];
-    const fresh = arr.filter((t) => now - t < RATE_WINDOW_MS);
-    if (fresh.length >= RATE_LIMIT) {
-      throw new TooManyRequestsException(
-        'Too many AI requests. Please wait a minute and try again.',
-      );
-    }
-    fresh.push(now);
-    userHits.set(userId, fresh);
-    // Cheap GC so the map doesn't grow unbounded across long-lived processes.
-    if (userHits.size > 5_000) {
-      for (const [uid, hits] of userHits) {
-        const keep = hits.filter((t) => now - t < RATE_WINDOW_MS);
-        if (keep.length === 0) userHits.delete(uid);
-        else userHits.set(uid, keep);
-      }
-    }
-  }
 }
 
 async function safeReadText(res: Response): Promise<string> {

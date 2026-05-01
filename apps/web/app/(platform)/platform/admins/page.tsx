@@ -111,6 +111,29 @@ export default function PlatformAdminsPage() {
     }
   };
 
+  const onResetTwoFa = async (id: string, email: string) => {
+    if (
+      !confirm(
+        `Reset 2FA for ${email}? They will be able to sign in with just their password and re-enrol.`,
+      )
+    )
+      return;
+    const t = token();
+    if (!t) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/platform/admins/${id}/reset-2fa`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${t}` },
+      });
+      if (!res.ok) {
+        setError('Failed to reset 2FA');
+        return;
+      }
+    } catch {
+      setError('Network error');
+    }
+  };
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -171,7 +194,14 @@ export default function PlatformAdminsPage() {
                     <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                       {new Date(a.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right space-x-3">
+                      <button
+                        onClick={() => onResetTwoFa(a.id, a.email)}
+                        className="text-xs font-medium text-indigo-600 hover:underline"
+                        title="Reset 2FA for this admin (escape hatch)"
+                      >
+                        Reset 2FA
+                      </button>
                       <button
                         onClick={() => onDelete(a.id)}
                         disabled={admins.length <= 1}

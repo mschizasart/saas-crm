@@ -21,6 +21,13 @@ model PlatformAdmin {
   email     String   @unique
   password  String
   name      String
+  // 2FA (TOTP) — see modules/platform/twofa flow.
+  // Secret is the AES-256-GCM-encrypted base32 TOTP secret (encrypt.ts).
+  // Recovery codes are stored as a JSON array of bcrypt hashes.
+  twoFactorSecret         String?
+  twoFactorEnabled        Boolean   @default(false)
+  twoFactorRecoveryCodes  Json?
+  twoFactorEnrolledAt     DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -145,9 +152,17 @@ model User {
   timezone       String    @default("UTC")
   lastLogin      DateTime?
   lastIp         String?
-  // 2FA
+  // 2FA (legacy fields, kept for backward-compat with existing rows;
+  //  new code should use the twoFactor* set below)
   twoFaEnabled   Boolean   @default(false)
   twoFaSecret    String?
+  // 2FA (TOTP) — new fields; see modules/auth/twofa.* flow.
+  // twoFactorSecret holds the AES-256-GCM-encrypted base32 TOTP secret.
+  // twoFactorRecoveryCodes is a JSON array of bcrypt hashes (one-time codes).
+  twoFactorSecret         String?
+  twoFactorEnabled        Boolean   @default(false)
+  twoFactorRecoveryCodes  Json?
+  twoFactorEnrolledAt     DateTime?
   // OAuth
   oauthProvider  String?   // "google" | "microsoft"
   oauthId        String?

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { AdminSidebar } from '@/components/admin-sidebar';
 import { AnnouncementsBanner } from '@/components/announcements-banner';
 import { ToastProvider } from '@/components/toast-provider';
-import { GlobalSearch } from '@/components/global-search';
+import { CommandPalette } from '@/components/ui/command-palette';
 import { KeyboardShortcuts } from '@/components/keyboard-shortcuts';
 import { apiFetch, getAccessToken, isTokenExpired } from '@/lib/api';
 
@@ -85,6 +85,18 @@ export default function AdminLayout({
               <span className="text-white font-bold text-xs">A</span>
             </div>
             <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">AppoinlyCRM</span>
+            {/* Cmd-K hint — opens the command palette */}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event('open-command-palette'))}
+              aria-label="Open command palette"
+              className="ml-auto inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              <kbd className="font-mono">{'\u2318'}K</kbd>
+            </button>
           </div>
 
           <AnnouncementsBanner />
@@ -93,7 +105,7 @@ export default function AdminLayout({
           </main>
         </div>
       </div>
-      <GlobalSearch />
+      <CommandPalette />
       <KeyboardShortcuts />
     </ToastProvider>
   );

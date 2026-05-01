@@ -10,7 +10,7 @@ import {
   BarChart3, Settings, Bell, Building2, Zap, ClipboardList,
   ChevronDown, ChevronRight, ListTodo, Calendar, Megaphone,
   Activity, Tag, Lock, MessageCircle, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
-  ShieldX, Inbox,
+  ShieldX, Inbox, KeyRound,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -311,6 +311,7 @@ function useNavItems(): NavItem[] {
       icon: Settings,
       children: [
         { label: t('nav.general'), href: '/settings?tab=company', icon: Settings },
+        { label: 'Security', href: '/settings/security', icon: KeyRound },
         { label: t('nav.email'), href: '/settings/email', icon: Bell },
         { label: 'E-Invoice', href: '/settings/einvoice', icon: FileCode },
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },
@@ -433,11 +434,11 @@ export function AdminSidebar({ onClose }: { onClose?: () => void } = {}) {
         )}
       </div>
 
-      {/* Search hint */}
+      {/* Search hint — opens the global Cmd-K command palette (see components/ui/command-palette.tsx) */}
       <div className="px-3 pt-3 pb-1">
         <button
           onClick={() => {
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
+            window.dispatchEvent(new Event('open-command-palette'));
           }}
           className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors border border-sidebar-border"
         >

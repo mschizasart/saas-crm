@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, Building2, ShieldCheck, LogOut, Package, CreditCard } from 'lucide-react';
+import { LayoutDashboard, Building2, ShieldCheck, LogOut, Package, CreditCard, KeyRound } from 'lucide-react';
 
 interface PlatformAdmin {
   id: string;
@@ -17,6 +17,7 @@ const NAV = [
   { href: '/platform/plans', label: 'Plans', icon: Package },
   { href: '/platform/billing', label: 'Billing', icon: CreditCard },
   { href: '/platform/admins', label: 'Admins', icon: ShieldCheck },
+  { href: '/platform/security', label: 'Security', icon: KeyRound },
 ];
 
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {

@@ -20,7 +20,6 @@ import {
   RefreshTokenDto,
   ForgotPasswordDto,
   ResetPasswordDto,
-  SetupTwoFaDto,
   RegisterOrganizationDto,
   PortalRegisterDto,
 } from './dto/auth.dto';
@@ -44,10 +43,15 @@ export class AuthController {
     return this.authService.login(user);
   }
 
+  /**
+   * Legacy step-2 endpoint kept ONLY for users that enrolled under the
+   * old `twoFaEnabled` scaffolding. New TOTP enrolments use
+   * POST /auth/2fa/login (see twofa.controller.ts) with `twoFactorToken`.
+   */
   @Post('2fa/verify')
   @Public()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Complete 2FA verification (step 2)' })
+  @ApiOperation({ summary: 'Legacy: complete 2FA verification (old flow)' })
   async verify2fa(@Body() dto: TwoFaVerifyDto) {
     // Decode tempToken to get userId
     const payload = await this.authService['jwt'].verify(dto.tempToken);
@@ -118,32 +122,9 @@ export class AuthController {
   }
 
   // ─── 2FA Management ────────────────────────────────────────
-
-  @Get('2fa/setup')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Generate 2FA secret and QR code' })
-  async setup2fa(@CurrentUser() user: any) {
-    return this.authService.generate2faSecret(user.id);
-  }
-
-  @Post('2fa/enable')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Enable 2FA after verifying setup code' })
-  async enable2fa(@CurrentUser() user: any, @Body() dto: SetupTwoFaDto) {
-    await this.authService.enable2fa(user.id, dto.code);
-    return { message: '2FA enabled successfully.' };
-  }
-
-  @Post('2fa/disable')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Disable 2FA' })
-  async disable2fa(@CurrentUser() user: any) {
-    await this.authService.disable2fa(user.id);
-    return { message: '2FA disabled.' };
-  }
+  // Moved to TwoFactorAuthController (twofa.controller.ts).
+  // Endpoints: POST /auth/2fa/setup, /verify-setup, /disable,
+  // /regenerate-recovery, /login, GET /auth/2fa/status.
 
   // ─── OAuth ─────────────────────────────────────────────────
 

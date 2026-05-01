@@ -18,6 +18,11 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
+  Sparkles,
+  PencilLine,
+  X,
+  Copy,
+  Loader2,
 } from 'lucide-react';
 import { ListPageLayout } from '@/components/layouts/list-page-layout';
 import { Card } from '@/components/ui/card';
@@ -143,6 +148,21 @@ export default function InboxPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
 
   const [polling, setPolling] = useState(false);
+
+  // Cache AI summaries by messageId so reopening a message doesn't re-call
+  // Claude (and burn tokens). Cleared on hard reload — that's intentional.
+  const [summaryCache, setSummaryCache] = useState<Record<string, string>>({});
+  const setSummary = useCallback((messageId: string, summary: string) => {
+    setSummaryCache((prev) => ({ ...prev, [messageId]: summary }));
+  }, []);
+  const clearSummary = useCallback((messageId: string) => {
+    setSummaryCache((prev) => {
+      if (!(messageId in prev)) return prev;
+      const next = { ...prev };
+      delete next[messageId];
+      return next;
+    });
+  }, []);
 
   // Debounce search.
   useEffect(() => {
@@ -521,6 +541,9 @@ export default function InboxPage() {
                     patchMessage(selected.id, { isArchived: !selected.isArchived })
                   }
                   onReroute={(target, targetId) => reroute(selected.id, target, targetId)}
+                  cachedSummary={summaryCache[selected.id]}
+                  onSummaryReady={(s) => setSummary(selected.id, s)}
+                  onDismissSummary={() => clearSummary(selected.id)}
                 />
               ) : null
             ) : (
@@ -644,6 +667,9 @@ function MessageDetail({
   onToggleStar,
   onToggleArchive,
   onReroute,
+  cachedSummary,
+  onSummaryReady,
+  onDismissSummary,
 }: {
   message: InboxMessage;
   onBack: () => void;
@@ -651,9 +677,62 @@ function MessageDetail({
   onToggleStar: () => void;
   onToggleArchive: () => void;
   onReroute: (target: RoutedTarget | 'none', targetId: string | null) => void;
+  cachedSummary?: string;
+  onSummaryReady: (summary: string) => void;
+  onDismissSummary: () => void;
 }) {
   const route = message.routedTo ?? 'unmatched';
   const routeMeta = ROUTE_BADGE[route];
+
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryVisible, setSummaryVisible] = useState(false);
+  const [draftOpen, setDraftOpen] = useState(false);
+
+  // When the selected message changes, hide the previous summary card.
+  // The cache itself lives in the parent, so reopening shows it instantly.
+  useEffect(() => {
+    setSummaryVisible(Boolean(cachedSummary));
+    setDraftOpen(false);
+  }, [message.id, cachedSummary]);
+
+  const handleSummarize = useCallback(async () => {
+    // If we have a cached summary, just reopen it — no API call.
+    if (cachedSummary) {
+      setSummaryVisible(true);
+      return;
+    }
+    setSummaryLoading(true);
+    try {
+      const res = await apiFetch('/api/v1/ai/inbox/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId: message.id }),
+      });
+      if (!res.ok) {
+        if (res.status === 503) {
+          toast.error(
+            'AI features need ANTHROPIC_API_KEY set by your administrator',
+          );
+        } else if (res.status === 429) {
+          toast.error('Too many AI requests — please wait a minute.');
+        } else {
+          toast.error("Couldn't summarize — try again");
+        }
+        return;
+      }
+      const data = (await res.json()) as { summary?: string };
+      if (data.summary) {
+        onSummaryReady(data.summary);
+        setSummaryVisible(true);
+      } else {
+        toast.error("Couldn't summarize — try again");
+      }
+    } catch {
+      toast.error("Couldn't summarize — try again");
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [cachedSummary, message.id, onSummaryReady]);
 
   return (
     <>
@@ -769,9 +848,405 @@ function MessageDetail({
           )}
         </div>
 
+        {/* ── AI toolbar ───────────────────────────────────────────── */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={handleSummarize}
+            disabled={summaryLoading}
+            className="inline-flex items-center gap-1.5 rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-purple-500/10 dark:border-purple-500/30 dark:text-purple-300 dark:hover:bg-purple-500/20"
+            title={cachedSummary ? 'Show cached summary' : 'Summarize this thread with AI'}
+          >
+            {summaryLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5" />
+            )}
+            <span>
+              {summaryLoading
+                ? 'Summarizing\u2026'
+                : cachedSummary && !summaryVisible
+                ? 'Show summary'
+                : 'Summarize'}
+            </span>
+          </button>
+
+          <DraftReplyButton
+            messageId={message.id}
+            open={draftOpen}
+            onOpenChange={setDraftOpen}
+          />
+        </div>
+
+        {/* ── Summary card (collapsible via Summarize button, dismissable via X) ── */}
+        {summaryVisible && cachedSummary && (
+          <div className="rounded-xl border border-purple-200 dark:border-purple-500/30 bg-purple-50/40 dark:bg-purple-500/5 shadow-sm p-4">
+            <div className="flex items-start gap-2 mb-2">
+              <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400 mt-0.5 flex-shrink-0" />
+              <div className="text-xs font-semibold text-purple-700 dark:text-purple-300 flex-1">
+                AI summary
+              </div>
+              <button
+                type="button"
+                onClick={() => setSummaryVisible(false)}
+                className="text-[11px] text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 px-1.5 py-0.5 rounded hover:bg-purple-100/60 dark:hover:bg-purple-500/10"
+                title="Collapse — click Summarize to show again"
+              >
+                Hide
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSummaryVisible(false);
+                  onDismissSummary();
+                }}
+                className="text-gray-400 hover:text-red-500"
+                aria-label="Dismiss summary"
+                title="Dismiss (clears cache)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <pre className="whitespace-pre-wrap break-words text-xs text-gray-800 dark:text-gray-200 font-sans m-0">
+              {cachedSummary}
+            </pre>
+          </div>
+        )}
+
         <MessageBody message={message} />
       </div>
     </>
+  );
+}
+
+// ─── Draft Reply popover + modal ─────────────────────────────────────
+
+type DraftIntent = 'reply' | 'decline' | 'followup' | 'request-more-info';
+type DraftTone = 'friendly' | 'professional' | 'concise';
+
+const INTENT_OPTIONS: { value: DraftIntent; label: string }[] = [
+  { value: 'reply', label: 'Reply' },
+  { value: 'decline', label: 'Decline' },
+  { value: 'followup', label: 'Follow up' },
+  { value: 'request-more-info', label: 'Ask for more info' },
+];
+
+const TONE_OPTIONS: { value: DraftTone; label: string }[] = [
+  { value: 'professional', label: 'Professional' },
+  { value: 'friendly', label: 'Friendly' },
+  { value: 'concise', label: 'Concise' },
+];
+
+function DraftReplyButton({
+  messageId,
+  open,
+  onOpenChange,
+}: {
+  messageId: string;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+}) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [intent, setIntent] = useState<DraftIntent>('reply');
+  const [tone, setTone] = useState<DraftTone>('professional');
+  const [loading, setLoading] = useState(false);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [draftSubject, setDraftSubject] = useState<string | undefined>(
+    undefined,
+  );
+
+  // Close popover on outside click / Escape (only when no modal is showing).
+  useEffect(() => {
+    if (!open || draft !== null) return;
+    function onDocClick(e: MouseEvent) {
+      if (!wrapperRef.current) return;
+      if (!wrapperRef.current.contains(e.target as Node)) onOpenChange(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onOpenChange(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, draft, onOpenChange]);
+
+  // Reset when the active message changes.
+  useEffect(() => {
+    setDraft(null);
+    setDraftSubject(undefined);
+    setIntent('reply');
+    setTone('professional');
+  }, [messageId]);
+
+  async function generate() {
+    setLoading(true);
+    try {
+      const res = await apiFetch('/api/v1/ai/inbox/draft-reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId, intent, tone }),
+      });
+      if (!res.ok) {
+        if (res.status === 503) {
+          toast.error(
+            'AI features need ANTHROPIC_API_KEY set by your administrator',
+          );
+        } else if (res.status === 429) {
+          toast.error('Too many AI requests — please wait a minute.');
+        } else {
+          toast.error("Couldn't draft reply — try again");
+        }
+        return;
+      }
+      const data = (await res.json()) as {
+        draft?: string;
+        suggestedSubject?: string;
+      };
+      if (!data.draft) {
+        toast.error("Couldn't draft reply — try again");
+        return;
+      }
+      setDraft(data.draft);
+      setDraftSubject(data.suggestedSubject);
+      onOpenChange(false); // close the popover, show the modal instead
+    } catch {
+      toast.error("Couldn't draft reply — try again");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function copyToClipboard() {
+    if (!draft) return;
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard
+        .writeText(draft)
+        .then(() => toast.success('Copied to clipboard'))
+        .catch(() => toast.error("Couldn't copy — select the text manually"));
+    }
+  }
+
+  function openInCompose() {
+    if (!draft) return;
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard
+        .writeText(draft)
+        .then(() => toast.message('Copied — paste into your reply'))
+        .catch(() => toast.error("Couldn't copy — select the text manually"));
+    }
+  }
+
+  return (
+    <>
+      <div ref={wrapperRef} className="relative inline-block">
+        <button
+          type="button"
+          onClick={() => onOpenChange(!open)}
+          className="inline-flex items-center gap-1.5 rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100 dark:bg-purple-500/10 dark:border-purple-500/30 dark:text-purple-300 dark:hover:bg-purple-500/20"
+          title="Draft an AI reply"
+        >
+          <PencilLine className="w-3.5 h-3.5" />
+          <span>Draft reply</span>
+        </button>
+
+        {open && (
+          <div
+            role="dialog"
+            aria-label="Draft reply options"
+            className="absolute left-0 top-full mt-2 z-30 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3"
+          >
+            <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              Draft an AI reply
+            </div>
+
+            <div className="mb-3">
+              <div className="text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                Intent
+              </div>
+              <div className="space-y-1">
+                {INTENT_OPTIONS.map((o) => (
+                  <label
+                    key={o.value}
+                    className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                  >
+                    <input
+                      type="radio"
+                      name="ai-draft-intent"
+                      checked={intent === o.value}
+                      onChange={() => setIntent(o.value)}
+                    />
+                    <span className="text-xs text-gray-800 dark:text-gray-200">
+                      {o.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <div className="text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                Tone
+              </div>
+              <div className="space-y-1">
+                {TONE_OPTIONS.map((o) => (
+                  <label
+                    key={o.value}
+                    className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                  >
+                    <input
+                      type="radio"
+                      name="ai-draft-tone"
+                      checked={tone === o.value}
+                      onChange={() => setTone(o.value)}
+                    />
+                    <span className="text-xs text-gray-800 dark:text-gray-200">
+                      {o.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={generate}
+                disabled={loading}
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md disabled:opacity-60"
+              >
+                {loading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5" />
+                )}
+                {loading ? 'Generating\u2026' : 'Generate'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Draft modal */}
+      {draft !== null && (
+        <DraftReplyModal
+          draft={draft}
+          subject={draftSubject}
+          onChange={setDraft}
+          onClose={() => setDraft(null)}
+          onCopy={copyToClipboard}
+          onOpenInCompose={openInCompose}
+        />
+      )}
+    </>
+  );
+}
+
+function DraftReplyModal({
+  draft,
+  subject,
+  onChange,
+  onClose,
+  onCopy,
+  onOpenInCompose,
+}: {
+  draft: string;
+  subject?: string;
+  onChange: (next: string) => void;
+  onClose: () => void;
+  onCopy: () => void;
+  onOpenInCompose: () => void;
+}) {
+  // Esc closes the modal.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="AI draft reply"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-200 dark:border-gray-800 flex flex-col max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+          <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex-1">
+            AI draft reply
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
+            aria-label="Close draft"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-3 overflow-y-auto">
+          {subject && (
+            <div className="text-xs">
+              <span className="text-gray-500 dark:text-gray-400">
+                Suggested subject:
+              </span>{' '}
+              <span className="font-medium text-gray-800 dark:text-gray-200">
+                {subject}
+              </span>
+            </div>
+          )}
+          <textarea
+            value={draft}
+            onChange={(e) => onChange(e.target.value)}
+            rows={14}
+            className="w-full text-sm font-sans rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 p-3 focus:outline-none focus:ring-2 focus:ring-primary/40"
+            spellCheck
+          />
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+            Edit freely — nothing is saved until you copy or send it elsewhere.
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-2 px-4 py-3 border-t border-gray-100 dark:border-gray-800">
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onCopy}
+            icon={<Copy className="w-4 h-4" />}
+          >
+            Copy to clipboard
+          </Button>
+          <Button
+            size="sm"
+            onClick={onOpenInCompose}
+            icon={<PencilLine className="w-4 h-4" />}
+          >
+            Open in compose
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

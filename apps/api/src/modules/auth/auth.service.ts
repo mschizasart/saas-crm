@@ -58,20 +58,32 @@ export class AuthService {
   // ─── Login ─────────────────────────────────────────────────
 
   async login(user: any) {
-    // Update last login
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLogin: new Date() },
-    });
+    // If the user has TOTP-based 2FA enabled (new flow), short-circuit
+    // before issuing a real session — the frontend must POST the TOTP code
+    // (or a recovery code) to /auth/2fa/login with the returned token.
+    if (user.twoFactorEnabled) {
+      const twoFactorToken = this.jwt.sign(
+        { sub: user.id, purpose: '2fa' },
+        { expiresIn: '5m' },
+      );
+      return { requires2fa: true, twoFactorToken };
+    }
 
+    // Legacy 2FA scaffolding (twoFaEnabled). Still honoured so existing
+    // rows aren't locked out, but new enrolments use twoFactorEnabled.
     if (user.twoFaEnabled) {
-      // Return a short-lived temp token — frontend must complete 2FA
       const tempToken = this.jwt.sign(
         { sub: user.id, orgId: user.organizationId, step: '2fa' },
         { expiresIn: '5m' },
       );
       return { requires2fa: true, tempToken };
     }
+
+    // Update last login only when we're actually issuing a session.
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() },
+    });
 
     return this.generateTokenPair(user);
   }
