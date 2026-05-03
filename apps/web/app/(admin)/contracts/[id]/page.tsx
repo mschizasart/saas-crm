@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
+import { SignaturePanel } from '@/components/ui/signature-panel';
 
 interface Contract {
   id: string;
@@ -14,6 +15,8 @@ interface Contract {
   startDate: string;
   endDate: string;
   publicHash?: string;
+  hash?: string;
+  signatureRequired?: boolean;
   client?: { id: string; company?: string; company_name?: string } | null;
   signedAt?: string;
 }
@@ -109,10 +112,29 @@ export default function ContractDetailPage() {
     return { days: diffDays, label: `Expires in ${diffDays} days`, isExpired: false, isWarning: false };
   }
 
+  async function toggleSignatureRequired() {
+    if (!c) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/contracts/${id}`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ signatureRequired: !c.signatureRequired }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      await fetchData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) return <div className="max-w-4xl animate-pulse h-96 bg-gray-100 dark:bg-gray-800 rounded-xl" />;
   if (error || !c) return <div className="text-red-600">{error ?? 'Not found'}</div>;
 
   const expiry = getDaysUntilExpiry();
+  const publicHash = c.publicHash ?? c.hash;
 
   const actions = c.status === 'draft'
     ? [{ label: busy ? 'Sending...' : 'Send For Signing', onClick: sendForSigning, disabled: busy, variant: 'primary' as const }]
@@ -174,6 +196,39 @@ export default function ContractDetailPage() {
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
         <div className="prose max-w-none text-sm" dangerouslySetInnerHTML={{ __html: renderedContent ?? c.content }} />
       </div>
+
+      {/* Require-signature toggle */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 flex items-center justify-between">
+        <div>
+          <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Require e-signature</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            When on, the client must draw a signature on the portal page (instead of a click-to-sign with name field).
+          </div>
+        </div>
+        <button
+          onClick={toggleSignatureRequired}
+          disabled={busy}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+            c.signatureRequired ? 'bg-primary' : 'bg-gray-200 dark:bg-gray-700'
+          }`}
+          aria-pressed={!!c.signatureRequired}
+          aria-label="Toggle e-signature requirement"
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+              c.signatureRequired ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
+        </button>
+      </div>
+
+      <SignaturePanel
+        documentType="contract"
+        documentId={c.id}
+        publicHash={publicHash}
+        publicLinkBase="/portal/contracts/sign"
+        onAfterRevoke={fetchData}
+      />
 
       <div className="mt-6 text-sm text-gray-500 dark:text-gray-400">
         Period: {c.startDate ? new Date(c.startDate).toLocaleDateString() : '—'} &rarr; {c.endDate ? new Date(c.endDate).toLocaleDateString() : '—'}

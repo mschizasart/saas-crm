@@ -16,6 +16,7 @@ export interface CreateContractDto {
   value?: number;
   startDate?: string;
   endDate?: string;
+  signatureRequired?: boolean;
 }
 
 @Injectable()
@@ -161,6 +162,7 @@ export class ContractsService {
           value: dto.value ?? null,
           startDate: dto.startDate ? new Date(dto.startDate) : null,
           endDate: dto.endDate ? new Date(dto.endDate) : null,
+          signatureRequired: dto.signatureRequired ?? false,
           createdBy,
         },
         include: {
@@ -196,6 +198,9 @@ export class ContractsService {
           }),
           ...(dto.endDate !== undefined && {
             endDate: dto.endDate ? new Date(dto.endDate) : null,
+          }),
+          ...(dto.signatureRequired !== undefined && {
+            signatureRequired: dto.signatureRequired,
           }),
         },
         include: {
@@ -313,6 +318,7 @@ export class ContractsService {
       signedAt: contract.signedAt,
       signedByName: contract.signedByName,
       signedByEmail: contract.signedByEmail,
+      signatureRequired: (contract as any).signatureRequired ?? false,
       hash: contract.hash,
       client: contract.client,
     };

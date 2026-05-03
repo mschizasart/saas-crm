@@ -21,13 +21,71 @@ const fmtDate = (d: any): string => {
   }
 };
 
+const fmtDateTime = (d: any): string => {
+  if (!d) return '—';
+  try {
+    return new Date(d).toLocaleString('en-GB', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    });
+  } catch {
+    return '—';
+  }
+};
+
 const fmtMoney = (v: any, currency = 'USD'): string => {
   const n = Number(v ?? 0);
   return `${currency} ${n.toFixed(2)}`;
 };
 
-export function renderProposalHtml(proposal: any, organization: any): string {
+/**
+ * Render a proposal PDF.
+ *
+ * `signature` (optional) carries the e-signature payload assembled by the
+ * SignaturesService:
+ *   { signerName, signerEmail, signedAt, ipAddress, imageDataUrl }
+ *
+ * When a signature is present (and not just a placeholder), a signature
+ * block is appended at the bottom of the document. When the proposal has a
+ * `signedAt` timestamp but no payload, only the timestamp is shown.
+ */
+export function renderProposalHtml(
+  proposal: any,
+  organization: any,
+  signature?: {
+    signerName?: string;
+    signerEmail?: string;
+    signedAt?: any;
+    ipAddress?: string;
+    imageDataUrl?: string | null;
+  } | null,
+): string {
   const currency = proposal.currency ?? 'USD';
+  const isSigned = !!(signature?.imageDataUrl || proposal.signedAt);
+
+  const signatureBlock = isSigned
+    ? `
+  <div class="signature-block">
+    <div class="sig-heading">Signed by Client</div>
+    <div class="sig-body">
+      ${
+        signature?.imageDataUrl
+          ? `<img class="sig-img" src="${esc(signature.imageDataUrl)}" alt="Signature" />`
+          : '<div class="sig-line"></div>'
+      }
+      <div class="sig-meta">
+        <div><strong>${esc(signature?.signerName ?? '')}</strong></div>
+        ${signature?.signerEmail ? `<div>${esc(signature.signerEmail)}</div>` : ''}
+        <div>Signed: ${esc(fmtDateTime(signature?.signedAt ?? proposal.signedAt))}</div>
+        ${signature?.ipAddress ? `<div>IP: ${esc(signature.ipAddress)}</div>` : ''}
+      </div>
+    </div>
+  </div>`
+    : '';
 
   return `<!DOCTYPE html>
 <html>
@@ -115,6 +173,27 @@ export function renderProposalHtml(proposal: any, organization: any): string {
     font-weight: 800;
     color: #3B82F6;
   }
+  .signature-block {
+    margin-top: 35px;
+    padding: 18px 20px;
+    border: 1px solid #3B82F6;
+    border-radius: 6px;
+    background: #F8FAFC;
+    page-break-inside: avoid;
+  }
+  .sig-heading {
+    text-transform: uppercase;
+    font-size: 10px;
+    color: #6B7280;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+  .sig-body { display: flex; gap: 24px; align-items: center; }
+  .sig-img { max-height: 80px; max-width: 260px; }
+  .sig-line { border-bottom: 1px solid #111; width: 240px; height: 40px; }
+  .sig-meta { font-size: 11px; color: #374151; line-height: 1.6; }
+  .sig-meta strong { color: #111827; }
   .footer {
     text-align: center;
     padding-top: 20px;
@@ -156,6 +235,8 @@ export function renderProposalHtml(proposal: any, organization: any): string {
     <div class="total-value">${fmtMoney(proposal.total, currency)}</div>
   </div>
   ` : ''}
+
+  ${signatureBlock}
 
   <div class="footer">
     <strong>Thank you for your consideration</strong>

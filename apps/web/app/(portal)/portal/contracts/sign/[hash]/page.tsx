@@ -1,14 +1,19 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
+import { SignaturePad } from '@/components/ui/signature-pad';
 
 interface Contract {
   id: string;
-  title: string;
+  title?: string;
+  subject?: string;
   content: string;
+  status?: string;
   signedAt: string | null;
+  signatureRequired?: boolean;
   organization?: { name: string } | null;
+  client?: { id: string; company?: string } | null;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -22,12 +27,11 @@ export default function ContractSignPage() {
   const [error, setError] = useState<string | null>(null);
   const [signedByName, setSignedByName] = useState('');
   const [signedByEmail, setSignedByEmail] = useState('');
+  const [signaturePng, setSignaturePng] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const [signatureId, setSignatureId] = useState<string | null>(null);
 
   const fetchContract = useCallback(async () => {
     setLoading(true);
@@ -35,7 +39,9 @@ export default function ContractSignPage() {
     try {
       const res = await fetch(`${API_BASE}/api/v1/contracts/sign/${hash}`);
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);
-      setContract(await res.json());
+      const data: Contract = await res.json();
+      setContract(data);
+      if (data.client?.company) setSignedByName(data.client.company);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load contract');
     } finally {
@@ -47,76 +53,38 @@ export default function ContractSignPage() {
     fetchContract();
   }, [fetchContract]);
 
+  // Track view audit event.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-  }, [contract, success]);
-
-  function getPos(e: React.MouseEvent<HTMLCanvasElement>) {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  }
-
-  function start(e: React.MouseEvent<HTMLCanvasElement>) {
-    setIsDrawing(true);
-    const { x, y } = getPos(e);
-    const ctx = canvasRef.current!.getContext('2d')!;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-  }
-
-  function draw(e: React.MouseEvent<HTMLCanvasElement>) {
-    if (!isDrawing) return;
-    const { x, y } = getPos(e);
-    const ctx = canvasRef.current!.getContext('2d')!;
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  }
-
-  function stop() {
-    setIsDrawing(false);
-  }
-
-  function clearCanvas() {
-    const canvas = canvasRef.current!;
-    canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
-  }
-
-  function isCanvasBlank(): boolean {
-    const canvas = canvasRef.current;
-    if (!canvas) return true;
-    const ctx = canvas.getContext('2d')!;
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-    for (let i = 3; i < data.length; i += 4) {
-      if (data[i] !== 0) return false;
-    }
-    return true;
-  }
+    if (!contract) return;
+    fetch(`${API_BASE}/api/v1/contracts/${contract.id}/track-view`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contract?.id]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
-    if (isCanvasBlank()) {
+    if (!signaturePng) {
       setSubmitError('Please draw your signature');
       return;
     }
     setSubmitting(true);
     try {
-      const signatureData = canvasRef.current!.toDataURL('image/png');
-      const res = await fetch(`${API_BASE}/api/v1/contracts/sign/${hash}`, {
+      const res = await fetch(`${API_BASE}/api/v1/public/contracts/${hash}/sign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signatureData, signedByName, signedByEmail }),
+        body: JSON.stringify({
+          name: signedByName,
+          email: signedByEmail,
+          signaturePng,
+        }),
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.message || `Failed with status ${res.status}`);
-      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || `Failed with status ${res.status}`);
+      setSignatureId(json.signatureId ?? null);
       setSuccess(true);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to sign');
@@ -126,7 +94,11 @@ export default function ContractSignPage() {
   }
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">Loading contract…</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">
+        Loading contract…
+      </div>
+    );
   }
 
   if (error || !contract) {
@@ -149,8 +121,20 @@ export default function ContractSignPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Contract signed successfully!</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Thank you for signing. A copy will be emailed to you.</p>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Signed — thanks!</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Your signature has been recorded.
+          </p>
+          {signatureId && (
+            <a
+              href={`${API_BASE}/api/v1/contracts/${contract.id}/signed-pdf`}
+              className="inline-block px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Download signed PDF
+            </a>
+          )}
         </div>
       </div>
     );
@@ -162,7 +146,9 @@ export default function ContractSignPage() {
         {contract.organization?.name && (
           <p className="text-center text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">{contract.organization.name}</p>
         )}
-        <h1 className="text-center text-2xl font-bold text-gray-900 dark:text-gray-100 mb-8">{contract.title}</h1>
+        <h1 className="text-center text-2xl font-bold text-gray-900 dark:text-gray-100 mb-8">
+          {contract.title ?? contract.subject}
+        </h1>
 
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-8 mb-6">
           <div
@@ -203,30 +189,12 @@ export default function ContractSignPage() {
 
           <div className="mb-4">
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Signature *</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg bg-white dark:bg-gray-900">
-              <canvas
-                ref={canvasRef}
-                width={600}
-                height={180}
-                onMouseDown={start}
-                onMouseMove={draw}
-                onMouseUp={stop}
-                onMouseLeave={stop}
-                className="w-full h-[180px] cursor-crosshair touch-none"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={clearCanvas}
-              className="mt-2 text-xs text-gray-500 dark:text-gray-400 hover:text-primary underline"
-            >
-              Clear signature
-            </button>
+            <SignaturePad width={600} height={180} onSignature={setSignaturePng} />
           </div>
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || !signaturePng}
             className="w-full px-4 py-3 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
           >
             {submitting ? 'Signing…' : 'Sign Contract'}

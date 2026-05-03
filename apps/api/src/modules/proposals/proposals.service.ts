@@ -16,6 +16,7 @@ export interface CreateProposalDto {
   totalValue?: number;
   currency?: string;
   allowComments?: boolean;
+  signatureRequired?: boolean;
   assignedTo?: string;
   /**
    * Optional line items. Most proposal flows are content-only (the rich-text
@@ -192,6 +193,7 @@ export class ProposalsService {
           total: dto.totalValue ?? null,
           currency: dto.currency ?? null,
           allowComments: dto.allowComments ?? true,
+          signatureRequired: dto.signatureRequired ?? false,
           hash: randomUUID(),
           dateCreated: new Date(),
           ...(dto.items?.length
@@ -272,6 +274,9 @@ export class ProposalsService {
           ...(dto.currency !== undefined && { currency: dto.currency }),
           ...(dto.allowComments !== undefined && {
             allowComments: dto.allowComments,
+          }),
+          ...(dto.signatureRequired !== undefined && {
+            signatureRequired: dto.signatureRequired,
           }),
         },
         include: {

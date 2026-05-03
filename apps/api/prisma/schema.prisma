@@ -114,6 +114,7 @@ model Organization {
   ticketSpamFilters  TicketSpamFilter[]
   inboxMessages      InboxMessage[]
   outboundMessages   OutboundMessage[]
+  signatures         Signature[]
 
   @@map("organizations")
 }
@@ -807,6 +808,10 @@ model Proposal {
   sentAt         DateTime?
   dateCreated    DateTime
   allowComments  Boolean  @default(true)
+  // E-signature toggle — when true, the public view requires a drawn signature
+  // (creates a Signature row with audit trail). Otherwise the legacy
+  // click-to-accept flow is used.
+  signatureRequired Boolean @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1359,6 +1364,10 @@ model Contract {
   signedIp       String?
   noticeType     Int?     // days before end to notify
   hash           String   @unique @default(uuid())
+  // E-signature toggle — when true, the public view requires a drawn signature
+  // (creates a Signature row with audit trail). Otherwise the legacy
+  // click-to-accept/sign-with-data flow is used.
+  signatureRequired Boolean @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1382,6 +1391,44 @@ model ContractComment {
   contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
   @@map("contract_comments")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  E-SIGNATURES (polymorphic — proposal | contract)
+// ═══════════════════════════════════════════════════════════════
+//
+// One row per signing event. Polymorphic on (documentType, documentId);
+// no FK because the parent is either Proposal or Contract — enforced in
+// the service layer.
+//
+// `signatureImageKey` and `signedDocumentPdfKey` are MinIO/S3 object keys
+// (not embedded blobs) so the row stays small and audit queries fast.
+// The PDF snapshot is written async after signing.
+model Signature {
+  id                   String   @id @default(uuid())
+  organizationId       String
+  documentType         String   // 'proposal' | 'contract'
+  documentId           String
+  signerName           String
+  signerEmail          String
+  signatureImageKey    String   // MinIO object key for the PNG
+  signedAt             DateTime
+  ipAddress            String
+  userAgent            String
+  geoCountry           String?
+  signedDocumentPdfKey String?  // MinIO object key for the snapshotted PDF
+  // Audit trail — array of {at, type, ip, userAgent, detail}.
+  // Event types: viewed, started_signing, completed, revoked.
+  auditEvents          Json     @default("[]")
+  revokedAt            DateTime?
+  revokedReason        String?
+  createdAt            DateTime @default(now())
+
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, documentType, documentId])
+  @@index([organizationId, signedAt(sort: Desc)])
+  @@map("signatures")
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2173,15 +2220,30 @@ model InboxMessage {
 }
 
 model OutboundMessage {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   organizationId   String
-  messageId        String   // RFC822 Message-ID returned by nodemailer
-  // 'lead' | 'client' | 'invoice' | 'estimate' | 'ticket'
+  // RFC822 Message-ID returned by nodemailer. Nullable because the row is
+  // created BEFORE send (so we have a trackingId to embed in the HTML).
+  messageId        String?
+  // 'lead' | 'client' | 'invoice' | 'estimate' | 'ticket' | 'proposal' | 'statement'
   routedTo         String
   routedToId       String
   subject          String?
-  sentAt           DateTime @default(now())
-  createdAt        DateTime @default(now())
+  // Denormalised recipient email — useful for the "Sent emails" panel.
+  recipientEmail   String?
+  // ── Open / click tracking (migration 011) ─────────────────────────────
+  trackingId       String?   @unique
+  openedAt         DateTime?
+  openCount        Int       @default(0)
+  lastOpenedAt     DateTime?
+  clickedAt        DateTime?
+  clickCount       Int       @default(0)
+  lastClickedAt    DateTime?
+  /// JSONB: array of { url, at, ip, userAgent }; capped at 50 entries
+  /// by the application to prevent runaway growth.
+  clickedUrls      Json      @default("[]")
+  sentAt           DateTime  @default(now())
+  createdAt        DateTime  @default(now())
 
   organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

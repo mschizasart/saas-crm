@@ -21,10 +21,52 @@ const fmtDate = (d: any): string => {
   }
 };
 
-export function renderContractHtml(contract: any, organization: any): string {
-  const signed = !!contract.signedAt;
-  const sigImg = contract.signatureData
-    ? `<img src="${contract.signatureData}" alt="Signature" style="max-height:80px;max-width:250px;" />`
+const fmtDateTime = (d: any): string => {
+  if (!d) return '—';
+  try {
+    return new Date(d).toLocaleString('en-GB', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    });
+  } catch {
+    return '—';
+  }
+};
+
+/**
+ * Render a contract PDF.
+ *
+ * `signature` (optional) is the e-signature payload from SignaturesService:
+ *   { signerName, signerEmail, signedAt, ipAddress, imageDataUrl }
+ *
+ * Falls back to the legacy `contract.signatureData` (base64 inline) /
+ * `contract.signedByName` fields if no payload is provided.
+ */
+export function renderContractHtml(
+  contract: any,
+  organization: any,
+  signature?: {
+    signerName?: string;
+    signerEmail?: string;
+    signedAt?: any;
+    ipAddress?: string;
+    imageDataUrl?: string | null;
+  } | null,
+): string {
+  const signerName =
+    signature?.signerName ?? contract.signedByName ?? contract.signedName ?? '';
+  const signerEmail = signature?.signerEmail ?? contract.signedByEmail ?? '';
+  const signedAt = signature?.signedAt ?? contract.signedAt ?? null;
+  const ip = signature?.ipAddress ?? contract.signedIp ?? '';
+  const imageDataUrl =
+    signature?.imageDataUrl ?? contract.signatureData ?? null;
+  const signed = !!signedAt;
+  const sigImg = imageDataUrl
+    ? `<img src="${esc(imageDataUrl)}" alt="Signature" style="max-height:80px;max-width:250px;" />`
     : '<div style="border-bottom:1px solid #111;width:250px;height:40px;"></div>';
 
   return `<!DOCTYPE html>
@@ -109,6 +151,7 @@ export function renderContractHtml(contract: any, organization: any): string {
     margin-top: 50px;
     padding-top: 25px;
     border-top: 1px solid #E5E7EB;
+    page-break-inside: avoid;
   }
   .sig-block { flex: 1; }
   .sig-label {
@@ -127,6 +170,7 @@ export function renderContractHtml(contract: any, organization: any): string {
   .sig-name { font-weight: 600; font-size: 11px; color: #111827; }
   .sig-email { font-size: 10px; color: #6B7280; }
   .sig-date { font-size: 10px; color: #6B7280; margin-top: 4px; }
+  .sig-ip { font-size: 9px; color: #9CA3AF; margin-top: 2px; }
   .footer {
     text-align: center;
     padding-top: 20px;
@@ -179,9 +223,10 @@ export function renderContractHtml(contract: any, organization: any): string {
     <div class="sig-block">
       <div class="sig-label">For the Client</div>
       <div class="sig-image">${sigImg}</div>
-      ${signed ? `<div class="sig-name">${esc(contract.signedByName ?? '')}</div>` : '<div class="sig-line"></div>'}
-      ${signed ? `<div class="sig-email">${esc(contract.signedByEmail ?? '')}</div>` : ''}
-      <div class="sig-date">Date: ${signed ? fmtDate(contract.signedAt) : '_______________'}</div>
+      ${signed ? `<div class="sig-name">${esc(signerName)}</div>` : '<div class="sig-line"></div>'}
+      ${signed && signerEmail ? `<div class="sig-email">${esc(signerEmail)}</div>` : ''}
+      <div class="sig-date">Date: ${signed ? fmtDateTime(signedAt) : '_______________'}</div>
+      ${signed && ip ? `<div class="sig-ip">IP: ${esc(ip)}</div>` : ''}
     </div>
   </div>
 

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
+import { SentEmailsPanel } from '@/components/sent-emails-panel';
 
 interface Item {
   id?: string;
@@ -48,6 +49,8 @@ export default function EstimateDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Bumped after each action so the SentEmailsPanel re-fetches when 'send' fires.
+  const [sentEmailsKey, setSentEmailsKey] = useState(0);
 
   const fetchEst = useCallback(async () => {
     setLoading(true);
@@ -80,6 +83,7 @@ export default function EstimateDetailPage() {
         if (newId) { router.push(`/estimates/${newId}`); return; }
       }
       await fetchEst();
+      if (path === 'send') setSentEmailsKey((n) => n + 1);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Action failed');
     } finally {
@@ -162,6 +166,12 @@ export default function EstimateDetailPage() {
           </div>
         </div>
       </div>
+
+      <SentEmailsPanel
+        routedTo="estimate"
+        routedToId={est.id}
+        refreshKey={sentEmailsKey}
+      />
 
       {(est.clientNote || est.terms) && (
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -1,52 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { SettingsPageLayout, SettingsSection } from '@/components/layouts/settings-page-layout';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
-
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('access_token');
-}
-
-function authHeaders(): HeadersInit {
-  return { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' };
-}
-
-const TRIGGER_OPTIONS = [
-  { value: 'invoice.created', label: 'Invoice Created' },
-  { value: 'invoice.overdue', label: 'Invoice Overdue' },
-  { value: 'invoice.sent', label: 'Invoice Sent' },
-  { value: 'lead.status_changed', label: 'Lead Status Changed' },
-  { value: 'lead.assigned', label: 'Lead Assigned' },
-  { value: 'ticket.created', label: 'Ticket Created' },
-  { value: 'ticket.status_changed', label: 'Ticket Status Changed' },
-  { value: 'ticket.replied', label: 'Ticket Replied' },
-  { value: 'task.created', label: 'Task Created' },
-  { value: 'task.completed', label: 'Task Completed' },
-  { value: 'project.created', label: 'Project Created' },
-  { value: 'client.created', label: 'Client Created' },
-  { value: 'estimate.sent', label: 'Estimate Sent' },
-  { value: 'contract.signed', label: 'Contract Signed' },
-  { value: 'payment.received', label: 'Payment Received' },
-];
-
-const ACTION_TYPES = [
-  { value: 'send_email', label: 'Send Email' },
-  { value: 'update_field', label: 'Update Field' },
-  { value: 'create_task', label: 'Create Task' },
-  { value: 'notify', label: 'Send Notification' },
-  { value: 'webhook', label: 'Call Webhook' },
-];
-
-const OPERATORS = [
-  { value: 'equals', label: 'Equals' },
-  { value: 'not_equals', label: 'Not Equals' },
-  { value: 'contains', label: 'Contains' },
-  { value: 'greater_than', label: 'Greater Than' },
-  { value: 'less_than', label: 'Less Than' },
-];
+import Link from 'next/link';
+import { toast } from 'sonner';
+import { Workflow, Plus, Pencil, Trash2 } from 'lucide-react';
+import { ListPageLayout } from '@/components/layouts/list-page-layout';
+import { Card } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { apiFetch } from '@/lib/api';
+import { TRIGGERS } from './catalogue';
 
 interface AutomationRule {
   id: string;
@@ -56,260 +18,170 @@ interface AutomationRule {
   actions: any[];
   active: boolean;
   createdAt: string;
+  /** May or may not be exposed by backend yet — guarded for null. */
+  lastRunAt?: string | null;
 }
 
-interface ActionConfig {
-  type: string;
-  config: Record<string, any>;
+function triggerLabel(value: string): string {
+  return TRIGGERS.find((t) => t.value === value)?.label ?? value;
 }
 
-export default function AutomationsPage() {
+function countConditions(conditions: any): number {
+  if (!conditions) return 0;
+  if (Array.isArray(conditions?.rules)) return conditions.rules.length;
+  if (Array.isArray(conditions)) return conditions.length;
+  if (conditions.field) return 1;
+  return 0;
+}
+
+export default function AutomationsListPage() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<AutomationRule | null>(null);
-
-  // Form state
-  const [name, setName] = useState('');
-  const [trigger, setTrigger] = useState('ticket.created');
-  const [condEnabled, setCondEnabled] = useState(false);
-  const [condField, setCondField] = useState('');
-  const [condOp, setCondOp] = useState('equals');
-  const [condValue, setCondValue] = useState('');
-  const [actions, setActions] = useState<ActionConfig[]>([{ type: 'send_email', config: {} }]);
-  const [saving, setSaving] = useState(false);
 
   const load = async () => {
+    setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/automations`, { headers: authHeaders() });
-      if (!res.ok) throw new Error(String(res.status));
+      const res = await apiFetch('/api/v1/automations');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setRules(Array.isArray(data) ? data : []);
-    } catch { /* ignore */ } finally { setLoading(false); }
-  };
-
-  useEffect(() => { load(); }, []);
-
-  const resetForm = () => {
-    setName(''); setTrigger('ticket.created'); setCondEnabled(false);
-    setCondField(''); setCondOp('equals'); setCondValue('');
-    setActions([{ type: 'send_email', config: {} }]);
-    setEditing(null); setShowForm(false);
-  };
-
-  const openEdit = (rule: AutomationRule) => {
-    setEditing(rule);
-    setName(rule.name);
-    setTrigger(rule.trigger);
-    if (rule.conditions && rule.conditions.field) {
-      setCondEnabled(true);
-      setCondField(rule.conditions.field);
-      setCondOp(rule.conditions.operator ?? 'equals');
-      setCondValue(rule.conditions.value ?? '');
-    } else {
-      setCondEnabled(false);
+    } catch (e) {
+      toast.error('Failed to load automations');
+    } finally {
+      setLoading(false);
     }
-    setActions(Array.isArray(rule.actions) ? rule.actions : []);
-    setShowForm(true);
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    const body: any = {
-      name,
-      trigger,
-      conditions: condEnabled ? { field: condField, operator: condOp, value: condValue } : null,
-      actions,
-    };
-    try {
-      if (editing) {
-        await fetch(`${API_BASE}/api/v1/automations/${editing.id}`, {
-          method: 'PATCH', headers: authHeaders(), body: JSON.stringify(body),
-        });
-      } else {
-        await fetch(`${API_BASE}/api/v1/automations`, {
-          method: 'POST', headers: authHeaders(), body: JSON.stringify(body),
-        });
-      }
-      resetForm();
-      load();
-    } catch { /* ignore */ } finally { setSaving(false); }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this automation rule?')) return;
-    await fetch(`${API_BASE}/api/v1/automations/${id}`, { method: 'DELETE', headers: authHeaders() });
+  useEffect(() => {
     load();
-  };
+  }, []);
 
   const toggleActive = async (rule: AutomationRule) => {
-    await fetch(`${API_BASE}/api/v1/automations/${rule.id}`, {
-      method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ active: !rule.active }),
-    });
-    load();
+    // Optimistic update.
+    setRules((prev) => prev.map((r) => (r.id === rule.id ? { ...r, active: !r.active } : r)));
+    try {
+      const res = await apiFetch(`/api/v1/automations/${rule.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !rule.active }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast.success(rule.active ? 'Automation disabled' : 'Automation enabled');
+    } catch (e) {
+      // Revert.
+      setRules((prev) => prev.map((r) => (r.id === rule.id ? { ...r, active: rule.active } : r)));
+      toast.error('Failed to update automation');
+    }
   };
 
-  const updateAction = (idx: number, key: string, val: any) => {
-    setActions((prev) => prev.map((a, i) => i === idx ? { ...a, [key]: val } : a));
+  const handleDelete = async (rule: AutomationRule) => {
+    if (!confirm(`Delete automation "${rule.name}"? This cannot be undone.`)) return;
+    try {
+      const res = await apiFetch(`/api/v1/automations/${rule.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setRules((prev) => prev.filter((r) => r.id !== rule.id));
+      toast.success('Automation deleted');
+    } catch (e) {
+      toast.error('Failed to delete automation');
+    }
   };
-
-  const updateActionConfig = (idx: number, key: string, val: any) => {
-    setActions((prev) => prev.map((a, i) => i === idx ? { ...a, config: { ...a.config, [key]: val } } : a));
-  };
-
-  if (loading) return <div className="p-6 text-gray-500 dark:text-gray-400 text-sm">Loading...</div>;
 
   return (
-    <SettingsPageLayout title="Automation Rules" description="Automate actions when events occur in your CRM">
-      {showForm && (
-        <SettingsSection title={editing ? 'Edit Rule' : 'New Automation Rule'}>
-          <div className="space-y-4">
-            {/* Name */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Rule Name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" placeholder="e.g. Auto-assign urgent tickets" />
-            </div>
-            {/* Trigger */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Trigger Event</label>
-              <select value={trigger} onChange={(e) => setTrigger(e.target.value)} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
-                {TRIGGER_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-            {/* Conditions */}
-            <div>
-              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                <input type="checkbox" checked={condEnabled} onChange={(e) => setCondEnabled(e.target.checked)} className="rounded border-gray-300" />
-                Add condition (optional)
-              </label>
-              {condEnabled && (
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <input value={condField} onChange={(e) => setCondField(e.target.value)} placeholder="Field (e.g. status)" className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                  <select value={condOp} onChange={(e) => setCondOp(e.target.value)} className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
-                    {OPERATORS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <input value={condValue} onChange={(e) => setCondValue(e.target.value)} placeholder="Value" className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                </div>
-              )}
-            </div>
-            {/* Actions */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Actions</label>
-              {actions.map((action, idx) => (
-                <div key={idx} className="mb-3 p-3 border border-gray-100 dark:border-gray-800 rounded-lg bg-gray-50 dark:bg-gray-900">
-                  <div className="flex items-center gap-2 mb-2">
-                    <select value={action.type} onChange={(e) => updateAction(idx, 'type', e.target.value)} className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm flex-1">
-                      {ACTION_TYPES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-                    </select>
-                    {actions.length > 1 && (
-                      <button onClick={() => setActions((prev) => prev.filter((_, i) => i !== idx))} className="text-xs text-red-600 hover:underline">Remove</button>
-                    )}
-                  </div>
-                  {/* Config fields based on type */}
-                  {action.type === 'send_email' && (
-                    <div className="space-y-2">
-                      <input value={action.config.to ?? ''} onChange={(e) => updateActionConfig(idx, 'to', e.target.value)} placeholder="To email" className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                      <input value={action.config.subject ?? ''} onChange={(e) => updateActionConfig(idx, 'subject', e.target.value)} placeholder="Subject" className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                      <textarea value={action.config.body ?? ''} onChange={(e) => updateActionConfig(idx, 'body', e.target.value)} placeholder="Email body (HTML)" rows={2} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                    </div>
-                  )}
-                  {action.type === 'update_field' && (
-                    <div className="grid grid-cols-3 gap-2">
-                      <input value={action.config.entityType ?? ''} onChange={(e) => updateActionConfig(idx, 'entityType', e.target.value)} placeholder="Entity (ticket, lead...)" className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                      <input value={action.config.field ?? ''} onChange={(e) => updateActionConfig(idx, 'field', e.target.value)} placeholder="Field name" className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                      <input value={action.config.value ?? ''} onChange={(e) => updateActionConfig(idx, 'value', e.target.value)} placeholder="New value" className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                    </div>
-                  )}
-                  {action.type === 'create_task' && (
-                    <div className="space-y-2">
-                      <input value={action.config.name ?? ''} onChange={(e) => updateActionConfig(idx, 'name', e.target.value)} placeholder="Task name" className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                      <input value={action.config.assignedTo ?? ''} onChange={(e) => updateActionConfig(idx, 'assignedTo', e.target.value)} placeholder="Assign to (user ID)" className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                      <input type="date" value={action.config.dueDate ?? ''} onChange={(e) => updateActionConfig(idx, 'dueDate', e.target.value)} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                    </div>
-                  )}
-                  {action.type === 'notify' && (
-                    <div className="space-y-2">
-                      <input value={action.config.userId ?? ''} onChange={(e) => updateActionConfig(idx, 'userId', e.target.value)} placeholder="User ID to notify" className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                      <input value={action.config.message ?? ''} onChange={(e) => updateActionConfig(idx, 'message', e.target.value)} placeholder="Notification message" className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                    </div>
-                  )}
-                  {action.type === 'webhook' && (
-                    <div className="space-y-2">
-                      <input value={action.config.url ?? ''} onChange={(e) => updateActionConfig(idx, 'url', e.target.value)} placeholder="Webhook URL" className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
-                      <select value={action.config.method ?? 'POST'} onChange={(e) => updateActionConfig(idx, 'method', e.target.value)} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
-                        <option value="POST">POST</option>
-                        <option value="PUT">PUT</option>
-                        <option value="PATCH">PATCH</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-              ))}
-              <button onClick={() => setActions((prev) => [...prev, { type: 'send_email', config: {} }])} className="text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800">+ Add Action</button>
-            </div>
-            {/* Buttons */}
-            <div className="flex items-center gap-3 pt-2">
-              <button onClick={handleSave} disabled={saving || !name.trim()} className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50">
-                {saving ? 'Saving...' : editing ? 'Update Rule' : 'Create Rule'}
-              </button>
-              <button onClick={resetForm} className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800">Cancel</button>
-            </div>
-          </div>
-        </SettingsSection>
-      )}
-
-      <SettingsSection title="Rules">
-        {!showForm && (
-          <div className="flex items-center justify-end mb-4">
-            <button
-              onClick={() => { resetForm(); setShowForm(true); }}
-              className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90"
-            >
-              + New Rule
-            </button>
+    <ListPageLayout
+      title="Automations"
+      subtitle="Run actions automatically when events happen across your CRM"
+      primaryAction={{
+        label: 'New automation',
+        href: '/settings/automations/new',
+        icon: <Plus className="w-4 h-4" />,
+      }}
+    >
+      <Card padding="none">
+        {loading ? (
+          <div className="p-12 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</div>
+        ) : rules.length === 0 ? (
+          <EmptyState
+            icon={<Workflow className="w-10 h-10" />}
+            title="No automations yet"
+            description="Create your first automation to send emails, update records, or fire webhooks when events occur."
+            action={{ label: 'Create automation', href: '/settings/automations/new' }}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Name</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Trigger</th>
+                  <th className="text-center px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Conditions</th>
+                  <th className="text-center px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Actions</th>
+                  <th className="text-center px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Active</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Last run</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">&nbsp;</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map((rule) => {
+                  const condCount = countConditions(rule.conditions);
+                  const actionCount = Array.isArray(rule.actions) ? rule.actions.length : 0;
+                  return (
+                    <tr key={rule.id} className="border-b border-gray-50 dark:border-gray-800/60 hover:bg-gray-50/50 dark:hover:bg-gray-800/40">
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                        <Link href={`/settings/automations/${rule.id}`} className="hover:text-primary">
+                          {rule.name}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                          {triggerLabel(rule.trigger)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{condCount}</td>
+                      <td className="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{actionCount}</td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleActive(rule)}
+                          aria-label={rule.active ? 'Disable automation' : 'Enable automation'}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                            rule.active ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                              rule.active ? 'translate-x-4' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                        {rule.lastRunAt ? new Date(rule.lastRunAt).toLocaleString() : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right space-x-3">
+                        <Link
+                          href={`/settings/automations/${rule.id}`}
+                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Edit
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(rule)}
+                          className="inline-flex items-center gap-1 text-xs text-red-600 hover:underline"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
-        <div className="overflow-x-auto border border-gray-100 dark:border-gray-800 rounded-lg">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
-                <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Name</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Trigger</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Actions</th>
-                <th className="text-center px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Active</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400 dark:text-gray-500">No automation rules yet</td></tr>
-              )}
-              {rules.map((rule) => (
-                <tr key={rule.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{rule.name}</td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                      {TRIGGER_OPTIONS.find((t) => t.value === rule.trigger)?.label ?? rule.trigger}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
-                    {Array.isArray(rule.actions) ? rule.actions.length : 0} action(s)
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button onClick={() => toggleActive(rule)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${rule.active ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${rule.active ? 'translate-x-4' : 'translate-x-1'}`} />
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => openEdit(rule)} className="text-xs text-primary hover:underline mr-3">Edit</button>
-                    <button onClick={() => handleDelete(rule.id)} className="text-xs text-red-600 hover:underline">Delete</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SettingsSection>
-    </SettingsPageLayout>
+      </Card>
+    </ListPageLayout>
   );
 }

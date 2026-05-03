@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
+import { SentEmailsPanel } from '@/components/sent-emails-panel';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -128,6 +129,8 @@ export default function InvoiceDetailPage() {
   const [showActivity, setShowActivity] = useState(false);
   const [activities, setActivities] = useState<any[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
+  // Bumped after a "send" action so the SentEmailsPanel re-fetches.
+  const [sentEmailsKey, setSentEmailsKey] = useState(0);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -208,7 +211,19 @@ export default function InvoiceDetailPage() {
 
   const actions: { label: string; onClick: () => void; disabled?: boolean; variant?: 'primary' | 'secondary' }[] = [];
   if (showSend) {
-    actions.push({ label: 'Send Invoice', onClick: () => runAction('send'), disabled: actionLoading, variant: 'primary' });
+    actions.push({
+      label: 'Send Invoice',
+      onClick: () =>
+        runAction('send', async () => {
+          // The 'send' endpoint emits invoice.sent → emails are queued
+          // server-side. Refresh the invoice (status → sent) AND the
+          // sent-emails panel so the new row appears without a manual reload.
+          await fetchInvoice();
+          setSentEmailsKey((n) => n + 1);
+        }),
+      disabled: actionLoading,
+      variant: 'primary',
+    });
   }
   if (showMarkPaid) {
     actions.push({ label: 'Mark as Paid', onClick: () => runAction('mark-paid'), disabled: actionLoading, variant: 'primary' });
@@ -432,6 +447,13 @@ export default function InvoiceDetailPage() {
           </div>
         )}
       </div>
+
+      {/* ── Sent emails ─────────────────────────────────────────────────── */}
+      <SentEmailsPanel
+        routedTo="invoice"
+        routedToId={invoice.id}
+        refreshKey={sentEmailsKey}
+      />
 
       {/* ── Notes ────────────────────────────────────────────────────────── */}
       {invoice.notes && (
