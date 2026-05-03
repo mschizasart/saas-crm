@@ -59,6 +59,22 @@ interface Lead {
   createdAt: string;
   notes?: LeadNote[];
   activities?: LeadActivity[];
+  // AI-powered lead score (migration 013); null = not yet scored.
+  score?: number | null;
+  scoreReason?: string | null;
+  scoreUpdatedAt?: string | null;
+}
+
+interface ScoreInfo {
+  score: number | null;
+  reason: string | null;
+  updatedAt: string | null;
+}
+
+function scoreBandClass(score: number): string {
+  if (score >= 61) return 'bg-green-50 text-green-700 border-green-200';
+  if (score >= 31) return 'bg-amber-50 text-amber-700 border-amber-200';
+  return 'bg-red-50 text-red-600 border-red-200';
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -106,6 +122,10 @@ export default function LeadDetailPage() {
   const [aiDrafting, setAiDrafting] = useState(false);
   const [aiTone, setAiTone] = useState<'professional' | 'friendly' | 'formal'>('professional');
 
+  // Lead scoring panel (migration 013)
+  const [score, setScore] = useState<ScoreInfo>({ score: null, reason: null, updatedAt: null });
+  const [recomputing, setRecomputing] = useState(false);
+
   const fetchLead = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -118,12 +138,38 @@ export default function LeadDetailPage() {
       const data: Lead = json.data ?? json;
       setLead(data);
       setDraft(data);
+      setScore({
+        score: data.score ?? null,
+        reason: data.scoreReason ?? null,
+        updatedAt: data.scoreUpdatedAt ?? null,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load lead');
     } finally {
       setLoading(false);
     }
   }, [id]);
+
+  async function recomputeScore() {
+    setRecomputing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/leads/${id}/score`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error(`Recompute failed (${res.status})`);
+      const data = await res.json();
+      setScore({
+        score: typeof data.score === 'number' ? data.score : null,
+        reason: data.reason ?? null,
+        updatedAt: data.updatedAt ?? new Date().toISOString(),
+      });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Recompute failed');
+    } finally {
+      setRecomputing(false);
+    }
+  }
 
   useEffect(() => {
     if (id) fetchLead();
@@ -347,6 +393,47 @@ export default function LeadDetailPage() {
       </div>
 
       {tab === 'overview' && (
+        <>
+          {/* Lead score panel (migration 013). Subtle, sits above details.
+              Shows the cached score + reason; "Recompute" forces a fresh
+              score by calling POST /api/v1/leads/:id/score (synchronous,
+              ~1-2s). */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-4 mb-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  title={score.score != null ? `Score ${score.score}/100` : 'Not yet scored'}
+                  className={`flex items-center justify-center w-12 h-12 rounded-lg border text-base font-bold ${
+                    score.score != null
+                      ? scoreBandClass(score.score)
+                      : 'bg-gray-50 text-gray-400 border-gray-200'
+                  }`}
+                >
+                  {score.score ?? '—'}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Lead score</div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
+                    {score.reason ?? 'No score yet — click Recompute to calculate.'}
+                  </p>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                    {score.updatedAt
+                      ? `Last updated ${new Date(score.updatedAt).toLocaleString()}`
+                      : 'Never scored'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={recomputeScore}
+                disabled={recomputing}
+                className="shrink-0 px-3 py-1.5 text-xs font-medium border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                {recomputing ? 'Recomputing…' : 'Recompute'}
+              </button>
+            </div>
+          </div>
+
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <Detail label="Email">
@@ -409,6 +496,7 @@ export default function LeadDetailPage() {
             </Detail>
           </dl>
         </div>
+        </>
       )}
 
       {tab === 'notes' && (

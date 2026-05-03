@@ -71,6 +71,8 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "3001:3001"
     environment:
@@ -106,6 +108,8 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
         API_URL: ${API_URL:-http://api:3001}
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "3000:3000"
     environment:

@@ -7,6 +7,7 @@ import { AnnouncementsBanner } from '@/components/announcements-banner';
 import { ToastProvider } from '@/components/toast-provider';
 import { CommandPalette } from '@/components/ui/command-palette';
 import { KeyboardShortcuts } from '@/components/keyboard-shortcuts';
+import { InstallPwaBanner } from '@/components/install-pwa-banner';
 import { apiFetch, getAccessToken, isTokenExpired } from '@/lib/api';
 
 export default function AdminLayout({
@@ -107,6 +108,7 @@ export default function AdminLayout({
       </div>
       <CommandPalette />
       <KeyboardShortcuts />
+      <InstallPwaBanner />
     </ToastProvider>
   );
 }

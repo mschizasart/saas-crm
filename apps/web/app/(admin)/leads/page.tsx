@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorBanner } from '@/components/ui/error-banner';
 import { ImportCsvModal } from '@/components/ui/import-csv-modal';
 import { exportCsv } from '@/lib/export-csv';
+import { apiFetch } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +38,39 @@ interface Lead {
    * Accept either and normalize via `leadStatusKey()` before use.
    */
   status: LeadStatus | { id: string; name: string; color?: string } | null;
+  /** AI-powered lead score (migration 013); null = not yet scored. */
+  score?: number | null;
+}
+
+/**
+ * Color band for the lead score badge:
+ *   red    = 0-30   (cold)
+ *   amber  = 31-60  (warm)
+ *   green  = 61-100 (hot)
+ * Subtle pastel backgrounds so the badge doesn't dominate the card.
+ */
+function scoreBandClass(score: number): string {
+  if (score >= 61) return 'bg-green-50 text-green-700 border-green-200';
+  if (score >= 31) return 'bg-amber-50 text-amber-700 border-amber-200';
+  return 'bg-red-50 text-red-600 border-red-200';
+}
+
+function ScoreBadge({ score }: { score: number | null | undefined }) {
+  if (score == null) {
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-400 dark:text-gray-500" title="Not yet scored">
+        —
+      </span>
+    );
+  }
+  return (
+    <span
+      title={`Lead score ${score}/100`}
+      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${scoreBandClass(score)}`}
+    >
+      {score}
+    </span>
+  );
 }
 
 function leadStatusKey(lead: Lead): LeadStatus {
@@ -150,15 +184,18 @@ function LeadCard({ lead, onDragStart }: LeadCardProps) {
         <p className="text-xs text-gray-400 dark:text-gray-500 mb-2 truncate">{lead.company}</p>
       )}
 
-      {/* Footer: budget + avatar */}
+      {/* Footer: budget + score + avatar */}
       <div className="flex items-center justify-between mt-2">
-        {lead.budget != null ? (
-          <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-            {formatBudget(lead.budget, lead.currency)}
-          </span>
-        ) : (
-          <span />
-        )}
+        <div className="flex items-center gap-1.5">
+          {lead.budget != null ? (
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+              {formatBudget(lead.budget, lead.currency)}
+            </span>
+          ) : (
+            <span />
+          )}
+          <ScoreBadge score={lead.score} />
+        </div>
 
         {lead.assignedTo && (
           <div
@@ -281,6 +318,9 @@ export default function LeadsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  // List-view sort: 'default' = original kanban order (per-column),
+  // 'score' = hottest first (NULLS LAST). Kanban view ignores this.
+  const [listSort, setListSort] = useState<'default' | 'score'>('default');
 
   // Store dragged lead info in a ref to avoid stale closures
   const dragRef = useRef<{ leadId: string; fromStatus: LeadStatus } | null>(null);
@@ -294,10 +334,7 @@ export default function LeadsPage() {
       setLoading(true);
       setError(null);
       try {
-        const token = getToken();
-        const res = await fetch(`${API_BASE}/api/v1/leads/kanban`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await apiFetch(`/api/v1/leads/kanban`);
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
         const json: KanbanResponse = await res.json();
         // Ensure all status keys exist even if the API omits empty ones
@@ -357,13 +394,9 @@ export default function LeadsPage() {
 
     // Persist to API
     try {
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/api/v1/leads/${leadId}/status`, {
+      const res = await apiFetch(`/api/v1/leads/${leadId}/status`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: toStatus }),
       });
 
@@ -394,7 +427,17 @@ export default function LeadsPage() {
   }
 
   const totalLeads = Object.values(board).reduce((acc, col) => acc + col.length, 0);
-  const allLeads = Object.values(board).flat();
+  const allLeadsRaw = Object.values(board).flat();
+  // "Hottest first" sorts by score desc, NULLS last (matches the API's
+  // `?sortBy=score` server-side index in 013-lead-scoring.sql).
+  const allLeads =
+    listSort === 'score'
+      ? [...allLeadsRaw].sort((a, b) => {
+          const av = typeof a.score === 'number' ? a.score : -1;
+          const bv = typeof b.score === 'number' ? b.score : -1;
+          return bv - av;
+        })
+      : allLeadsRaw;
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -416,12 +459,8 @@ export default function LeadsPage() {
   const bulkDeleteLeads = async () => {
     if (!confirm(`Delete ${selected.size} lead(s)?`)) return;
     setBulkLoading(true);
-    const token = getToken();
     for (const id of selected) {
-      await fetch(`${API_BASE}/api/v1/leads/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
+      await apiFetch(`/api/v1/leads/${id}`, { method: 'DELETE' }).catch(() => {});
     }
     setSelected(new Set());
     setBulkLoading(false);
@@ -431,11 +470,10 @@ export default function LeadsPage() {
 
   const bulkChangeStatus = async (newStatus: LeadStatus) => {
     setBulkLoading(true);
-    const token = getToken();
     for (const id of selected) {
-      await fetch(`${API_BASE}/api/v1/leads/${id}/status`, {
+      await apiFetch(`/api/v1/leads/${id}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       }).catch(() => {});
     }
@@ -445,27 +483,40 @@ export default function LeadsPage() {
   };
 
   const filtersNode = (
-    <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden" role="tablist" aria-label="View switcher">
-      <button
-        onClick={() => setView('kanban')}
-        role="tab"
-        aria-selected={view === 'kanban'}
-        className={`px-3 py-2 text-xs font-medium transition-colors ${
-          view === 'kanban' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-        }`}
-      >
-        Kanban
-      </button>
-      <button
-        onClick={() => setView('list')}
-        role="tab"
-        aria-selected={view === 'list'}
-        className={`px-3 py-2 text-xs font-medium transition-colors ${
-          view === 'list' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-        }`}
-      >
-        List
-      </button>
+    <div className="flex items-center gap-2">
+      <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden" role="tablist" aria-label="View switcher">
+        <button
+          onClick={() => setView('kanban')}
+          role="tab"
+          aria-selected={view === 'kanban'}
+          className={`px-3 py-2 text-xs font-medium transition-colors ${
+            view === 'kanban' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          Kanban
+        </button>
+        <button
+          onClick={() => setView('list')}
+          role="tab"
+          aria-selected={view === 'list'}
+          className={`px-3 py-2 text-xs font-medium transition-colors ${
+            view === 'list' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          List
+        </button>
+      </div>
+      {view === 'list' && (
+        <select
+          value={listSort}
+          onChange={(e) => setListSort(e.target.value as 'default' | 'score')}
+          aria-label="Sort leads"
+          className="px-3 py-2 text-xs font-medium border border-gray-200 dark:border-gray-700 rounded-lg bg-white text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          <option value="default">Sort: Newest</option>
+          <option value="score">Sort: Hottest first</option>
+        </select>
+      )}
     </div>
   );
 
@@ -553,12 +604,15 @@ export default function LeadsPage() {
                 >
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <p className="font-medium text-gray-900 dark:text-gray-100 truncate flex-1">{lead.name}</p>
-                    <span
-                      className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${style.badge}`}
-                    >
-                      <span className={`w-1.5 h-1.5 rounded-full mr-1 ${style.dot}`} />
-                      {COLUMNS.find((c) => c.status === statusKey)?.label}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <ScoreBadge score={lead.score} />
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${style.badge}`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full mr-1 ${style.dot}`} />
+                        {COLUMNS.find((c) => c.status === statusKey)?.label}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                     <span className="truncate">{lead.company ?? 'No company'}</span>
@@ -596,6 +650,7 @@ export default function LeadsPage() {
                   <th className="px-4 py-3">Name</th>
                   <th className="px-4 py-3 hidden lg:table-cell">Company</th>
                   <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Score</th>
                   <th className="px-4 py-3">Budget</th>
                   <th className="px-4 py-3 hidden lg:table-cell">Assigned To</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -604,13 +659,13 @@ export default function LeadsPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400 dark:text-gray-500">
+                    <td colSpan={8} className="px-4 py-10 text-center text-gray-400 dark:text-gray-500">
                       Loading...
                     </td>
                   </tr>
                 ) : allLeads.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8">
+                    <td colSpan={8} className="px-4 py-8">
                       <EmptyState
                         icon={<Users className="w-10 h-10" />}
                         title="No leads found"
@@ -649,6 +704,9 @@ export default function LeadsPage() {
                             <span className={`w-1.5 h-1.5 rounded-full mr-1 ${style.dot}`} />
                             {COLUMNS.find((c) => c.status === statusKey)?.label}
                           </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <ScoreBadge score={lead.score} />
                         </td>
                         <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
                           {lead.budget != null

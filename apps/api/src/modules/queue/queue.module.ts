@@ -36,7 +36,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
       { name: 'emails' },
       { name: 'recurring-invoices' },
       { name: 'imap-poll' },
+      { name: 'inbox-imap' },
       { name: 'general' },
+      // Lead scoring (migration 013) — heuristic + AI score per lead.
+      // Concurrency is set on the WorkerHost (LeadScoringProcessor),
+      // not here — BullModule.registerQueue is for queue config only.
+      { name: 'lead-scoring' },
     ),
   ],
   exports: [BullModule],

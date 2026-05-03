@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { NotificationsGateway } from './notifications.gateway';
+import { PushModule } from '../push/push.module';
 
 @Module({
   imports: [
@@ -15,6 +16,8 @@ import { NotificationsGateway } from './notifications.gateway';
         secret: config.get<string>('JWT_SECRET'),
       }),
     }),
+    // Used by NotificationsService to fan out to push subscriptions.
+    PushModule,
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService, NotificationsGateway],

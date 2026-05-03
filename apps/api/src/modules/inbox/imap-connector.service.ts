@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../database/prisma.service';
 import { decrypt, isEncrypted } from '../../common/crypto/encrypt';
 import { EmailOAuthService } from '../email-settings/oauth/email-oauth.service';
@@ -43,6 +44,7 @@ export class ImapConnectorService {
     private readonly config: ConfigService,
     private readonly emailOAuth: EmailOAuthService,
     private readonly router: InboxRouterService,
+    private readonly events: EventEmitter2,
   ) {}
 
   private encKey(): string | undefined {
@@ -252,6 +254,22 @@ export class ImapConnectorService {
             if (result.count > 0) {
               inserted++;
               routed[routing.routedTo] = (routed[routing.routedTo] ?? 0) + 1;
+
+              // Notify lead-scoring (and any future listener) that a fresh
+              // inbound mail is now attached to a lead. We only emit on
+              // newly-inserted rows so reprocessing duplicate UIDs doesn't
+              // re-trigger scoring.
+              if (
+                routing.routedTo === 'lead' &&
+                typeof routing.routedToId === 'string' &&
+                routing.routedToId
+              ) {
+                this.events.emit('inbox.routed-to-lead', {
+                  orgId,
+                  leadId: routing.routedToId,
+                  messageId,
+                });
+              }
             }
 
             if (typeof msg.uid === 'number' && msg.uid > highestUid) {

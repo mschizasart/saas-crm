@@ -138,9 +138,11 @@ export class LeadsService {
       assignedToId?: string;
       page?: number;
       limit?: number;
+      /** 'createdAt' (default) | 'score' — score sorts NULLS LAST, desc. */
+      sortBy?: string;
     },
   ) {
-    const { search, status, assignedToId, page = 1, limit = 20 } = query;
+    const { search, status, assignedToId, page = 1, limit = 20, sortBy } = query;
     const skip = (page - 1) * limit;
 
     return this.prisma.withOrganization(orgId, async (tx) => {
@@ -159,12 +161,20 @@ export class LeadsService {
       }
       if (assignedToId) where.assignedTo = assignedToId;
 
+      // "Hottest first" sort uses Prisma's nullable-sort syntax to push
+      // un-scored leads to the bottom; createdAt is the secondary key
+      // so leads with identical (or null) scores order deterministically.
+      const orderBy: any =
+        sortBy === 'score'
+          ? [{ score: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }]
+          : { createdAt: 'desc' };
+
       const [data, total] = await Promise.all([
         tx.lead.findMany({
           where,
           skip,
           take: limit,
-          orderBy: { createdAt: 'desc' },
+          orderBy,
           include: {
             status: { select: { id: true, name: true, color: true } },
             source: { select: { id: true, name: true } },
@@ -331,6 +341,12 @@ export class LeadsService {
       }
     }
 
+    // Trigger AI re-scoring (queued, non-blocking). Listener is in
+    // lead-scoring.listener.ts. We deliberately do NOT emit on every
+    // raw `prisma.lead.update` — only on explicit user-driven updates
+    // — so that the scoring service's own write doesn't loop back.
+    this.events.emit('lead.updated', { lead: updated, leadId: id, orgId });
+
     return updated;
   }
 
@@ -363,6 +379,9 @@ export class LeadsService {
       previousStatus: (existing as any).status?.name ?? null,
       newStatus: status,
     });
+
+    // A status flip is a strong signal; re-score this lead too.
+    this.events.emit('lead.updated', { lead: updated, leadId: id, orgId });
 
     return updated;
   }
@@ -763,9 +782,10 @@ export class LeadsService {
       return { imported: 0, skipped: [], errors: [] };
     }
 
-    // Pre-load statuses (with default), sources, and assignable staff users
-    // so per-row resolution is a cheap map lookup.
-    const [statuses, sources, staff] = await Promise.all([
+    // Pre-load statuses (with default), sources, assignable staff users,
+    // and existing lead emails for dedup so per-row resolution is a cheap
+    // map lookup.
+    const [statuses, sources, staff, existingEmailRows] = await Promise.all([
       this.prisma.leadStatus.findMany({
         where: { organizationId: orgId },
         orderBy: [{ isDefault: 'desc' }, { position: 'asc' }],
@@ -775,7 +795,16 @@ export class LeadsService {
         where: { organizationId: orgId, type: 'staff', active: true },
         select: { id: true, email: true },
       }),
+      this.prisma.lead.findMany({
+        where: { organizationId: orgId, email: { not: null } },
+        select: { email: true },
+      }),
     ]);
+    const seenEmails = new Set<string>(
+      existingEmailRows
+        .map((r) => r.email?.toLowerCase().trim())
+        .filter((e): e is string => !!e),
+    );
 
     const defaultStatus = statuses[0] ?? null;
     const statusIndex = new Map<string, string>(
@@ -814,6 +843,17 @@ export class LeadsService {
         }
 
         const email = pick(row, 'email');
+        if (email) {
+          const normalized = email.toLowerCase();
+          if (seenEmails.has(normalized)) {
+            skipped.push({
+              row: rowNum,
+              reason: `duplicate: lead with email "${email}" already exists`,
+            });
+            continue;
+          }
+          seenEmails.add(normalized);
+        }
         const phone = pick(row, 'phone', 'telephone');
         const company = pick(row, 'company', 'company_name');
         const sourceRaw = pick(row, 'source');
@@ -919,6 +959,7 @@ export class LeadsService {
           company: true,
           value: true,
           assignedTo: true,
+          score: true, // surface AI-powered lead score on kanban cards
           status: { select: { id: true, name: true, color: true } },
         },
         orderBy: { createdAt: 'asc' },

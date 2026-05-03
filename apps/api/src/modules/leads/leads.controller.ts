@@ -18,19 +18,28 @@ import {
 
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { LeadsService, CreateLeadDto } from './leads.service';
+import { LeadScoringService } from './lead-scoring.service';
+import { LeadScoringListener } from './lead-scoring.listener';
+import { PrismaService } from '../../database/prisma.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions, Public } from '../../common/decorators/permissions.decorator';
 import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
+import { NotFoundException } from '@nestjs/common';
 
 @ApiTags('Leads')
 @Controller({ version: '1', path: 'leads' })
 @UseGuards(JwtAuthGuard, RbacGuard)
 @ApiBearerAuth()
 export class LeadsController {
-  constructor(private service: LeadsService) {}
+  constructor(
+    private service: LeadsService,
+    private scoring: LeadScoringService,
+    private scoringListener: LeadScoringListener,
+    private prisma: PrismaService,
+  ) {}
 
   // ─── Web Form (Public) ───────────────────────────────────────
 
@@ -78,7 +87,7 @@ export class LeadsController {
 
   @Get()
   @Permissions('leads.view')
-  @ApiOperation({ summary: 'List all leads (paginated, searchable)' })
+  @ApiOperation({ summary: 'List all leads (paginated, searchable, sortable)' })
   findAll(
     @CurrentOrg() org: any,
     @Query('search') search?: string,
@@ -86,6 +95,7 @@ export class LeadsController {
     @Query('assignedToId') assignedToId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
   ) {
     return this.service.findAll(org.id, {
       search,
@@ -93,7 +103,21 @@ export class LeadsController {
       assignedToId,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
+      sortBy,
     });
+  }
+
+  // ─── Scoring (bulk first so it doesn't collide with /:id) ────
+  /**
+   * Enqueue scoring for every lead in the org. Scoring happens in the
+   * background via the 'lead-scoring' BullMQ queue (concurrency 4 in
+   * the WorkerHost). Returns immediately with the count enqueued.
+   */
+  @Post('score-all')
+  @Permissions('leads.edit')
+  @ApiOperation({ summary: 'Force-recompute scores for every lead in the org (queued)' })
+  scoreAll(@CurrentOrg() org: any) {
+    return this.scoringListener.enqueueAllForOrg(org.id);
   }
 
   @Get(':id')
@@ -101,6 +125,45 @@ export class LeadsController {
   @ApiOperation({ summary: 'Get a single lead with notes and custom fields' })
   findOne(@CurrentOrg() org: any, @Param('id') id: string) {
     return this.service.findOne(org.id, id);
+  }
+
+  // ─── Scoring ──────────────────────────────────────────────────
+  /**
+   * Read the cached score (no recompute). The cached values live on the
+   * Lead row itself (score / scoreReason / scoreUpdatedAt) and are kept
+   * fresh by the BullMQ 'lead-scoring' worker.
+   */
+  @Get(':id/score')
+  @Permissions('leads.view')
+  @ApiOperation({ summary: 'Get the cached lead score (0-100) and reason' })
+  async getScore(@CurrentOrg() org: any, @Param('id') id: string) {
+    const lead = await this.prisma.withOrganization(org.id, async (tx: any) =>
+      tx.lead.findFirst({
+        where: { id, organizationId: org.id },
+        select: { score: true, scoreReason: true, scoreUpdatedAt: true },
+      }),
+    );
+    if (!lead) throw new NotFoundException('Lead not found');
+    return {
+      score: lead.score,
+      reason: lead.scoreReason,
+      updatedAt: lead.scoreUpdatedAt,
+    };
+  }
+
+  /**
+   * Force a synchronous recompute of the lead's score, bypassing the
+   * 6-hour freshness cache. This is the ONLY path that runs scoring on
+   * the HTTP request thread — every other entry point (events, bulk,
+   * inbox routing) goes through the BullMQ queue. The user explicitly
+   * clicked "Recompute" and is waiting on the result, so we return the
+   * fresh score in-line (~1-2s for the Anthropic round-trip).
+   */
+  @Post(':id/score')
+  @Permissions('leads.edit')
+  @ApiOperation({ summary: 'Force-recompute the lead score and return it' })
+  async recomputeScore(@CurrentOrg() org: any, @Param('id') id: string) {
+    return this.scoring.scoreLead(org.id, id, { force: true });
   }
 
   @Post()

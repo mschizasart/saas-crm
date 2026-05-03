@@ -312,6 +312,7 @@ function useNavItems(): NavItem[] {
       children: [
         { label: t('nav.general'), href: '/settings?tab=company', icon: Settings },
         { label: 'Security', href: '/settings/security', icon: KeyRound },
+        { label: 'Notifications', href: '/settings/notifications', icon: Bell },
         { label: t('nav.email'), href: '/settings/email', icon: Bell },
         { label: 'E-Invoice', href: '/settings/einvoice', icon: FileCode },
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },

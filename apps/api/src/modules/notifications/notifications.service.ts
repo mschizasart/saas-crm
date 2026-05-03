@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { OnEvent, EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../database/prisma.service';
+import { PushService } from '../push/push.service';
 
 export interface CreateNotificationDto {
   type?: string;
@@ -11,9 +12,12 @@ export interface CreateNotificationDto {
 
 @Injectable()
 export class NotificationsService {
+  private readonly log = new Logger(NotificationsService.name);
+
   constructor(
     private prisma: PrismaService,
     private events: EventEmitter2,
+    private push: PushService,
   ) {}
 
   async create(userId: string, orgId: string, dto: CreateNotificationDto) {
@@ -29,6 +33,22 @@ export class NotificationsService {
       },
     });
     this.events.emit('notification.created', { notification });
+
+    // Fan out as a web push too. Best-effort — push failures must NOT
+    // break the in-app notification path. We swallow errors and log.
+    // The url is the notification's deep-link; tag groups by type so
+    // repeated events of the same type collapse in the tray.
+    this.push
+      .sendToUser(userId, {
+        title: dto.title,
+        body: dto.body,
+        url: dto.link ?? '/notifications',
+        tag: dto.type ?? 'notification',
+      })
+      .catch((err) => {
+        this.log.warn(`Push fan-out failed for user=${userId}: ${err?.message ?? err}`);
+      });
+
     return notification;
   }
 

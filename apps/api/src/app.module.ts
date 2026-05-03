@@ -68,6 +68,7 @@ import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { ProductsModule } from './modules/products/products.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { SuggestionsModule } from './modules/suggestions/suggestions.module';
+import { PushModule } from './modules/push/push.module';
 
 @Module({
   imports: [
@@ -149,6 +150,7 @@ import { SuggestionsModule } from './modules/suggestions/suggestions.module';
     ProductsModule,
     ChatModule,
     SuggestionsModule,
+    PushModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },

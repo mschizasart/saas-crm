@@ -129,6 +129,88 @@ function formatPageRange(page: number, limit: number, total: number) {
 
 const PAGE_SIZE = 25;
 
+/**
+ * Tiny hand-rolled pull-to-refresh.
+ *
+ * Activates only when:
+ *   • the touch starts while scrollTop is exactly 0 (no overscroll fight),
+ *   • the gesture is a downward drag,
+ *   • the drag exceeds PULL_THRESHOLD pixels.
+ *
+ * Avoids any 3rd-party lib. Works on iOS Safari + Chrome Android. Falls
+ * back to a no-op on desktop browsers (they ignore touchstart on a mouse
+ * pointer).
+ */
+const PULL_THRESHOLD = 64;
+
+function usePullToRefresh(
+  scrollerRef: React.RefObject<HTMLElement>,
+  onRefresh: () => Promise<void> | void,
+) {
+  const [pullPx, setPullPx] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const startY = useRef<number | null>(null);
+  const armed = useRef(false);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+
+    const onStart = (e: TouchEvent) => {
+      if (refreshing) return;
+      // Only arm if we're at the top of the scroller.
+      if (el.scrollTop > 0) {
+        armed.current = false;
+        return;
+      }
+      armed.current = true;
+      startY.current = e.touches[0].clientY;
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (!armed.current || startY.current === null) return;
+      const dy = e.touches[0].clientY - startY.current;
+      if (dy <= 0) {
+        // User scrolled back up — disengage.
+        setPullPx(0);
+        return;
+      }
+      // Apply rubber-band: divide by 1.7 so the drag feels resistant.
+      const eased = Math.min(dy / 1.7, PULL_THRESHOLD * 1.6);
+      setPullPx(eased);
+    };
+
+    const onEnd = async () => {
+      if (!armed.current) return;
+      armed.current = false;
+      const reached = pullPx >= PULL_THRESHOLD;
+      setPullPx(0);
+      if (reached && !refreshing) {
+        setRefreshing(true);
+        try {
+          await onRefresh();
+        } finally {
+          setRefreshing(false);
+        }
+      }
+    };
+
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: true });
+    el.addEventListener('touchend', onEnd);
+    el.addEventListener('touchcancel', onEnd);
+
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', onEnd);
+    };
+  }, [scrollerRef, onRefresh, pullPx, refreshing]);
+
+  return { pullPx, refreshing };
+}
+
 export default function InboxPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -148,6 +230,9 @@ export default function InboxPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
 
   const [polling, setPolling] = useState(false);
+
+  // Mobile pull-to-refresh on the message list.
+  const listScrollerRef = useRef<HTMLDivElement>(null);
 
   // Cache AI summaries by messageId so reopening a message doesn't re-call
   // Claude (and burn tokens). Cleared on hard reload — that's intentional.
@@ -215,6 +300,11 @@ export default function InboxPage() {
   useEffect(() => {
     fetchList();
   }, [fetchList]);
+
+  // Pull-to-refresh: re-runs the inbox sync (matches the toolbar button).
+  const { pullPx, refreshing } = usePullToRefresh(listScrollerRef, async () => {
+    await fetchList();
+  });
 
   // ─── Fetch selected detail ───────────────────────────────────────
   useEffect(() => {
@@ -426,7 +516,35 @@ export default function InboxPage() {
             </div>
 
             {/* List body */}
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div
+              ref={listScrollerRef}
+              className="flex-1 min-h-0 overflow-y-auto relative"
+            >
+              {/* Pull-to-refresh indicator (mobile only — desktop never fires
+                  the touch events). Sticky-positioned at the top of the list
+                  with height driven by the live drag distance for feedback. */}
+              {(pullPx > 0 || refreshing) && (
+                <div
+                  className="md:hidden sticky top-0 z-10 flex items-center justify-center text-xs text-gray-500 dark:text-gray-400 pointer-events-none"
+                  style={{ height: refreshing ? 36 : Math.min(pullPx, 64) }}
+                >
+                  <RefreshCw
+                    className={`w-4 h-4 mr-1 transition-transform ${
+                      refreshing ? 'animate-spin' : ''
+                    }`}
+                    style={
+                      refreshing
+                        ? undefined
+                        : { transform: `rotate(${Math.min(pullPx * 4, 360)}deg)` }
+                    }
+                  />
+                  {refreshing
+                    ? 'Refreshing…'
+                    : pullPx >= PULL_THRESHOLD
+                    ? 'Release to refresh'
+                    : 'Pull to refresh'}
+                </div>
+              )}
               {listError && (
                 <div className="p-3">
                   <ErrorBanner message={listError} onRetry={fetchList} />

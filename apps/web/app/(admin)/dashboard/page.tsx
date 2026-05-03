@@ -650,24 +650,26 @@ export default function DashboardPage() {
                   <span className={`flex-1 text-sm ${w.enabled ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}>
                     {w.label}
                   </span>
-                  <div className="flex gap-0.5">
+                  <div className="flex gap-1">
                     <button
                       onClick={() => moveWidget(idx, 'up')}
                       disabled={idx === 0}
-                      className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 disabled:opacity-30"
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md text-gray-400 dark:text-gray-500 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent"
                       title="Move up"
+                      aria-label="Move widget up"
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
                       </svg>
                     </button>
                     <button
                       onClick={() => moveWidget(idx, 'down')}
                       disabled={idx === widgets.length - 1}
-                      className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 disabled:opacity-30"
+                      className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md text-gray-400 dark:text-gray-500 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:hover:bg-transparent"
                       title="Move down"
+                      aria-label="Move widget down"
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                       </svg>
                     </button>
@@ -808,7 +810,7 @@ export default function DashboardPage() {
                     </span>
                     <Link
                       href={s.actionUrl}
-                      className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-primary border border-primary/20 rounded-md hover:bg-primary/5 transition-colors flex-shrink-0"
+                      className="inline-flex items-center justify-center px-3 py-2 text-xs font-medium text-primary border border-primary/20 rounded-md hover:bg-primary/5 transition-colors flex-shrink-0 min-h-[44px] sm:min-h-0 sm:py-1.5"
                     >
                       {s.actionLabel}
                     </Link>

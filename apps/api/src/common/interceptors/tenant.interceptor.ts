@@ -26,9 +26,14 @@ export class TenantInterceptor implements NestInterceptor {
   ): Promise<Observable<any>> {
     const request = context.switchToHttp().getRequest();
 
-    // Skip for platform-admin routes
+    // Skip for platform-admin routes and known org-less public endpoints
     const url = request.url ?? '';
-    if (url.startsWith('/api/platform') || url.startsWith('/api/v1/platform')) {
+    if (
+      url.startsWith('/api/platform') ||
+      url.startsWith('/api/v1/platform') ||
+      url.startsWith('/api/v1/push/public-key') ||
+      url.startsWith('/api/push/public-key')
+    ) {
       return next.handle();
     }
 
