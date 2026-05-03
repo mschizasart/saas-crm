@@ -1,0 +1,29 @@
+{
+  "name": "@saas-crm/test",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Top-level test infrastructure: smoke, security, contract, performance, migration, plus the unified CLI runner and HTML dashboard.",
+  "type": "module",
+  "scripts": {
+    "runner": "tsx runner/index.ts",
+    "vitest": "vitest run",
+    "vitest:watch": "vitest"
+  },
+  "dependencies": {
+    "autocannon": "^7.15.0",
+    "chalk": "^5.3.0",
+    "chokidar": "^3.6.0",
+    "commander": "^12.1.0",
+    "node-fetch": "^3.3.2",
+    "pg": "^8.13.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/autocannon": "^7.12.5",
+    "@types/node": "^20.17.30",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3",
+    "vitest": "^2.1.8"
+  }
+}

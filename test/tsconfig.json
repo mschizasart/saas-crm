@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@test/*": ["./*"]
+    }
+  },
+  "include": [
+    "runner/**/*.ts",
+    "smoke/**/*.ts",
+    "security/**/*.ts",
+    "contract/**/*.ts",
+    "performance/**/*.ts",
+    "migration/**/*.ts",
+    "utils/**/*.ts"
+  ]
+}

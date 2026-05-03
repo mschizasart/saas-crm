@@ -1,0 +1,3 @@
+# OpenAPI snapshots are stored here. The first contract run writes openapi.json;
+# later runs compare and fail on drift.
+# To intentionally update: UPDATE_SNAPSHOTS=1 pnpm test:contract

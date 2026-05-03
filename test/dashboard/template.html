@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>saas-crm test dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">
+      <h1>saas-crm tests</h1>
+      <span class="meta" id="meta">loading…</span>
+    </div>
+    <div class="totals" id="totals"></div>
+  </header>
+
+  <section class="coverage" id="coverage"></section>
+
+  <nav class="tabs" id="tabs"></nav>
+
+  <main class="panels" id="panels"></main>
+
+  <script>
+    // Payload is injected by the runner at build-time.
+    window.__REPORT__ = /*__INJECT_PAYLOAD__*/null;
+  </script>
+  <script src="script.js"></script>
+</body>
+</html>

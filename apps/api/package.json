@@ -8,6 +8,10 @@
     "start": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "test": "jest",
+    "test:unit": "jest --selectProjects unit",
+    "test:integration": "jest --selectProjects integration",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage",
     "prisma": "prisma",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
@@ -87,6 +91,12 @@
     "@types/passport-microsoft": "^1.0.2",
     "@types/qrcode": "^1.5.5",
     "@types/node": "^20.17.30",
+    "@types/jest": "^29.5.14",
+    "@types/supertest": "^6.0.2",
+    "@golevelup/ts-jest": "^0.5.6",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "supertest": "^7.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }

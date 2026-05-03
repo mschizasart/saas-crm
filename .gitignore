@@ -14,3 +14,8 @@ prisma/generated/
 uploads/
 .DS_Store
 coverage/
+# Test infrastructure runtime artefacts
+test/results/*.json
+test/dashboard/report.html
+playwright-report/
+test-results/
