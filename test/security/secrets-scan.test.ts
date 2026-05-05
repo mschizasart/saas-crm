@@ -51,6 +51,20 @@ const ALLOWED_PATHS = [
   /\.lock$/,
   /test\/security\/secrets-scan\.test\.ts$/, // this file contains the patterns
   /test\/security\/.*\.snap$/,
+  // Test files contain fixture credentials, bcrypt hashes, and synthetic 64-hex
+  // keys for deterministic crypto tests — they are NOT real secrets.
+  /\.spec\.ts$/,
+  /\.test\.tsx?$/,
+  /\/test\//,
+  /\/__tests__\//,
+  /test-fixtures\//,
+  /test-setup\.ts$/,
+  // Build / cache artifacts — content hashes, not secrets.
+  /\.tsbuildinfo$/,
+  /\.next\//,
+  /\.turbo\//,
+  /\.cache\//,
+  /coverage\//,
 ];
 
 interface Finding {
