@@ -56,7 +56,8 @@ describe('SignaturePanel component', () => {
     expect(await screen.findByText('Signed')).toBeInTheDocument();
     expect(screen.getByText('Jane Doe')).toBeInTheDocument();
     expect(screen.getByText('jane@example.com')).toBeInTheDocument();
-    expect(screen.getByText('203.0.113.42')).toBeInTheDocument();
+    // IP appears in the summary AND in audit-trail rows — assert presence.
+    expect(screen.getAllByText('203.0.113.42').length).toBeGreaterThan(0);
     expect(screen.getByText('US')).toBeInTheDocument();
   });
 

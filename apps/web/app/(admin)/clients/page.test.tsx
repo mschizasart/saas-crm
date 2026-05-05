@@ -56,17 +56,20 @@ describe('Clients page', () => {
   it('shows the empty state when no clients are returned', async () => {
     setupApiMock(emptyListResponse as any);
     render(<ClientsPage />);
+    // Empty state renders in both the desktop table and the mobile card list.
     expect(
-      await screen.findByText(/no clients found/i),
-    ).toBeInTheDocument();
+      (await screen.findAllByText(/no clients found/i)).length,
+    ).toBeGreaterThan(0);
   });
 
   it('renders the search input and pagination controls', async () => {
     setupApiMock();
     render(<ClientsPage />);
     expect(await screen.findByLabelText(/search clients/i)).toBeInTheDocument();
-    // pagination renders only when meta.total > 0
-    expect(screen.getByRole('button', { name: /previous/i })).toBeInTheDocument();
+    // Pagination renders only after the list response lands (meta.total > 0).
+    expect(
+      await screen.findByRole('button', { name: /previous/i }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /next/i })).toBeInTheDocument();
   });
 

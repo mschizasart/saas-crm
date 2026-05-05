@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, cleanup } from '@testing-library/react';
 import { PwaRegister } from './pwa-register';
 
 /**
@@ -37,6 +37,11 @@ describe('PwaRegister component', () => {
   });
 
   afterEach(() => {
+    // Unmount any rendered components NOW so the cleanup effect in the
+    // component still sees our stubbed navigator.serviceWorker. The global
+    // cleanup() registered by test-setup.ts runs after this and would
+    // otherwise unmount with serviceWorker already restored/deleted.
+    cleanup();
     if (originalSW) Object.defineProperty(navigator, 'serviceWorker', originalSW);
     else delete (navigator as unknown as { serviceWorker?: unknown }).serviceWorker;
     if (originalReadyState) Object.defineProperty(document, 'readyState', originalReadyState);

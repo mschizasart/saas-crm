@@ -45,7 +45,9 @@ describe('E-Invoice settings page', () => {
   it('renders the format radio options', async () => {
     render(<EInvoiceSettingsPage />);
     expect(await screen.findByText(/peppol ubl 2\.1/i)).toBeInTheDocument();
-    expect(screen.getByText(/factur-x/i)).toBeInTheDocument();
+    // "Factur-X" is also mentioned in the page description text — assert
+    // at least one match (the radio label).
+    expect(screen.getAllByText(/factur-x/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/generic ubl 2\.1/i)).toBeInTheDocument();
   });
 

@@ -78,7 +78,7 @@ export class InboxRouterService {
       }
 
       // ── 2. Subject-tagged ticket: [#<id>] ─────────────────────────
-      const tagMatch = (subject || '').match(/\[#([a-zA-Z0-9-]+)\]/);
+      const tagMatch = (subject || '').match(/\[#([a-zA-Z0-9_-]+)\]/);
       if (tagMatch?.[1]) {
         const ticket = await tx.ticket.findFirst({
           where: { id: tagMatch[1], organizationId },

@@ -75,7 +75,8 @@ describe('Public estimate-request form page', () => {
 
   it('renders a disabled submit button until required fields are filled', async () => {
     render(<PublicEstimateRequestFormPage />);
-    const btn = await screen.findByRole('button', { name: /submit/i });
+    // The submit button reads "Request quote" — assert by accessible name.
+    const btn = await screen.findByRole('button', { name: /request quote/i });
     expect(btn).toBeDisabled();
   });
 

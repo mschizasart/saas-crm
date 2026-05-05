@@ -67,7 +67,8 @@ describe('Items report page', () => {
     render(<ItemsReportPage />);
     expect(await screen.findByText('Total revenue')).toBeInTheDocument();
     expect(screen.getByText('Total qty sold')).toBeInTheDocument();
-    expect(screen.getByText('Invoices')).toBeInTheDocument();
+    // "Invoices" is also a column header — assert at least one match (stat card).
+    expect(screen.getAllByText('Invoices').length).toBeGreaterThan(0);
   });
 
   it('renders the empty state when the report returns no rows', async () => {

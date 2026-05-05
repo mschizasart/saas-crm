@@ -105,22 +105,24 @@ vi.mock('sonner', () => {
 
 // ─── window.matchMedia — Tailwind / dark-mode reads it on mount ──────────
 
-if (!window.matchMedia) {
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    configurable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(), // legacy
-      removeListener: vi.fn(), // legacy
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  });
-}
+// NOTE: not using vi.fn() here — `restoreMocks: true` in vitest.config.ts
+// would strip the implementation between tests, causing matchMedia() to
+// return undefined and break components that read .matches on mount.
+const matchMediaStub = (query: string) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener: () => {}, // legacy
+  removeListener: () => {}, // legacy
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  dispatchEvent: () => false,
+});
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  configurable: true,
+  value: matchMediaStub,
+});
 
 // ─── localStorage stub — jsdom has it but reset between tests ────────────
 

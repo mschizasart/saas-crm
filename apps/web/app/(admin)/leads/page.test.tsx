@@ -2,33 +2,24 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LeadsPage from './page';
-import { leadsListResponse } from '@/test-fixtures/api';
+import { leadsListResponse, jsonOk } from '@/test-fixtures/api';
 
 /**
- * The leads kanban page bypasses apiFetch and uses raw fetch() — so we mock the
- * global. (See `getToken()` + direct `fetch(${API_BASE}/api/v1/leads/kanban)` in
- * the page component.)
+ * The leads kanban page uses apiFetch — route by URL through the global
+ * mockApiFetch from test-setup.ts.
  */
-function setupFetchMock() {
-  window.localStorage.setItem('access_token', 'test-token');
-  global.fetch = vi.fn(async (url: any) => {
-    const u = String(url);
-    if (u.includes('/leads/kanban')) {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => leadsListResponse,
-      } as any;
-    }
-    return { ok: true, status: 200, json: async () => ({}) } as any;
-  }) as any;
+function setupApiMock() {
+  globalThis.mockApiFetch.mockImplementation(async (url: string) => {
+    if (String(url).includes('/leads/kanban')) return jsonOk(leadsListResponse);
+    return jsonOk({});
+  });
 }
 
 describe('Leads page', () => {
   let consoleError: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
     consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    setupFetchMock();
+    setupApiMock();
   });
   afterEach(() => {
     consoleError.mockRestore();

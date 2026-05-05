@@ -90,13 +90,16 @@ describe('Invoices page', () => {
   it('renders the Outstanding / Overdue / Paid This Month stat cards', async () => {
     render(<InvoicesPage />);
     expect(await screen.findByText('Outstanding')).toBeInTheDocument();
-    expect(screen.getByText('Overdue')).toBeInTheDocument();
+    // "Overdue" also appears as a status filter tab — assert presence rather
+    // than strict singularity.
+    expect(screen.getAllByText('Overdue').length).toBeGreaterThan(0);
     expect(screen.getByText('Paid This Month')).toBeInTheDocument();
   });
 
   it('does not surface React render errors', async () => {
     render(<InvoicesPage />);
-    await screen.findByText('INV-001');
+    // Mobile + desktop both render the invoice number — wait for at least one.
+    await screen.findAllByText('INV-001');
     expect(consoleError).not.toHaveBeenCalled();
   });
 });

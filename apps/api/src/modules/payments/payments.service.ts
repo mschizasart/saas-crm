@@ -639,9 +639,11 @@ export class PaymentsService {
         0,
       );
 
+      const fmt = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       return {
-        thisMonth: { total: thisMonthTotal, month: thisMonthStart.toISOString().slice(0, 7) },
-        lastMonth: { total: lastMonthTotal, month: lastMonthStart.toISOString().slice(0, 7) },
+        thisMonth: { total: thisMonthTotal, month: fmt(thisMonthStart) },
+        lastMonth: { total: lastMonthTotal, month: fmt(lastMonthStart) },
       };
     });
   }

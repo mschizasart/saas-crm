@@ -86,7 +86,7 @@ describe('Tickets page', () => {
 
   it('does not surface React render errors', async () => {
     render(<TicketsPage />);
-    await screen.findByText('Cannot login');
+    await screen.findAllByText('Cannot login');
     expect(consoleError).not.toHaveBeenCalled();
   });
 });

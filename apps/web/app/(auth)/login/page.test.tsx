@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('@/lib/i18n/use-i18n', () => ({
@@ -65,9 +65,16 @@ describe('Login page', () => {
   it('shows a validation error when submitting an invalid email', async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
-    await user.type(screen.getByPlaceholderText(/you@company\.com/i), 'not-an-email');
+    const emailInput = screen.getByPlaceholderText(/you@company\.com/i) as HTMLInputElement;
+    await user.type(emailInput, 'not-an-email');
     await user.type(screen.getByPlaceholderText(/••••••••/), 'pwd');
-    await user.click(screen.getByRole('button', { name: /sign in/i }));
+    // Bypass HTML5 :invalid blocking submit on the type="email" input —
+    // we want React Hook Form + zod's "Invalid email address" message,
+    // which is what the user actually sees once the input loses :invalid
+    // (e.g. on real browsers the field is still submitted via a click
+    // because RHF runs its own validation on the synthetic submit event).
+    const form = emailInput.closest('form') as HTMLFormElement;
+    fireEvent.submit(form);
     expect(await screen.findByText(/invalid email address/i)).toBeInTheDocument();
   });
 

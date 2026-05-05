@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ImportCsvModal } from './import-csv-modal';
 import { jsonOk, jsonError } from '@/test-fixtures/api';
@@ -65,7 +65,6 @@ describe('ImportCsvModal component', () => {
   });
 
   it('rejects a non-csv file with an error message', async () => {
-    const user = userEvent.setup();
     render(
       <ImportCsvModal
         open
@@ -77,7 +76,10 @@ describe('ImportCsvModal component', () => {
 
     const wrong = new File(['not csv'], 'foo.txt', { type: 'text/plain' });
     const input = screen.getByLabelText('CSV file') as HTMLInputElement;
-    await user.upload(input, wrong);
+    // user-event's `applyAccept: false` silently drops mismatched files in
+    // jsdom under v14; bypass it and dispatch the change event directly so
+    // the component's own validation runs.
+    fireEvent.change(input, { target: { files: [wrong] } });
 
     expect(await screen.findByText(/please select a \.csv file/i)).toBeInTheDocument();
   });
@@ -119,8 +121,10 @@ describe('ImportCsvModal component', () => {
 
     // Result panel
     expect(await screen.findByText('7')).toBeInTheDocument();
-    expect(screen.getByText(/imported/i)).toBeInTheDocument();
-    expect(screen.getByText(/skipped/i)).toBeInTheDocument();
+    expect(screen.getByText(/^imported$/i)).toBeInTheDocument();
+    // Match the stat-card label specifically — the <summary> below also
+    // contains the word "skipped".
+    expect(screen.getByText(/^skipped$/i)).toBeInTheDocument();
     expect(onImported).toHaveBeenCalledWith(
       expect.objectContaining({ imported: 7 }),
     );

@@ -84,7 +84,9 @@ describe('Expenses by Category report page', () => {
 
   it('renders the summary strip with the total + categories + uncategorized labels', async () => {
     render(<ExpensesByCategoryReportPage />);
-    expect(await screen.findByText(/^total$/i)).toBeInTheDocument();
+    // "Total" also shows up as the per-category table column header — assert
+    // at least one match.
+    expect((await screen.findAllByText(/^total$/i)).length).toBeGreaterThan(0);
     expect(screen.getByText(/categories/i)).toBeInTheDocument();
     expect(screen.getByText(/uncategorized/i)).toBeInTheDocument();
   });
@@ -106,6 +108,9 @@ describe('Expenses by Category report page', () => {
       byCategory: [],
     });
     render(<ExpensesByCategoryReportPage />);
-    expect(await screen.findByText(/no expenses/i)).toBeInTheDocument();
+    // The empty state renders in both the chart card and the table card.
+    expect(
+      (await screen.findAllByText(/no expenses/i)).length,
+    ).toBeGreaterThan(0);
   });
 });

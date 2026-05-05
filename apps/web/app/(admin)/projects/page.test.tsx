@@ -79,8 +79,9 @@ describe('Projects page', () => {
 
   it('renders project rows', async () => {
     render(<ProjectsPage />);
-    expect(await screen.findByText('Website refresh')).toBeInTheDocument();
-    expect(screen.getByText('Mobile app v2')).toBeInTheDocument();
+    // Mobile + desktop layouts both render the project name.
+    expect((await screen.findAllByText('Website refresh')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Mobile app v2').length).toBeGreaterThan(0);
   });
 
   it('renders the status filter chips', async () => {
@@ -92,7 +93,7 @@ describe('Projects page', () => {
 
   it('does not surface React render errors', async () => {
     render(<ProjectsPage />);
-    await screen.findByText('Website refresh');
+    await screen.findAllByText('Website refresh');
     expect(consoleError).not.toHaveBeenCalled();
   });
 });

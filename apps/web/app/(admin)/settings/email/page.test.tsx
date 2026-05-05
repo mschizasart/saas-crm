@@ -55,7 +55,9 @@ describe('Email settings page', () => {
 
   it('renders the provider radio options', async () => {
     render(<EmailSettingsPage />);
-    expect(await screen.findByText(/platform default/i)).toBeInTheDocument();
+    // "platform default" also appears in description copy on the page;
+    // assert >0 matches.
+    expect((await screen.findAllByText(/platform default/i)).length).toBeGreaterThan(0);
     expect(screen.getByText(/custom smtp/i)).toBeInTheDocument();
     expect(screen.getByText(/gmail \/ google workspace/i)).toBeInTheDocument();
     expect(screen.getByText(/microsoft 365/i)).toBeInTheDocument();
@@ -79,7 +81,7 @@ describe('Email settings page', () => {
 
   it('does not surface React render errors', async () => {
     render(<EmailSettingsPage />);
-    await screen.findByText(/platform default/i);
+    await screen.findAllByText(/platform default/i);
     expect(consoleError).not.toHaveBeenCalled();
   });
 });
