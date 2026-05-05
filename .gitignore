@@ -19,3 +19,20 @@ test/results/*.json
 test/dashboard/report.html
 playwright-report/
 test-results/
+
+# Visual regression baselines — see test/visual/README.md "Snapshot policy".
+# Remove this line once the team agrees to start tracking baselines.
+test/visual/__screenshots__/
+test/visual/playwright-report/
+
+# Mutation testing reports (Stryker) — generated, slow, not committed.
+# See test/MUTATION.md for run cadence.
+test/.mutation/
+apps/api/.stryker-tmp/
+apps/api/reports/mutation/
+
+# Stress / chaos suite — downloaded k6 binary and ad-hoc k6 scripts.
+test/stress/.bin/
+test/stress/.tmp-*.js
+test/results/stress-*.json
+test/results/stress.json

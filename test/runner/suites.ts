@@ -4,11 +4,18 @@
  *
  * Categories:
  *   smoke, security, contract, migration, performance,
- *   unit, integration, component, e2e
+ *   unit, integration, component, e2e, visual, mutation
  *
  * The runner does NOT touch unit/integration/component scopes other than
  * shelling out to the workspace package's existing test command — those
  * are owned by the parallel agents.
+ *
+ * The `mutation` category runs Stryker against the API's unit suite and
+ * normalises its JSON report into the dashboard's pass/fail shape: each
+ * mutated file becomes one synthetic "test", passing iff its mutation
+ * score is >= the configured threshold. Surviving mutations are emitted
+ * as failed entries with file/line + original->mutated diff in the error
+ * message so the dashboard can surface them.
  */
 
 export type SuiteCategory =
@@ -17,10 +24,13 @@ export type SuiteCategory =
   | 'contract'
   | 'migration'
   | 'performance'
+  | 'stress'
   | 'unit'
   | 'integration'
   | 'component'
-  | 'e2e';
+  | 'e2e'
+  | 'visual'
+  | 'mutation';
 
 export interface SuiteDefinition {
   /** Stable id, also the CLI subcommand. */
@@ -40,7 +50,7 @@ export interface SuiteDefinition {
    */
   jsonOutput?: string;
   /** Parser id — picked up in parsers.ts. */
-  parser: 'vitest' | 'jest' | 'playwright' | 'plain' | 'autocannon';
+  parser: 'vitest' | 'jest' | 'playwright' | 'plain' | 'autocannon' | 'stryker';
   /** If true, suite is allowed to be skipped when env is missing. */
   optional?: boolean;
   /** Description for `--help`. */
@@ -119,6 +129,25 @@ export const SUITES: SuiteDefinition[] = [
     optional: true,
   },
 
+  // ─── Stress / Chaos ──────────────────────────────────────────────
+  // Concurrency-bug surfacing: bulk races, queue saturation, tenant
+  // isolation under load. Heavier than `performance` and intentionally
+  // sequential — scenarios saturate one subsystem at a time.
+  {
+    id: 'stress',
+    category: 'stress',
+    label: 'Stress / chaos (races, saturation, tenant isolation)',
+    command: 'pnpm tsx stress/index.ts',
+    cwd: 'test',
+    jsonOutput: 'test/results/stress.json',
+    parser: 'autocannon',
+    description:
+      'Concurrency / saturation scenarios: bulk-import race, tenant isolation under load, ' +
+      'BullMQ queue saturation, PDF storm, auth bruteforce, pagination pollution, ' +
+      'stock decrement race, webhook delivery storm. Requires STRESS_TOKEN_A/B or login env.',
+    optional: true,
+  },
+
   // ─── Unit (other agent's territory) ──────────────────────────────
   {
     id: 'unit',
@@ -168,6 +197,35 @@ export const SUITES: SuiteDefinition[] = [
     jsonOutput: 'apps/web/playwright-report/results.json',
     parser: 'playwright',
     description: 'Existing Playwright suite (apps/web/playwright.config.ts).',
+    optional: true,
+  },
+
+  // ─── Visual regression (Playwright pixel diff) ───────────────────
+  {
+    id: 'visual',
+    category: 'visual',
+    label: 'Web visual regression (Playwright pixel diff)',
+    command:
+      'pnpm --filter web exec playwright test --config=../../test/visual/playwright.config.ts',
+    jsonOutput: 'test/results/visual.json',
+    parser: 'playwright',
+    description:
+      'Playwright screenshot diff across 15 page areas × light/dark × desktop/mobile. ' +
+      'Catches blank-page renders and layout regressions. ' +
+      'First run needs --update-snapshots to seed baselines (see test/visual/README.md).',
+    optional: true,
+  },
+
+  // ─── Mutation (Stryker, manual cadence — slow, NOT for CI) ───────
+  {
+    id: 'mutation',
+    category: 'mutation',
+    label: 'API mutation testing (Stryker)',
+    command: 'pnpm --filter api test:mutation',
+    jsonOutput: 'test/.mutation/api/report.json',
+    parser: 'stryker',
+    description:
+      'Stryker mutation testing on the API unit suite — surfaces tests that pass even when production code is broken. Slow (15-25min); run weekly or pre-release, not in CI.',
     optional: true,
   },
 ];

@@ -24,6 +24,7 @@
     "contract/**/*.ts",
     "performance/**/*.ts",
     "migration/**/*.ts",
+    "stress/**/*.ts",
     "utils/**/*.ts"
   ]
 }

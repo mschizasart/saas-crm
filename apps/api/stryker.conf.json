@@ -1,0 +1,33 @@
+{
+  "_comment": "MUTATION TESTING CONFIG. Stryker introduces small code mutations and runs the unit suite against each one; mutations the tests fail to catch ('survived') indicate weak assertions. First full run on the 10 services below is realistically 15-25 minutes on a 4-core machine — do not enable in CI. Run manually weekly or pre-release. See test/MUTATION.md for context. Mutate list is intentionally bounded to services that have colocated unit tests (apps/api/src/**/*.spec.ts); running on the entire codebase would take hours and most of it isn't unit-tested.",
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "pnpm",
+  "testRunner": "jest",
+  "jest": {
+    "projectType": "custom",
+    "configFile": "jest.config.ts",
+    "config": { "selectProjects": ["unit"] }
+  },
+  "checkers": ["typescript"],
+  "tsconfigFile": "tsconfig.json",
+  "mutate": [
+    "src/modules/clients/clients.service.ts",
+    "src/modules/invoices/invoices.service.ts",
+    "src/modules/leads/leads.service.ts",
+    "src/modules/products/products.service.ts",
+    "src/modules/email-settings/email-settings.service.ts",
+    "src/modules/ticket-spam-filters/ticket-spam-filters.service.ts",
+    "src/modules/auth/twofa.service.ts",
+    "src/modules/reports/reports.service.ts",
+    "src/modules/ai/ai-improve.service.ts",
+    "src/common/crypto/encrypt.ts"
+  ],
+  "thresholds": { "high": 80, "low": 60, "break": 50 },
+  "coverageAnalysis": "perTest",
+  "reporters": ["clear-text", "html", "json"],
+  "htmlReporter": { "fileName": "../../test/.mutation/api/index.html" },
+  "jsonReporter": { "fileName": "../../test/.mutation/api/report.json" },
+  "concurrency": 4,
+  "timeoutMS": 30000,
+  "logLevel": "info"
+}

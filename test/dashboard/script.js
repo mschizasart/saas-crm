@@ -35,7 +35,7 @@
   }).join('') || '<div class="item">No coverage data</div>';
 
   // ─── tabs by category ──────────────────────────────────────
-  const CATEGORIES = ['smoke', 'security', 'contract', 'migration', 'performance', 'unit', 'integration', 'component', 'e2e'];
+  const CATEGORIES = ['smoke', 'security', 'contract', 'migration', 'performance', 'unit', 'integration', 'component', 'e2e', 'visual', 'mutation'];
   const byCat = {};
   for (const c of CATEGORIES) byCat[c] = [];
   for (const s of report.suites) (byCat[s.category] = byCat[s.category] || []).push(s);
@@ -61,7 +61,11 @@
     const panel = document.createElement('div');
     panel.className = 'panel' + (i === 0 ? ' active' : '');
     panel.dataset.cat = cat;
-    panel.appendChild(renderSuites(suites));
+    if (cat === 'mutation') {
+      panel.appendChild(renderMutation(suites));
+    } else {
+      panel.appendChild(renderSuites(suites));
+    }
     panels.appendChild(panel);
   });
 
@@ -159,5 +163,147 @@
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  // ─── Mutation tab (Stryker) ──────────────────────────────────────
+  function renderMutation(list) {
+    const frag = document.createDocumentFragment();
+    if (!list.length) {
+      const div = document.createElement('div');
+      div.className = 'empty';
+      div.textContent = 'No mutation results yet — run `pnpm --filter api test:mutation` (slow, 15-25min).';
+      frag.appendChild(div);
+      return frag;
+    }
+
+    for (const s of list) {
+      const extra = s.extra || {};
+      const score = typeof extra.mutationScore === 'number' ? extra.mutationScore : null;
+      const totals = extra.totals || {};
+      const thresholds = extra.thresholds || { high: 80, low: 60, break: 50 };
+      const perFile = Array.isArray(extra.perFile) ? extra.perFile : [];
+      const survived = Array.isArray(extra.survived) ? extra.survived : [];
+      const htmlReportPath = extra.htmlReportPath || '../.mutation/api/index.html';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'suite open';
+
+      // ── Header with overall score + open-detailed-report button
+      const head = document.createElement('div');
+      head.className = 'suite-header';
+      const band = score == null
+        ? 'na'
+        : score >= thresholds.high
+          ? 'high'
+          : score >= thresholds.low
+            ? 'low'
+            : 'break';
+      const bandColour = band === 'high' ? 'ok' : band === 'low' ? 'skip' : 'ko';
+      head.innerHTML = `
+        <h3>${escape(s.label)} <small style="color:var(--muted)">(${escape(s.suiteId)})</small></h3>
+        <div>
+          <span class="stats">
+            <span class="${bandColour}">score: ${score == null ? 'n/a' : score + '%'}</span>
+            · killed ${totals.killed ?? 0}
+            · survived ${totals.survived ?? 0}
+            · no-cov ${totals.noCoverage ?? 0}
+            · timeout ${totals.timeout ?? 0}
+            · ${(s.durationMs / 1000).toFixed(2)}s
+            ${s.missing ? '· <span style="color:var(--muted)">no JSON</span>' : ''}
+          </span>
+        </div>
+      `;
+      wrap.appendChild(head);
+
+      const body = document.createElement('div');
+      body.className = 'suite-body';
+
+      // ── Banner with thresholds + open-detailed-report
+      const banner = document.createElement('div');
+      banner.className = 'mutation-banner';
+      banner.innerHTML = `
+        <div class="mutation-score-block">
+          <div class="mutation-score-num ${bandColour}">${score == null ? 'n/a' : score + '%'}</div>
+          <div class="mutation-score-label">overall mutation score</div>
+        </div>
+        <div class="mutation-thresholds">
+          <div>thresholds: <span class="ok">high &ge; ${thresholds.high}%</span> · <span class="skip">low &ge; ${thresholds.low}%</span> · <span class="ko">break &lt; ${thresholds.break}%</span></div>
+          <div style="color:var(--muted);margin-top:4px;">total mutants: ${totals.totalMutants ?? 0} (${totals.totalValid ?? 0} valid · ${totals.compileError ?? 0} compile-err · ${totals.runtimeError ?? 0} runtime-err · ${totals.ignored ?? 0} ignored)</div>
+        </div>
+        <a class="mutation-html-link" href="${escape(htmlReportPath)}" target="_blank">Open detailed HTML report &rarr;</a>
+      `;
+      body.appendChild(banner);
+
+      // ── Per-file score table
+      if (perFile.length) {
+        const tableWrap = document.createElement('div');
+        tableWrap.className = 'mutation-table-wrap';
+        let tableHtml = `
+          <h4 style="margin:16px 16px 8px;font-size:13px;">Per-file mutation scores</h4>
+          <table class="mutation-table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Score</th>
+                <th>Killed</th>
+                <th>Survived</th>
+                <th>No&nbsp;cov</th>
+                <th>Timeout</th>
+                <th>Valid</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        for (const f of perFile) {
+          const rowBand = f.band === 'high' ? 'ok' : f.band === 'low' ? 'skip' : f.band === 'break' ? 'ko' : '';
+          tableHtml += `
+            <tr>
+              <td class="mutation-file">${escape(f.file)}</td>
+              <td class="${rowBand}"><strong>${f.score}%</strong></td>
+              <td>${f.killed}</td>
+              <td class="${f.survived > 0 ? 'ko' : ''}">${f.survived}</td>
+              <td class="${f.noCoverage > 0 ? 'skip' : ''}">${f.noCoverage}</td>
+              <td>${f.timeout}</td>
+              <td>${f.totalValid}</td>
+            </tr>
+          `;
+        }
+        tableHtml += '</tbody></table>';
+        tableWrap.innerHTML = tableHtml;
+        body.appendChild(tableWrap);
+      }
+
+      // ── Survived mutations list
+      if (survived.length) {
+        const sec = document.createElement('div');
+        sec.className = 'mutation-survived';
+        let html = `<h4 style="margin:16px 16px 8px;font-size:13px;">Survived / no-coverage mutations (${survived.length}${survived.length >= 200 ? '+ truncated' : ''})</h4>`;
+        for (const m of survived) {
+          html += `
+            <div class="mutation-row">
+              <div class="mutation-row-meta">
+                <span class="ko">${escape(m.status)}</span>
+                · <strong>${escape(m.mutator)}</strong>
+                · <span style="color:var(--muted)">${escape(m.file)}:${m.line}:${m.column}</span>
+              </div>
+              <pre class="mutation-diff"><span class="diff-orig">- ${escape(m.original)}</span>
+<span class="diff-mut">+ ${escape(m.replacement)}</span></pre>
+            </div>
+          `;
+        }
+        sec.innerHTML = html;
+        body.appendChild(sec);
+      } else if (perFile.length) {
+        const ok = document.createElement('div');
+        ok.className = 'empty';
+        ok.style.color = 'var(--pass)';
+        ok.textContent = 'No surviving mutations — every mutation was killed by the unit suite.';
+        body.appendChild(ok);
+      }
+
+      wrap.appendChild(body);
+      frag.appendChild(wrap);
+    }
+    return frag;
   }
 })();

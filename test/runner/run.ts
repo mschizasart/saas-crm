@@ -8,6 +8,7 @@ import {
   parsePlaywright,
   parseAutocannon,
   parsePlain,
+  parseStryker,
   type SuiteRunSummary,
 } from './parsers.js';
 import { generateDashboard } from './dashboard.js';
@@ -52,6 +53,9 @@ export async function runSuites(
         break;
       case 'autocannon':
         summary = parseAutocannon(jsonPath, suite.id, suite.category, suite.label);
+        break;
+      case 'stryker':
+        summary = parseStryker(jsonPath, suite.id, suite.category, suite.label);
         break;
       default:
         summary = parsePlain(jsonPath, suite.id, suite.category, suite.label, exitCode);
