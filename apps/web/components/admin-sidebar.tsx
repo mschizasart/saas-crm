@@ -10,7 +10,7 @@ import {
   BarChart3, Settings, Bell, Building2, Zap, ClipboardList,
   ChevronDown, ChevronRight, ListTodo, Calendar, Megaphone,
   Activity, Tag, Lock, MessageCircle, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
-  ShieldX, Inbox, KeyRound,
+  ShieldX, Inbox, KeyRound, Sparkles,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -314,6 +314,7 @@ function useNavItems(): NavItem[] {
         { label: 'Security', href: '/settings/security', icon: KeyRound },
         { label: 'Notifications', href: '/settings/notifications', icon: Bell },
         { label: t('nav.email'), href: '/settings/email', icon: Bell },
+        { label: 'AI', href: '/settings/ai', icon: Sparkles },
         { label: 'E-Invoice', href: '/settings/einvoice', icon: FileCode },
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },
         { label: t('nav.customFields'), href: '/settings/custom-fields', icon: FileText },

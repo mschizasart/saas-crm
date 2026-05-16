@@ -5,15 +5,17 @@ import {
   BadRequestException,
   HttpException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { enforceAiRateLimit } from './rate-limit.util';
+import { AiConfigService } from './ai-config.service';
 
 /**
  * Stateless AI text-tone enhancement service.
  *
- * - Calls the Anthropic Messages API directly via fetch (Claude is the
- *   product's chosen model; we don't depend on the OpenAI SDK).
- * - No DB writes — generated text is returned to the caller and forgotten.
+ * - Transport is resolved per-org via AiConfigService.resolveProvider():
+ *   the tenant's own Anthropic/OpenAI key when configured, otherwise the
+ *   platform's shared ANTHROPIC_API_KEY. We don't depend on any SDK.
+ * - No DB writes — generated text is returned to the caller and forgotten
+ *   (token usage is metered fire-and-forget via AiConfigService.recordUsage).
  * - Cost-control: small in-memory token-bucket per user (30 req / 60s).
  *   In a multi-node deploy this becomes per-node — acceptable for v1.
  */
@@ -35,7 +37,6 @@ export const IMPROVE_TONES: ImproveTone[] = [
   'shorten',
 ];
 
-const MODEL = 'claude-haiku-4-5-20251001';
 const MAX_TOKENS = 1500;
 const SYSTEM_PROMPT_TEMPLATE =
   "Rewrite the user's text in a {tone} tone. Preserve meaning, structure, lists, and any signoffs. Return only the rewritten text — no preamble, no quotes, no explanations.";
@@ -48,23 +49,24 @@ const MAX_INPUT_LEN = 12_000;
 export class AiImproveService {
   private readonly logger = new Logger(AiImproveService.name);
 
-  constructor(private config: ConfigService) {}
+  constructor(private readonly aiConfig: AiConfigService) {}
 
   /**
    * Rewrite `text` in the given `tone`. Throws:
    *   - 400 BadRequestException for empty/oversize input or bad tone
    *   - 429 TooManyRequestsException when the user exceeds the rate limit
-   *   - 503 ServiceUnavailableException when ANTHROPIC_API_KEY is not set
-   *     or the upstream call fails (we deliberately do NOT bubble Anthropic's
-   *     raw error text to clients).
+   *   - 503 ServiceUnavailableException when AI is not configured / disabled /
+   *     over the org's monthly cap, or when the upstream call fails (we
+   *     deliberately do NOT bubble the provider's raw error text to clients).
    */
   async improve(args: {
     userId: string;
+    orgId: string;
     text: string;
     tone: ImproveTone;
     maxLength?: number;
   }): Promise<{ improved: string }> {
-    const { userId, text, tone, maxLength } = args;
+    const { userId, orgId, text, tone, maxLength } = args;
 
     if (!IMPROVE_TONES.includes(tone)) {
       throw new BadRequestException(`Invalid tone "${tone}"`);
@@ -81,12 +83,9 @@ export class AiImproveService {
 
     enforceAiRateLimit(userId);
 
-    const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
-    if (!apiKey) {
-      throw new ServiceUnavailableException(
-        'AI features are not configured by your administrator',
-      );
-    }
+    // Resolve the per-org provider. resolveProvider() throws clean 503s for
+    // the not-configured / disabled / over-cap cases — let those bubble.
+    const { provider, model } = await this.aiConfig.resolveProvider(orgId);
 
     const lengthHint =
       typeof maxLength === 'number' && maxLength > 0
@@ -96,45 +95,25 @@ export class AiImproveService {
     const system = SYSTEM_PROMPT_TEMPLATE.replace('{tone}', tone) + lengthHint;
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          max_tokens: MAX_TOKENS,
+      const { text: improved, inputTokens, outputTokens } =
+        await provider.complete({
           system,
-          messages: [{ role: 'user', content: trimmed }],
-        }),
-      });
-
-      if (!res.ok) {
-        const detail = await safeReadText(res);
-        this.logger.warn(
-          `Anthropic returned ${res.status}: ${detail.slice(0, 300)}`,
-        );
-        throw new ServiceUnavailableException(
-          'AI service is temporarily unavailable',
-        );
-      }
-
-      const data: any = await res.json();
-      const improved =
-        Array.isArray(data?.content) && typeof data.content[0]?.text === 'string'
-          ? data.content[0].text.trim()
-          : '';
+          userMessage: trimmed,
+          maxTokens: MAX_TOKENS,
+          model,
+        });
 
       if (!improved) {
-        this.logger.warn('Anthropic returned empty content');
+        this.logger.warn('AI provider returned empty content');
         throw new ServiceUnavailableException(
           'AI service is temporarily unavailable',
         );
       }
 
-      return { improved };
+      // Fire-and-forget — never block the response on the usage write.
+      void this.aiConfig.recordUsage(orgId, inputTokens, outputTokens);
+
+      return { improved: improved.trim() };
     } catch (err) {
       if (err instanceof HttpException) throw err;
       this.logger.error(
@@ -144,14 +123,5 @@ export class AiImproveService {
         'AI service is temporarily unavailable',
       );
     }
-  }
-
-}
-
-async function safeReadText(res: Response): Promise<string> {
-  try {
-    return await res.text();
-  } catch {
-    return '';
   }
 }

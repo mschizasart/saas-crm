@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
+import { AiConfigService } from '../ai/ai-config.service';
+import { AiProvider } from '../ai/providers/ai-provider.types';
 
 /**
  * AI-powered lead scoring (migration 013).
@@ -17,8 +18,12 @@ import { PrismaService } from '../../database/prisma.service';
  *      "SCORE: <int>\nREASON: <short>" line. Soft-failure: any parse or
  *      transport error falls back to a neutral 25.
  *
- * If ANTHROPIC_API_KEY is missing, the service degrades to heuristic-only
- * and doubles the heuristic to fill the 0-100 range — no per-org toggle.
+ * The AI transport is resolved per-org via AiConfigService.resolveProvider()
+ * — the tenant's own Anthropic/OpenAI key when configured, otherwise the
+ * platform's shared key. If resolution fails for ANY reason (no key, AI
+ * disabled for the org, monthly token cap reached, or an upstream error),
+ * the service degrades to heuristic-only and doubles the heuristic to fill
+ * the 0-100 range.
  *
  * Caching: callers should rely on the `force` flag and the 6-hour
  * freshness window in scoreLead(). The on-disk cache lives directly on
@@ -27,7 +32,6 @@ import { PrismaService } from '../../database/prisma.service';
  * in steady state.
  */
 
-const MODEL = 'claude-haiku-4-5-20251001';
 const AI_MAX_TOKENS = 200;
 
 // Freshness window: re-using a recent score saves tokens on burst updates
@@ -78,7 +82,7 @@ export class LeadScoringService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
+    private readonly aiConfig: AiConfigService,
   ) {}
 
   // ─── Public API ────────────────────────────────────────────────────
@@ -177,24 +181,50 @@ export class LeadScoringService {
       daysSinceUpdate,
     });
 
-    const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
     let aiScore = 25; // neutral default on parse / transport failure
     let aiReason = 'AI scoring unavailable';
     let usedAi = false;
 
-    if (apiKey) {
+    // Resolve the per-org AI provider. resolveProvider() throws when the org
+    // has no key / AI is disabled / the monthly token cap is reached — any of
+    // those is a clean "AI unavailable" signal and we fall back to
+    // heuristic-only exactly as the no-key path did before.
+    const resolved = await this.aiConfig
+      .resolveProvider(orgId)
+      .catch((err) => {
+        this.logger.warn(
+          `AI scoring unavailable for org ${orgId} (${(err as Error).message}) — heuristic-only`,
+        );
+        return null;
+      });
+
+    if (resolved) {
       const userPrompt = this.buildAiPrompt({
         lead,
         recentNotes,
         inboundEmails,
         outboundEmails,
       });
-      const ai = await this.callAi(apiKey, userPrompt).catch((err) => {
-        this.logger.warn(
-          `AI scoring failed for lead ${leadId} (${(err as Error).message}) — falling back to neutral 25`,
-        );
-        return null;
-      });
+      const ai = await this.callAi(
+        resolved.provider,
+        resolved.model,
+        userPrompt,
+      )
+        .then((r) => {
+          // Meter token usage fire-and-forget — never block scoring on it.
+          void this.aiConfig.recordUsage(
+            orgId,
+            r.inputTokens,
+            r.outputTokens,
+          );
+          return r;
+        })
+        .catch((err) => {
+          this.logger.warn(
+            `AI scoring failed for lead ${leadId} (${(err as Error).message}) — falling back to neutral 25`,
+          );
+          return null;
+        });
       if (ai) {
         aiScore = ai.score;
         aiReason = ai.reason;
@@ -392,39 +422,31 @@ export class LeadScoringService {
     return combined;
   }
 
+  /**
+   * Run the scoring completion against the resolved per-org provider.
+   * Throws on transport / parse failure so the caller falls back to a
+   * neutral 25. Returns the parsed score plus token usage for metering.
+   */
   private async callAi(
-    apiKey: string,
+    provider: AiProvider,
+    model: string,
     userPrompt: string,
-  ): Promise<{ score: number; reason: string }> {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: AI_MAX_TOKENS,
-        system: AI_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
+  ): Promise<{
+    score: number;
+    reason: string;
+    inputTokens?: number;
+    outputTokens?: number;
+  }> {
+    const { text, inputTokens, outputTokens } = await provider.complete({
+      system: AI_SYSTEM_PROMPT,
+      userMessage: userPrompt,
+      maxTokens: AI_MAX_TOKENS,
+      model,
     });
-
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      throw new Error(`Anthropic ${res.status}: ${detail.slice(0, 200)}`);
-    }
-
-    const data: any = await res.json();
-    const text =
-      Array.isArray(data?.content) && typeof data.content[0]?.text === 'string'
-        ? data.content[0].text.trim()
-        : '';
 
     if (!text) throw new Error('Empty AI response');
 
-    return parseAiOutput(text);
+    return { ...parseAiOutput(text), inputTokens, outputTokens };
   }
 }
 

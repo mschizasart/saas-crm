@@ -108,6 +108,7 @@ model Organization {
   products           Product[]
   stockMovements     StockMovement[]
   emailSettings      EmailSettings?
+  aiSettings         AiSettings?
   einvoiceSettings   EInvoiceSettings?
   leadForms          LeadForm[]
   estimateRequestForms EstimateRequestForm[]
@@ -1652,6 +1653,32 @@ model EmailSettings {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("email_settings")
+}
+
+// Per-organization AI provider configuration (migration 015).
+// When absent OR provider = PLATFORM_DEFAULT, AI features fall back to the
+// platform-level ANTHROPIC_API_KEY env var. When a tenant brings their own
+// key, the platform no longer subsidises their token spend.
+model AiSettings {
+  id                   String    @id @default(uuid())
+  organizationId       String    @unique
+  // ANTHROPIC | OPENAI | PLATFORM_DEFAULT
+  provider             String    @default("PLATFORM_DEFAULT")
+  apiKey               String?   // AES-256-GCM encrypted (iv:tag:cipher hex) — never returned raw
+  model                String?   // e.g. claude-haiku-4-5-20251001, gpt-4o-mini
+  enabled              Boolean   @default(true)
+  // Soft monthly token cap — checked before each call, not mid-stream.
+  monthlyTokenCap      Int?
+  tokensUsedThisMonth  Int       @default(0)
+  usageResetAt         DateTime? // start of the current usage window
+  lastTestedAt         DateTime?
+  lastTestError        String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("ai_settings")
 }
 
 // Per-organization e-invoice / UBL XML configuration.

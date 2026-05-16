@@ -6,9 +6,9 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
 import { enforceAiRateLimit } from './rate-limit.util';
+import { AiConfigService } from './ai-config.service';
 
 /**
  * On-demand AI helpers for the /inbox view: thread summarization + reply
@@ -21,7 +21,6 @@ import { enforceAiRateLimit } from './rate-limit.util';
  * subject message's `messageId`. That gets the whole tree without recursion.
  */
 
-const MODEL = 'claude-haiku-4-5-20251001';
 const MAX_TOKENS_SUMMARY = 600;
 const MAX_TOKENS_DRAFT = 700;
 
@@ -79,7 +78,7 @@ export class InboxAiService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
+    private readonly aiConfig: AiConfigService,
   ) {}
 
   // ─── Public API ────────────────────────────────────────────────────
@@ -89,14 +88,13 @@ export class InboxAiService {
     orgId: string;
     messageId: string;
   }): Promise<{ summary: string }> {
-    const apiKey = this.requireApiKey();
     enforceAiRateLimit(args.userId);
 
     const thread = await this.loadThread(args.orgId, args.messageId);
     const userPrompt = this.buildThreadPrompt(thread);
 
-    const summary = await this.callAnthropic({
-      apiKey,
+    const summary = await this.callProvider({
+      orgId: args.orgId,
       system: SUMMARY_SYSTEM,
       user: userPrompt,
       maxTokens: MAX_TOKENS_SUMMARY,
@@ -123,7 +121,6 @@ export class InboxAiService {
       throw new BadRequestException(`Invalid tone "${tone}"`);
     }
 
-    const apiKey = this.requireApiKey();
     enforceAiRateLimit(args.userId);
 
     const thread = await this.loadThread(args.orgId, args.messageId);
@@ -134,8 +131,8 @@ export class InboxAiService {
 
     const userPrompt = this.buildThreadPrompt(thread);
 
-    const draft = await this.callAnthropic({
-      apiKey,
+    const draft = await this.callProvider({
+      orgId: args.orgId,
       system,
       user: userPrompt,
       maxTokens: MAX_TOKENS_DRAFT,
@@ -255,63 +252,42 @@ export class InboxAiService {
     return blocks.join('\n\n---\n\n');
   }
 
-  // ─── Anthropic call ────────────────────────────────────────────────
+  // ─── Provider call ─────────────────────────────────────────────────
 
-  private requireApiKey(): string {
-    const apiKey = this.config.get<string>('ANTHROPIC_API_KEY');
-    if (!apiKey) {
-      throw new ServiceUnavailableException(
-        'AI features are not configured by your administrator',
-      );
-    }
-    return apiKey;
-  }
-
-  private async callAnthropic(args: {
-    apiKey: string;
+  /**
+   * Resolve the per-org AI provider and run a single completion. The
+   * resolveProvider() call throws clean 503s for the not-configured /
+   * disabled / over-cap cases — those bubble straight to the client.
+   * Token usage is metered fire-and-forget.
+   */
+  private async callProvider(args: {
+    orgId: string;
     system: string;
     user: string;
     maxTokens: number;
   }): Promise<string> {
+    // Let resolveProvider's clean 503s bubble — don't wrap them.
+    const { provider, model } = await this.aiConfig.resolveProvider(
+      args.orgId,
+    );
+
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': args.apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          max_tokens: args.maxTokens,
-          system: args.system,
-          messages: [{ role: 'user', content: args.user }],
-        }),
+      const { text, inputTokens, outputTokens } = await provider.complete({
+        system: args.system,
+        userMessage: args.user,
+        maxTokens: args.maxTokens,
+        model,
       });
 
-      if (!res.ok) {
-        const detail = await safeReadText(res);
-        this.logger.warn(
-          `Anthropic returned ${res.status}: ${detail.slice(0, 300)}`,
-        );
-        throw new ServiceUnavailableException(
-          'AI service is temporarily unavailable',
-        );
-      }
-
-      const data: any = await res.json();
-      const text =
-        Array.isArray(data?.content) && typeof data.content[0]?.text === 'string'
-          ? data.content[0].text.trim()
-          : '';
-
       if (!text) {
-        this.logger.warn('Anthropic returned empty content');
+        this.logger.warn('AI provider returned empty content');
         throw new ServiceUnavailableException(
           'AI service is temporarily unavailable',
         );
       }
-      return text;
+
+      void this.aiConfig.recordUsage(args.orgId, inputTokens, outputTokens);
+      return text.trim();
     } catch (err) {
       if (err instanceof HttpException) throw err;
       this.logger.error(
@@ -344,12 +320,4 @@ function prefixReply(subject: string): string {
   const trimmed = subject.trim();
   if (/^re:/i.test(trimmed)) return trimmed;
   return `Re: ${trimmed}`;
-}
-
-async function safeReadText(res: Response): Promise<string> {
-  try {
-    return await res.text();
-  } catch {
-    return '';
-  }
 }

@@ -35,10 +35,11 @@ export class AiController {
   })
   async improveText(
     @Body() body: ImproveTextDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; organizationId: string },
   ) {
     return this.improver.improve({
       userId: user.id,
+      orgId: user.organizationId,
       text: body.text,
       tone: body.tone,
       maxLength: body.maxLength,
