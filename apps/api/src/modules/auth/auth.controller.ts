@@ -22,6 +22,8 @@ import {
   ResetPasswordDto,
   RegisterOrganizationDto,
   PortalRegisterDto,
+  SelectOrgDto,
+  SwitchOrgDto,
 } from './dto/auth.dto';
 
 @ApiTags('Auth')
@@ -59,6 +61,36 @@ export class AuthController {
       return { success: false, message: 'Invalid token' };
     }
     return this.authService.verify2fa(payload.sub, dto.code);
+  }
+
+  // ─── Multi-org selection / switching ──────────────────────
+  //
+  // /select-org completes a login when the user belongs to 2+ orgs.
+  // /switch-org swaps the active org mid-session (requires a valid
+  // access token). Both return an accessToken+refreshToken pair just
+  // like /login does in the single-org case.
+
+  @Post('select-org')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Complete a multi-org login by choosing which organization to enter.',
+  })
+  async selectOrg(@Body() dto: SelectOrgDto) {
+    return this.authService.selectOrg(dto.orgSelectionToken, dto.orgId);
+  }
+
+  @Post('switch-org')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Swap the active organization for the current session. Returns a new token pair.',
+  })
+  async switchOrg(@CurrentUser() user: any, @Body() dto: SwitchOrgDto) {
+    return this.authService.switchOrg(user.id, dto.orgId);
   }
 
   // ─── Client portal login ───────────────────────────────────

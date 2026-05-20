@@ -10,6 +10,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { UsersModule } from './modules/users/users.module';
+import { MembershipsModule } from './modules/memberships/memberships.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { LeadsModule } from './modules/leads/leads.module';
@@ -92,6 +93,7 @@ import { PushModule } from './modules/push/push.module';
     PlatformModule,
     OrganizationsModule,
     UsersModule,
+    MembershipsModule,
     RolesModule,
     ClientsModule,
     LeadsModule,

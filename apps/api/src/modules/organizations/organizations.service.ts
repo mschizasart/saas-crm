@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 
 type SettingsUpdate =
@@ -175,6 +180,184 @@ export class OrganizationsService {
     const existing = await this.prisma.currency.findFirst({ where: { id, organizationId: orgId } });
     if (!existing) throw new NotFoundException('Currency not found');
     await this.prisma.currency.delete({ where: { id } });
+  }
+
+  // ─── Onboarding ───────────────────────────────────────────
+
+  /**
+   * Allowed values for `onboardingStep`. Must stay in sync with the web
+   * wizard's URL slugs (`apps/web/app/(admin)/onboarding/...`). The
+   * special value `'done'` is what we record alongside `completedAt`.
+   */
+  static readonly ONBOARDING_STEPS = [
+    'welcome',
+    'org_details',
+    'team',
+    'first_client',
+    'first_lead',
+    'email',
+    'ai',
+    'done',
+  ] as const;
+
+  /**
+   * Return wizard state + a slim view of the org for pre-filling forms.
+   * Always returns 200 — empty state for fresh tenants.
+   */
+  async getOnboarding(orgId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        logo: true,
+        address: true,
+        city: true,
+        state: true,
+        zipCode: true,
+        country: true,
+        phone: true,
+        website: true,
+        vatNumber: true,
+        settings: true,
+        // Note: defaultCurrencyId/timezone live in `settings` JSON since we
+        // don't have dedicated columns for them on Organization.
+        onboardingCompletedAt: true,
+        onboardingStep: true,
+        onboardingSkipped: true,
+      },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    return {
+      completedAt: org.onboardingCompletedAt,
+      currentStep: org.onboardingStep,
+      skipped: org.onboardingSkipped,
+      organization: {
+        id: org.id,
+        name: org.name,
+        slug: org.slug,
+        logo: org.logo,
+        address: org.address,
+        city: org.city,
+        state: org.state,
+        zipCode: org.zipCode,
+        country: org.country,
+        phone: org.phone,
+        website: org.website,
+        vatNumber: org.vatNumber,
+        timezone: (org.settings as any)?.timezone ?? null,
+        defaultCurrencyId: (org.settings as any)?.defaultCurrencyId ?? null,
+      },
+    };
+  }
+
+  /**
+   * Patch onboarding state. Optional fields:
+   *   - step:    advance `onboardingStep` (validated against ONBOARDING_STEPS)
+   *   - skip:    if true, set `onboardingSkipped=true`
+   *   - complete:if true, set `onboardingCompletedAt=now()` and step='done'
+   *   - orgUpdates: shallow merge into Organization columns and/or settings
+   */
+  async updateOnboarding(
+    orgId: string,
+    body: {
+      step?: string;
+      skip?: boolean;
+      complete?: boolean;
+      orgUpdates?: Partial<{
+        name: string;
+        logo: string;
+        address: string;
+        city: string;
+        state: string;
+        zipCode: string;
+        country: string;
+        phone: string;
+        website: string;
+        vatNumber: string;
+        timezone: string;
+        defaultCurrencyId: string;
+      }>;
+    },
+  ) {
+    const data: Record<string, any> = {};
+
+    if (body.step !== undefined) {
+      const allowed = OrganizationsService.ONBOARDING_STEPS as readonly string[];
+      if (!allowed.includes(body.step)) {
+        throw new BadRequestException(
+          `Invalid onboarding step "${body.step}". Allowed: ${allowed.join(', ')}`,
+        );
+      }
+      data.onboardingStep = body.step;
+    }
+
+    if (body.skip === true) {
+      data.onboardingSkipped = true;
+    }
+
+    if (body.complete === true) {
+      data.onboardingCompletedAt = new Date();
+      data.onboardingStep = 'done';
+    }
+
+    // Apply orgUpdates if provided — column fields go on `data`, the two
+    // "soft" settings (timezone, defaultCurrencyId) merge into settings JSON.
+    if (body.orgUpdates) {
+      const u = body.orgUpdates;
+      const COLUMN_FIELDS = [
+        'name',
+        'logo',
+        'address',
+        'city',
+        'state',
+        'zipCode',
+        'country',
+        'phone',
+        'website',
+        'vatNumber',
+      ] as const;
+      for (const k of COLUMN_FIELDS) {
+        if (u[k] !== undefined) data[k] = u[k];
+      }
+      if (u.timezone !== undefined || u.defaultCurrencyId !== undefined) {
+        const current = await this.prisma.organization.findUnique({
+          where: { id: orgId },
+          select: { settings: true },
+        });
+        const settings = ((current?.settings as Record<string, any>) ?? {});
+        if (u.timezone !== undefined) settings.timezone = u.timezone;
+        if (u.defaultCurrencyId !== undefined)
+          settings.defaultCurrencyId = u.defaultCurrencyId;
+        data.settings = settings;
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      // No-op patch — just return current state.
+      return this.getOnboarding(orgId);
+    }
+
+    await this.prisma.organization.update({ where: { id: orgId }, data });
+    return this.getOnboarding(orgId);
+  }
+
+  /**
+   * Reset onboarding state so a power user can re-run the tour.
+   * Called from `/settings → Re-run onboarding tour`.
+   */
+  async resetOnboarding(orgId: string) {
+    await this.prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        onboardingCompletedAt: null,
+        onboardingStep: null,
+        onboardingSkipped: false,
+      },
+    });
+    return this.getOnboarding(orgId);
   }
 
   // ─── Usage Stats ──────────────────────────────────────────

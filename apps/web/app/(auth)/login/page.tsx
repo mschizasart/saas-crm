@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Building2, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n/use-i18n';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -18,6 +18,14 @@ const loginSchema = z.object({
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
+
+interface OrgMembershipChoice {
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+  role: string;
+  isPrimary: boolean;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,6 +40,17 @@ export default function LoginPage() {
   const [twoFaCode, setTwoFaCode] = useState('');
   const [useRecoveryCode, setUseRecoveryCode] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Multi-org selection state.
+  //
+  // The API returns { requiresOrgSelection: true, orgSelectionToken, memberships }
+  // either directly from /login (no 2FA) or from /auth/2fa/login (after a
+  // successful 2FA verification). In both cases we drop into this branch.
+  const [orgSelection, setOrgSelection] = useState<{
+    token: string;
+    memberships: OrgMembershipChoice[];
+  } | null>(null);
+  const [pickingOrgId, setPickingOrgId] = useState<string | null>(null);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -66,6 +85,16 @@ export default function LoginPage() {
         if (body.twoFactorToken) setTwoFactorToken(body.twoFactorToken);
         if (body.tempToken) setTempToken(body.tempToken);
         setRequires2fa(true);
+        return;
+      }
+      if (body.requiresOrgSelection) {
+        // Multi-org user, no 2FA. Layer "select organization" UI before
+        // the dashboard. The API has NOT issued an access token yet —
+        // we'll receive one from /auth/select-org.
+        setOrgSelection({
+          token: body.orgSelectionToken,
+          memberships: body.memberships ?? [],
+        });
         return;
       }
       await saveTokens(body.accessToken, body.refreshToken);
@@ -107,6 +136,19 @@ export default function LoginPage() {
         toast.error(body.message || 'Invalid verification code');
         return;
       }
+      if (body.requiresOrgSelection) {
+        // 2FA passed but the user belongs to multiple orgs. Hop into the
+        // org-select step before granting access. NB: at this point the
+        // API still hasn't minted an access token.
+        setRequires2fa(false);
+        setUseRecoveryCode(false);
+        setTwoFaCode('');
+        setOrgSelection({
+          token: body.orgSelectionToken,
+          memberships: body.memberships ?? [],
+        });
+        return;
+      }
       await saveTokens(body.accessToken, body.refreshToken);
       window.location.href = '/dashboard';
     } catch {
@@ -115,6 +157,80 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  const handleOrgPick = async (m: OrgMembershipChoice) => {
+    if (!orgSelection) return;
+    setPickingOrgId(m.orgId);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/select-org`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgSelectionToken: orgSelection.token,
+          orgId: m.orgId,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.success === false) {
+        toast.error(body.message || 'Could not enter that organization');
+        return;
+      }
+      await saveTokens(body.accessToken, body.refreshToken);
+      toast.success(`Welcome to ${m.orgName}`);
+      window.location.href = '/dashboard';
+    } catch {
+      toast.error('Could not enter that organization');
+    } finally {
+      setPickingOrgId(null);
+    }
+  };
+
+  if (orgSelection) {
+    return (
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-8">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+          Choose an organization
+        </h2>
+        <p className="text-gray-500 dark:text-gray-400 mb-6">
+          Your account belongs to multiple organizations. Pick one to continue.
+        </p>
+        <div className="space-y-2">
+          {orgSelection.memberships.map((m) => {
+            const busy = pickingOrgId === m.orgId;
+            return (
+              <button
+                key={m.orgId}
+                onClick={() => handleOrgPick(m)}
+                disabled={busy}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left disabled:opacity-60"
+              >
+                <Building2 className="w-5 h-5 text-gray-500 dark:text-gray-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                    {m.orgName}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {m.role}
+                    {m.isPrimary ? ' · primary' : ''}
+                  </div>
+                </div>
+                {busy && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          onClick={() => {
+            setOrgSelection(null);
+            setPickingOrgId(null);
+          }}
+          className="w-full mt-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 text-sm"
+        >
+          {t('auth.backToLogin')}
+        </button>
+      </div>
+    );
+  }
 
   if (requires2fa) {
     const supportsRecovery = !!twoFactorToken; // recovery codes only work with the new flow

@@ -243,11 +243,24 @@ export class TwoFactorAuthService {
       });
     }
 
+    // After the TOTP code validates, layer the multi-org selection step.
+    // - 0/1 memberships → mint the access token as before.
+    // - 2+ memberships  → return the same `requiresOrgSelection` envelope
+    //   used by the non-2FA branch; the client then POSTs to
+    //   /auth/select-org. The order is therefore: login → 2fa → org-select.
+    const orgChoice = await this.authService.resolveLoginOrg(user);
+    if (orgChoice.requiresOrgSelection) {
+      return orgChoice;
+    }
+
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLogin: new Date() },
     });
 
-    return this.authService.generateTokenPair(user);
+    return this.authService.generateTokenPair({
+      ...user,
+      organizationId: orgChoice.organizationId,
+    });
   }
 }

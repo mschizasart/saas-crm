@@ -27,32 +27,34 @@ export class AuthService {
   // ─── Validate credentials ──────────────────────────────────
 
   async validateUser(email: string, password: string) {
-    const user = await this.prisma.user.findFirst({
+    // Email is only unique PER ORG (@@unique([organizationId, email])), so the
+    // same address can map to several User rows (one per org). `findFirst`
+    // here was non-deterministic — it could return a row whose password
+    // differs from the one the user typed, producing a spurious "invalid
+    // credentials" even for a correct password. Iterate every candidate and
+    // return the first whose password matches.
+    const candidates = await this.prisma.user.findMany({
       where: { email, active: true },
       include: { role: true },
+      orderBy: { createdAt: 'asc' },
     });
 
-    if (!user || !user.password) return null;
+    for (const user of candidates) {
+      if (!user.password) continue;
 
-    let valid = false;
-    if (user.passwordFormat === 'bcrypt') {
-      valid = await bcrypt.compare(password, user.password);
-    } else if (user.passwordFormat === 'phpass') {
-      // Migrated Perfex users — node-phpass must be installed separately
-      // Run: pnpm add node-phpass (in apps/api) when migrating from Perfex
-      // For now, force password reset on first login attempt
-      // TODO: uncomment after installing node-phpass:
-      // const phpass = new (require('node-phpass').PhpassHash)(8, false);
-      // valid = phpass.CheckPassword(password, user.password);
-      // if (valid) {
-      //   const hash = await bcrypt.hash(password, 12);
-      //   await this.prisma.user.update({ where: { id: user.id }, data: { password: hash, passwordFormat: 'bcrypt' } });
-      // }
-      valid = false; // triggers password reset flow during migration
+      let valid = false;
+      if (user.passwordFormat === 'bcrypt') {
+        valid = await bcrypt.compare(password, user.password);
+      } else if (user.passwordFormat === 'phpass') {
+        // Migrated Perfex users — node-phpass must be installed separately.
+        // For now, treat as invalid to trigger the password-reset flow.
+        valid = false;
+      }
+
+      if (valid) return user;
     }
 
-    if (!valid) return null;
-    return user;
+    return null;
   }
 
   // ─── Login ─────────────────────────────────────────────────
@@ -61,6 +63,8 @@ export class AuthService {
     // If the user has TOTP-based 2FA enabled (new flow), short-circuit
     // before issuing a real session — the frontend must POST the TOTP code
     // (or a recovery code) to /auth/2fa/login with the returned token.
+    // The org-selection step (when the user belongs to multiple orgs) is
+    // handled by `twofa.service.ts#loginWithCode` AFTER the code is verified.
     if (user.twoFactorEnabled) {
       const twoFactorToken = this.jwt.sign(
         { sub: user.id, purpose: '2fa' },
@@ -79,13 +83,156 @@ export class AuthService {
       return { requires2fa: true, tempToken };
     }
 
+    // Multi-org check: if the user has 2+ accepted memberships, return a
+    // short-lived org-selection token instead of an access token. The
+    // frontend POSTs to /auth/select-org with the chosen orgId.
+    const orgChoice = await this.resolveLoginOrg(user);
+    if (orgChoice.requiresOrgSelection) {
+      return orgChoice;
+    }
+
     // Update last login only when we're actually issuing a session.
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLogin: new Date() },
     });
 
-    return this.generateTokenPair(user);
+    return this.generateTokenPair({ ...user, organizationId: orgChoice.organizationId });
+  }
+
+  /**
+   * Decide which org a freshly-authenticated user should land in.
+   *  - 0 memberships → fall back to `user.organizationId` (legacy single-org
+   *    users that pre-date the join table). Defensive — backfill should
+   *    eliminate this case in practice.
+   *  - 1 membership  → that org, no picker.
+   *  - 2+ memberships → return a `requiresOrgSelection` envelope with a
+   *    short-lived selection token; the caller will NOT issue an access
+   *    token. The frontend resumes via POST /auth/select-org.
+   */
+  async resolveLoginOrg(user: any): Promise<
+    | {
+        requiresOrgSelection: false;
+        organizationId: string;
+      }
+    | {
+        requiresOrgSelection: true;
+        orgSelectionToken: string;
+        memberships: Array<{
+          orgId: string;
+          orgName: string;
+          orgSlug: string;
+          role: string;
+          isPrimary: boolean;
+        }>;
+      }
+  > {
+    const memberships = await this.prisma.userOrganizationMembership.findMany({
+      where: { userId: user.id, acceptedAt: { not: null } },
+      include: {
+        organization: { select: { id: true, name: true, slug: true } },
+      },
+    });
+
+    if (memberships.length === 0) {
+      // Backward-compat: no rows in the join table → trust the legacy
+      // `User.organizationId`. Should be impossible after the backfill,
+      // but guard anyway.
+      return {
+        requiresOrgSelection: false,
+        organizationId: user.organizationId,
+      };
+    }
+
+    if (memberships.length === 1) {
+      return {
+        requiresOrgSelection: false,
+        organizationId: memberships[0].organizationId,
+      };
+    }
+
+    // 2+ orgs → ask the user which one to log into. Issue a short JWT
+    // that the client echoes back to /auth/select-org. The purpose claim
+    // prevents accidental use as an access token.
+    const orgSelectionToken = this.jwt.sign(
+      { sub: user.id, purpose: 'org-select' },
+      { expiresIn: '10m' },
+    );
+
+    return {
+      requiresOrgSelection: true,
+      orgSelectionToken,
+      memberships: memberships.map((m) => ({
+        orgId: m.organizationId,
+        orgName: m.organization.name,
+        orgSlug: m.organization.slug,
+        role: m.role,
+        isPrimary: m.isPrimary,
+      })),
+    };
+  }
+
+  /**
+   * Step 3 of the multi-org login flow. The client posts the
+   * org-selection JWT it received from /login (or /auth/2fa/login)
+   * together with the chosen orgId. We verify:
+   *   - the token is a valid `purpose:"org-select"` JWT and not expired
+   *   - the user actually has an *accepted* membership in `orgId`
+   * On success we mint a real access/refresh pair anchored at `orgId`.
+   */
+  async selectOrg(orgSelectionToken: string, orgId: string) {
+    let payload: any;
+    try {
+      payload = this.jwt.verify(orgSelectionToken);
+    } catch {
+      throw new UnauthorizedException('Invalid or expired selection token');
+    }
+    if (payload.purpose !== 'org-select' || !payload.sub) {
+      throw new UnauthorizedException('Invalid selection token');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+    });
+    if (!user || !user.active) throw new UnauthorizedException();
+
+    const membership = await this.prisma.userOrganizationMembership.findUnique({
+      where: { userId_organizationId: { userId: user.id, organizationId: orgId } },
+    });
+    if (!membership || !membership.acceptedAt) {
+      throw new UnauthorizedException('You do not have access to that organization');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() },
+    });
+
+    // Mint the real token pair, overriding the legacy `organizationId`
+    // so the JWT.orgId reflects the *selected* tenant.
+    return this.generateTokenPair({ ...user, organizationId: orgId });
+  }
+
+  /**
+   * Mid-session org swap. The caller is already authenticated; this
+   * re-mints their token pair with a different `orgId` claim. We verify
+   * the user still has an accepted membership in the target org — an
+   * admin may have revoked access since this session was issued.
+   *
+   * Returns the same shape as /auth/login (accessToken + refreshToken).
+   */
+  async switchOrg(userId: string, orgId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.active) throw new UnauthorizedException();
+
+    const membership = await this.prisma.userOrganizationMembership.findUnique({
+      where: { userId_organizationId: { userId, organizationId: orgId } },
+    });
+    if (!membership || !membership.acceptedAt) {
+      throw new UnauthorizedException('You do not have access to that organization');
+    }
+
+    return this.generateTokenPair({ ...user, organizationId: orgId });
   }
 
   async verify2fa(userId: string, code: string) {
@@ -98,23 +245,91 @@ export class AuthService {
     });
     if (!valid) throw new UnauthorizedException('Invalid 2FA code');
 
+    // Layer the multi-org selection step after the legacy 2FA code
+    // validates, mirroring twofa.service#loginWithCode. Without this,
+    // multi-org users on the legacy /auth/2fa/verify path skip
+    // org-selection and get dropped into their primary org by default.
+    //  - 0/1 memberships → mint the access token as before.
+    //  - 2+ memberships  → return the `requiresOrgSelection` envelope;
+    //    the client then POSTs to /auth/select-org.
+    const orgChoice = await this.resolveLoginOrg(user);
+    if (orgChoice.requiresOrgSelection) {
+      return orgChoice;
+    }
+
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLogin: new Date() },
     });
 
-    return this.generateTokenPair(user);
+    return this.generateTokenPair({
+      ...user,
+      organizationId: orgChoice.organizationId,
+    });
   }
 
   // ─── Token management ──────────────────────────────────────
 
+  /**
+   * Derive admin status for a user *within a specific org*, mirroring
+   * JwtStrategy.validate so the baked `isAdmin` JWT claim agrees with the
+   * per-request re-resolution.
+   *
+   *  - accepted membership for (userId, orgId) → admin iff role is
+   *    'admin' or 'owner'.
+   *  - no membership row + legacy primary org matches → fall back to the
+   *    legacy `User.isAdmin` flag (backward compat for un-migrated users).
+   *  - otherwise → not admin.
+   */
+  async resolveIsAdminForOrg(
+    userId: string,
+    orgId: string,
+    legacyIsAdmin: boolean,
+  ): Promise<boolean> {
+    if (!orgId) return false;
+
+    const membership = await this.prisma.userOrganizationMembership.findUnique({
+      where: { userId_organizationId: { userId, organizationId: orgId } },
+      select: { role: true, acceptedAt: true },
+    });
+
+    if (membership && membership.acceptedAt !== null) {
+      return membership.role === 'admin' || membership.role === 'owner';
+    }
+
+    if (!membership) {
+      const legacyUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { organizationId: true },
+      });
+      if (legacyUser?.organizationId === orgId) {
+        return legacyIsAdmin === true;
+      }
+    }
+
+    return false;
+  }
+
   async generateTokenPair(user: any) {
+    // Resolve the `isAdmin` claim for the org the token is being minted
+    // for. `user.organizationId` here is the *active* org (callers such
+    // as selectOrg/switchOrg/refreshTokens override it). The User row's
+    // `isAdmin` column only reflects the PRIMARY org, so we must derive
+    // admin status from the membership for the active org — otherwise the
+    // baked claim would disagree with JwtStrategy.validate (which
+    // re-resolves per-org on every request and is authoritative).
+    const isAdmin = await this.resolveIsAdminForOrg(
+      user.id,
+      user.organizationId,
+      user.isAdmin === true,
+    );
+
     const payload = {
       sub: user.id,
       orgId: user.organizationId,
       type: user.type,
       aud: user.type === 'contact' ? 'portal' : 'staff',
-      isAdmin: user.isAdmin,
+      isAdmin,
       roleId: user.roleId,
     };
 
@@ -164,7 +379,36 @@ export class AuthService {
     });
     if (!user || !user.active) throw new UnauthorizedException();
 
-    return this.generateTokenPair(user);
+    // Preserve the ACTIVE org across refresh. The expiring refresh token
+    // carries the org the session is anchored at (payload.orgId). Without
+    // this, generateTokenPair(user) would fall back to the user's legacy
+    // primary org and silently move a multi-org user out of the org they
+    // switched into.
+    let activeOrgId: string = payload.orgId ?? user.organizationId;
+
+    // Defence-in-depth: verify the user still has an accepted membership in
+    // the org the token is anchored at. Access could have been revoked
+    // since the session was minted. If revoked, fall back to the legacy
+    // primary org with a fresh token rather than hard-failing the refresh —
+    // a softer mid-session UX than a 401 (the TenantInterceptor + RbacGuard
+    // still gate what the user can actually touch in any org).
+    if (activeOrgId && activeOrgId !== user.organizationId) {
+      const membership =
+        await this.prisma.userOrganizationMembership.findUnique({
+          where: {
+            userId_organizationId: {
+              userId: user.id,
+              organizationId: activeOrgId,
+            },
+          },
+          select: { acceptedAt: true },
+        });
+      if (!membership || membership.acceptedAt === null) {
+        activeOrgId = user.organizationId;
+      }
+    }
+
+    return this.generateTokenPair({ ...user, organizationId: activeOrgId });
   }
 
   async logout(refreshToken: string) {
@@ -341,6 +585,23 @@ export class AuthService {
     } catch (err) {
       // Don't block registration if seeding fails — just log
       console.error('Seed defaults failed for new org', org.id, err);
+    }
+
+    // Seed a primary membership row so the new org owner shows up
+    // correctly in /memberships/me and the multi-org login flow.
+    try {
+      await this.prisma.userOrganizationMembership.create({
+        data: {
+          userId: org.users[0].id,
+          organizationId: org.id,
+          role: 'admin',
+          isPrimary: true,
+          acceptedAt: new Date(),
+        },
+      });
+    } catch (err) {
+      // Don't block registration — could fail only on a re-run race.
+      console.error('Primary membership seed failed for new org', org.id, err);
     }
 
     this.events.emit('organization.registered', { org });

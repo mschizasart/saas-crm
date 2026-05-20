@@ -17,6 +17,7 @@ import { getSocket } from '@/lib/socket';
 import { useI18n } from '@/lib/i18n/use-i18n';
 import { useTheme, type Theme } from '@/lib/theme';
 import { Moon, Sun, Monitor, Search } from 'lucide-react';
+import { OrgSwitcher } from '@/components/org-switcher';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -311,6 +312,7 @@ function useNavItems(): NavItem[] {
       icon: Settings,
       children: [
         { label: t('nav.general'), href: '/settings?tab=company', icon: Settings },
+        { label: 'Organizations', href: '/settings/organizations', icon: Building2 },
         { label: 'Security', href: '/settings/security', icon: KeyRound },
         { label: 'Notifications', href: '/settings/notifications', icon: Bell },
         { label: t('nav.email'), href: '/settings/email', icon: Bell },
@@ -450,6 +452,11 @@ export function AdminSidebar({ onClose }: { onClose?: () => void } = {}) {
             {typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent) ? '\u2318' : 'Ctrl+'}K
           </kbd>
         </button>
+      </div>
+
+      {/* Org switcher \u2014 renders nothing for single-org users */}
+      <div className="px-3 pb-1">
+        <OrgSwitcher />
       </div>
 
       {/* Nav */}

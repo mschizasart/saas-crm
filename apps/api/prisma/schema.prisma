@@ -63,6 +63,10 @@ model Organization {
   storageBytes       BigInt    @default(0)
   // Settings (replaces flat tbloptions key-value table)
   settings           Json      @default("{}")
+  // Onboarding wizard state (see manual-migrations/016-onboarding.sql)
+  onboardingCompletedAt DateTime?
+  onboardingStep        String?
+  onboardingSkipped     Boolean   @default(false)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -116,6 +120,11 @@ model Organization {
   inboxMessages      InboxMessage[]
   outboundMessages   OutboundMessage[]
   signatures         Signature[]
+  // Multi-org membership: every User row that explicitly belongs to this
+  // org via the new many-to-many table. The legacy `users` relation above
+  // (via `User.organizationId`) represents the user's primary/legacy org;
+  // this back-relation enumerates *additional* org memberships.
+  userMemberships    UserOrganizationMembership[]
 
   @@map("organizations")
 }
@@ -191,11 +200,41 @@ model User {
   newsfeedPosts  NewsfeedPost[]
   permissionOverrides UserPermissionOverride[]
   pushSubscriptions   PushSubscription[]
+  // Multi-org: a single human (User row) can be a member of multiple
+  // organizations. See `UserOrganizationMembership`. The legacy scalar
+  // `organizationId` above remains the user's *primary* org and the
+  // tenant the row is anchored to for RLS; memberships add additional
+  // orgs the same user can switch into without re-registering.
+  memberships    UserOrganizationMembership[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
   @@index([organizationId, type])
   @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Multi-org membership join table
+//  One row per (user, organization) pair the user can access.
+//  See manual-migrations/017-multi-org-membership.sql for the
+//  matching DDL + backfill.
+// ─────────────────────────────────────────────────────────────
+model UserOrganizationMembership {
+  id              String   @id @default(uuid())
+  userId          String
+  organizationId  String
+  role            String   // 'admin' | 'staff' | 'owner' — mirrors per-org role semantics
+  isPrimary       Boolean  @default(false)  // user's default org on login
+  invitedAt       DateTime @default(now())
+  acceptedAt      DateTime?
+
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("user_organization_memberships")
 }
 
 model UserPermissionOverride {

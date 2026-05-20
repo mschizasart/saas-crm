@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   CallHandler,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { PrismaService } from '../../database/prisma.service';
@@ -26,11 +27,14 @@ export class TenantInterceptor implements NestInterceptor {
   ): Promise<Observable<any>> {
     const request = context.switchToHttp().getRequest();
 
-    // Skip for platform-admin routes and known org-less public endpoints
+    // Skip for platform-admin routes and known org-less public endpoints.
+    // `/api/v1/memberships` is also skipped because it's intentionally
+    // cross-tenant — see modules/memberships/* for the rationale.
     const url = request.url ?? '';
     if (
       url.startsWith('/api/platform') ||
       url.startsWith('/api/v1/platform') ||
+      url.startsWith('/api/v1/memberships') ||
       url.startsWith('/api/v1/push/public-key') ||
       url.startsWith('/api/push/public-key')
     ) {
@@ -88,6 +92,49 @@ export class TenantInterceptor implements NestInterceptor {
           settings: true,
         },
       });
+    }
+
+    // 4. Multi-org safety net.
+    //
+    // Now that a single User can belong to multiple organizations, a stale
+    // JWT can point at an org the user has since been removed from. Verify
+    // that the JWT.orgId still corresponds to an *accepted* membership in
+    // user_organization_memberships. If it doesn't, we reject with 403 so
+    // the client drops the stale token and re-logs-in. Without this check,
+    // the request would continue with a tenant the user no longer has
+    // access to — defeating the whole point of membership revocation.
+    //
+    // The previous code had a legacy `User.organizationId === JWT.orgId`
+    // fallback "for un-migrated users". Post-backfill every user has a
+    // membership row, so that fallback only served to UNDERMINE
+    // revocation: a revoked user whose primary org still matched the JWT
+    // would slip through. It has been removed.
+    //
+    // The API-key carve-out is preserved — only JWT users get the check.
+    if (
+      organization &&
+      request.user?.sub /* JWT-authenticated, not API-key */ &&
+      request.user?.type !== 'api_key'
+    ) {
+      const userId = request.user.sub;
+      const membership =
+        await this.prisma.userOrganizationMembership.findUnique({
+          where: {
+            userId_organizationId: {
+              userId,
+              organizationId: organization.id,
+            },
+          },
+          select: { acceptedAt: true },
+        });
+
+      const hasMembership = !!membership && membership.acceptedAt !== null;
+
+      if (!hasMembership) {
+        throw new ForbiddenException(
+          'You no longer have access to this organization.',
+        );
+      }
     }
 
     if (!organization) {

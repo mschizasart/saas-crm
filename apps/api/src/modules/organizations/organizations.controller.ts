@@ -9,20 +9,36 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { OrganizationsService } from './organizations.service';
+import { UsersService } from '../users/users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+
+interface OnboardingPatchBody {
+  step?: string;
+  skip?: boolean;
+  complete?: boolean;
+  orgUpdates?: Record<string, any>;
+}
+
+interface InviteTeamBody {
+  invites: Array<{ email: string; role?: 'admin' | 'staff' }>;
+}
 
 @ApiTags('Organizations')
 @Controller({ version: '1', path: 'organizations' })
 @UseGuards(JwtAuthGuard, RbacGuard)
 @ApiBearerAuth()
 export class OrganizationsController {
-  constructor(private service: OrganizationsService) {}
+  constructor(
+    private service: OrganizationsService,
+    private users: UsersService,
+  ) {}
 
   @Get('current')
   async getCurrent(@CurrentOrg() org: any) {
@@ -44,6 +60,84 @@ export class OrganizationsController {
   @Get('usage')
   async getUsage(@CurrentOrg() org: any) {
     return this.service.getUsageStats(org.id);
+  }
+
+  // ─── Onboarding wizard ─────────────────────────────────────
+  //
+  // The wizard is URL-driven on the web; server state is the source of
+  // truth (no localStorage). See `apps/web/app/(admin)/onboarding/*`.
+
+  @Get('me/onboarding')
+  @ApiOperation({ summary: 'Get onboarding wizard state for current org' })
+  async getOnboarding(@CurrentOrg() org: any) {
+    return this.service.getOnboarding(org.id);
+  }
+
+  @Patch('me/onboarding')
+  @Permissions('settings.edit')
+  @ApiOperation({
+    summary: 'Advance / skip / complete onboarding (+ optional org updates)',
+  })
+  async patchOnboarding(
+    @CurrentOrg() org: any,
+    @Body() body: OnboardingPatchBody,
+  ) {
+    return this.service.updateOnboarding(org.id, body ?? {});
+  }
+
+  @Post('me/onboarding/reset')
+  @Permissions('settings.edit')
+  @ApiOperation({
+    summary: 'Reset onboarding state — used by the "Re-run tour" link in Settings',
+  })
+  async resetOnboarding(@CurrentOrg() org: any) {
+    return this.service.resetOnboarding(org.id);
+  }
+
+  @Post('me/invite-team')
+  @Permissions('users.create')
+  @ApiOperation({
+    summary: 'Bulk-invite teammates (delegates to UsersService.create)',
+  })
+  async inviteTeam(@CurrentOrg() org: any, @Body() body: InviteTeamBody) {
+    if (!body?.invites || !Array.isArray(body.invites) || body.invites.length === 0) {
+      throw new BadRequestException('At least one invite required');
+    }
+    const results: Array<{
+      email: string;
+      ok: boolean;
+      userId?: string;
+      error?: string;
+    }> = [];
+
+    for (const invite of body.invites) {
+      const email = (invite?.email ?? '').trim().toLowerCase();
+      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        results.push({ email, ok: false, error: 'Invalid email' });
+        continue;
+      }
+      try {
+        // Synthesise a placeholder name from the email — admins can edit
+        // after the invitee accepts. We delegate to UsersService.create so
+        // the password/email-notification path matches the normal flow.
+        const localPart = email.split('@')[0];
+        const created = await this.users.create(org.id, {
+          email,
+          firstName: localPart,
+          lastName: '',
+          isAdmin: invite.role === 'admin',
+        });
+        results.push({ email, ok: true, userId: created.id });
+      } catch (err: any) {
+        results.push({
+          email,
+          ok: false,
+          error: err?.message ?? 'Failed to invite',
+        });
+      }
+    }
+
+    return { invites: results };
   }
 
   // ─── Taxes ─────────────────────────────────────────────────

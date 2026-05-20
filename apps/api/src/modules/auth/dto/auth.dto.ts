@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsOptional, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class LoginDto {
@@ -81,6 +81,31 @@ export class RegisterOrganizationDto {
   @IsOptional()
   @IsString()
   currency?: string;
+}
+
+/**
+ * Multi-org login step 3: the client posts the short-lived selection
+ * token returned by /login (or /auth/2fa/login when the user has 2FA)
+ * together with the orgId they want to enter.
+ */
+export class SelectOrgDto {
+  @ApiProperty({ description: 'Short-lived org-selection JWT from /login' })
+  @IsString()
+  orgSelectionToken: string;
+
+  @ApiProperty({ description: 'Selected organization id' })
+  @IsUUID('4')
+  orgId: string;
+}
+
+/**
+ * Mid-session org swap: caller is already authenticated, wants to
+ * re-mint a token pair anchored at a different org they belong to.
+ */
+export class SwitchOrgDto {
+  @ApiProperty({ description: 'Target organization id (must be a membership)' })
+  @IsUUID('4')
+  orgId: string;
 }
 
 export class PortalRegisterDto {
