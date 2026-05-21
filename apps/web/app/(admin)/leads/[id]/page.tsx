@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useModalA11y } from '@/components/ui/use-modal-a11y';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
+import { DocumentPanel } from '@/components/ui/document-panel';
 
 interface LeadNote {
   id: string;
@@ -698,6 +699,9 @@ export default function LeadDetailPage() {
           )}
         </div>
       )}
+      <div className="mt-6">
+        <DocumentPanel entityType="lead" entityId={id} />
+      </div>
     </DetailPageLayout>
   );
 }

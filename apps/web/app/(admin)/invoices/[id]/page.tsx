@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 import { SentEmailsPanel } from '@/components/sent-emails-panel';
+import { DocumentPanel } from '@/components/ui/document-panel';
 
 // ---------------------------------------------------------------------------
 // Types

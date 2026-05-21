@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -17,7 +18,7 @@ import { UsersService } from '../users/users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
-import { Permissions } from '../../common/decorators/permissions.decorator';
+import { Permissions, Public } from '../../common/decorators/permissions.decorator';
 
 interface OnboardingPatchBody {
   step?: string;
@@ -28,6 +29,15 @@ interface OnboardingPatchBody {
 
 interface InviteTeamBody {
   invites: Array<{ email: string; role?: 'admin' | 'staff' }>;
+}
+
+interface BrandingPutBody {
+  logo?: string | null;
+  brandPrimaryColor?: string | null;
+  brandSidebarColor?: string | null;
+  brandFaviconUrl?: string | null;
+  brandEmailFooter?: string | null;
+  whiteLabelEnabled?: boolean;
 }
 
 @ApiTags('Organizations')
@@ -92,6 +102,25 @@ export class OrganizationsController {
   })
   async resetOnboarding(@CurrentOrg() org: any) {
     return this.service.resetOnboarding(org.id);
+  }
+
+  // ─── White-label branding ─────────────────────────────────
+  //
+  // GET is readable by any authenticated org user (the web app needs it to
+  // theme the shell). PUT is gated by `settings.edit`. Colors are validated
+  // server-side (strict hex) to prevent CSS injection.
+
+  @Get('me/branding')
+  @ApiOperation({ summary: 'Get white-label branding for current org' })
+  async getBranding(@CurrentOrg() org: any) {
+    return this.service.getBranding(org.id);
+  }
+
+  @Put('me/branding')
+  @Permissions('settings.edit')
+  @ApiOperation({ summary: 'Upsert white-label branding for current org' })
+  async putBranding(@CurrentOrg() org: any, @Body() body: BrandingPutBody) {
+    return this.service.updateBranding(org.id, body ?? {});
   }
 
   @Post('me/invite-team')

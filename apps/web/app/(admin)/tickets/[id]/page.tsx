@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { useModalA11y } from '@/components/ui/use-modal-a11y';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 import { AiImproveButton } from '@/components/ui/ai-improve-button';
+import { DocumentPanel } from '@/components/ui/document-panel';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -672,6 +673,9 @@ export default function TicketDetailPage() {
           Tickets merged
         </div>
       )}
+      <div className="mt-6">
+        <DocumentPanel entityType="ticket" entityId={ticketId} />
+      </div>
     </DetailPageLayout>
   );
 }

@@ -140,6 +140,21 @@ export class EmailsService {
         }
       }
 
+      // Append the per-org white-label email footer (if configured). The
+      // footer was already <script>-stripped on save (organizations.service),
+      // but we strip again here as defence-in-depth before it lands in mail.
+      // Best-effort: a footer lookup failure must never block sending.
+      if (opts.orgId && this.prisma) {
+        try {
+          const footer = await this.resolveBrandEmailFooter(opts.orgId);
+          if (footer) html = `${html}${footer}`;
+        } catch (e) {
+          this.logger.warn(
+            `Could not load brand email footer for org ${opts.orgId}: ${(e as Error)?.message}`,
+          );
+        }
+      }
+
       // Per-org path — only when the service is wired AND an orgId is provided.
       if (opts.orgId && this.emailSettings) {
         const cfg = await this.emailSettings.resolveConfig(opts.orgId);
@@ -212,6 +227,28 @@ export class EmailsService {
       this.logger.error(`Email send failed to ${opts.to}`, e as any);
       throw e;
     }
+  }
+
+  // ─── White-label email footer ─────────────────────────────────────────────
+
+  /**
+   * Load the org's `brandEmailFooter` and return a send-ready HTML fragment,
+   * or `null` when unset / empty. Defence-in-depth: <script> blocks are
+   * stripped again here even though they were stripped on save. The footer
+   * is wrapped in a divider so it visually separates from the message body.
+   */
+  private async resolveBrandEmailFooter(orgId: string): Promise<string | null> {
+    if (!this.prisma) return null;
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { brandEmailFooter: true },
+    });
+    const raw = org?.brandEmailFooter?.trim();
+    if (!raw) return null;
+    const safe = raw
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+      .replace(/<\/?script\b[^>]*>/gi, '');
+    return `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;">${safe}</div>`;
   }
 
   // ─── Tracking helpers ─────────────────────────────────────────────────────

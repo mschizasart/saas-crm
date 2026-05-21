@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 import { SentEmailsPanel } from '@/components/sent-emails-panel';
+import { DocumentPanel } from '@/components/ui/document-panel';
 
 interface Item {
   id?: string;
@@ -189,6 +190,9 @@ export default function EstimateDetailPage() {
           )}
         </div>
       )}
+      <div className="mt-6">
+        <DocumentPanel entityType="estimate" entityId={id} />
+      </div>
     </DetailPageLayout>
   );
 }

@@ -40,6 +40,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { ExportsModule } from './modules/exports/exports.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 import { AiModule } from './modules/ai/ai.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { GoalsModule } from './modules/goals/goals.module';
@@ -123,6 +124,7 @@ import { PushModule } from './modules/push/push.module';
     ExportsModule,
     BillingModule,
     StorageModule,
+    DocumentsModule,
     AiModule,
     SurveysModule,
     GoalsModule,

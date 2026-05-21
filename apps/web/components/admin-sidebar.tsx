@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
 import { useI18n } from '@/lib/i18n/use-i18n';
 import { useTheme, type Theme } from '@/lib/theme';
-import { Moon, Sun, Monitor, Search } from 'lucide-react';
+import { Moon, Sun, Monitor, Search, Palette } from 'lucide-react';
 import { OrgSwitcher } from '@/components/org-switcher';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -318,6 +318,7 @@ function useNavItems(): NavItem[] {
         { label: t('nav.email'), href: '/settings/email', icon: Bell },
         { label: 'AI', href: '/settings/ai', icon: Sparkles },
         { label: 'E-Invoice', href: '/settings/einvoice', icon: FileCode },
+        { label: 'Branding', href: '/settings/branding', icon: Palette },
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },
         { label: t('nav.customFields'), href: '/settings/custom-fields', icon: FileText },
         { label: t('nav.tags'), href: '/settings/tags', icon: Tag },

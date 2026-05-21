@@ -67,6 +67,14 @@ model Organization {
   onboardingCompletedAt DateTime?
   onboardingStep        String?
   onboardingSkipped     Boolean   @default(false)
+  // White-label branding (see manual-migrations/020-branding.sql).
+  // NOTE: the existing `logo` column above is REUSED as the brand logo —
+  // there is intentionally no separate `brandLogoUrl`.
+  brandPrimaryColor  String?                    // hex, e.g. #3B82F6 — accent/primary
+  brandSidebarColor  String?                    // hex — sidebar background (falls back to default dark)
+  brandFaviconUrl    String?                    // optional favicon URL
+  brandEmailFooter   String?                    // optional HTML/text appended to outgoing mail
+  whiteLabelEnabled  Boolean   @default(false)  // master toggle; false = platform defaults
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -120,6 +128,8 @@ model Organization {
   inboxMessages      InboxMessage[]
   outboundMessages   OutboundMessage[]
   signatures         Signature[]
+  documents          Document[]
+  documentVersions   DocumentVersion[]
   // Multi-org membership: every User row that explicitly belongs to this
   // org via the new many-to-many table. The legacy `users` relation above
   // (via `User.organizationId`) represents the user's primary/legacy org;
@@ -223,17 +233,36 @@ model UserOrganizationMembership {
   id              String   @id @default(uuid())
   userId          String
   organizationId  String
-  role            String   // 'admin' | 'staff' | 'owner' — mirrors per-org role semantics
+  // Coarse "role tier" string — 'admin' | 'staff' | 'owner'. Drives the
+  // `isAdmin` bypass in JwtStrategy (admin/owner → isAdmin). This is NOT
+  // the granular permission set; see `roleId` below for that. Conceptually
+  // this is the membership's "roleTier"; the column name stays `role` for
+  // backward compatibility with migration 017.
+  role            String   // 'admin' | 'staff' | 'owner' — role TIER, drives isAdmin
+  // FK to a Role in the SAME org as this membership. Carries the granular
+  // `permissions` JSON used by RbacGuard for the ACTIVE org. Nullable: a
+  // membership can exist before any Role is assigned, in which case the
+  // user fails closed to no permissions in that org. ON DELETE SET NULL so
+  // deleting a Role downgrades affected members to fail-closed rather than
+  // cascading the membership away. See migration 018-membership-role-fk.sql.
+  roleId          String?
   isPrimary       Boolean  @default(false)  // user's default org on login
   invitedAt       DateTime @default(now())
   acceptedAt      DateTime?
 
   user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // The granular per-org Role (with its permissions JSON). The application
+  // layer is responsible for ensuring the referenced Role belongs to the
+  // same `organizationId` as this membership (the DB FK alone can't express
+  // that cross-column constraint). Named `membershipRole` to avoid clashing
+  // with the `role` tier string field above.
+  membershipRole  Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
 
   @@unique([userId, organizationId])
   @@index([userId])
   @@index([organizationId])
+  @@index([roleId])
   @@map("user_organization_memberships")
 }
 
@@ -276,6 +305,9 @@ model Role {
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   users          User[]
+  // Back-relation for per-org memberships that point at this Role via
+  // UserOrganizationMembership.roleId (granular per-org permissions).
+  memberships    UserOrganizationMembership[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2397,4 +2429,56 @@ model PushSubscription {
   @@index([userId])
   @@index([organizationId])
   @@map("push_subscriptions")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DOCUMENT STORAGE (polymorphic, versioned)
+// ═══════════════════════════════════════════════════════════════
+//
+// A `Document` is a logical file attached to any record (client,
+// invoice, estimate, project, ticket, lead). It is polymorphic on
+// (entityType, entityId) — no FK, because the parent is one of many
+// tables; the service layer validates the entity exists in the org.
+//
+// Each upload of a new revision creates a `DocumentVersion` row with a
+// monotonically-increasing 1-based `version` number. The bytes live in
+// MinIO (see StorageService); the DB only holds metadata + the object
+// key. `Document.currentVersionId` points at the latest version.
+model Document {
+  id               String   @id @default(uuid())
+  organizationId   String
+  entityType       String   // 'client' | 'invoice' | 'estimate' | 'project' | 'ticket' | 'lead'
+  entityId         String   // polymorphic — no FK
+  name             String   // display filename
+  currentVersionId String?  // points at the latest DocumentVersion
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  versions         DocumentVersion[]
+
+  @@index([organizationId, entityType, entityId])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id             String   @id @default(uuid())
+  documentId     String
+  organizationId String
+  version        Int      // 1-based
+  storageKey     String   // MinIO object key
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  uploadedById   String?
+  note           String?  // version comment
+  createdAt      DateTime @default(now())
+
+  document       Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, version])
+  @@index([documentId])
+  @@map("document_versions")
 }

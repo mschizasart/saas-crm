@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
+import { DocumentPanel } from '@/components/ui/document-panel';
 import ClientStatementModal from './client-statement-modal';
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ function InvoiceStatusBadge({ status }: { status: string }) {
 // Page
 // ---------------------------------------------------------------------------
 
-type Tab = 'overview' | 'contacts' | 'invoices' | 'activity';
+type Tab = 'overview' | 'contacts' | 'invoices' | 'documents' | 'activity';
 
 interface ActivityItem {
   id: string;
@@ -332,6 +333,7 @@ export default function ClientDetailPage() {
     { key: 'overview', label: 'Overview' },
     { key: 'contacts', label: `Contacts (${client.contacts?.length ?? 0})` },
     { key: 'invoices', label: 'Invoices' },
+    { key: 'documents', label: 'Documents' },
     { key: 'activity', label: 'Activity' },
   ];
 
@@ -700,6 +702,11 @@ export default function ClientDetailPage() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* ── Documents tab ─────────────────────────────────────────────────── */}
+      {activeTab === 'documents' && (
+        <DocumentPanel entityType="client" entityId={clientId} />
       )}
 
       {/* ── Activity tab ──────────────────────────────────────────────────── */}

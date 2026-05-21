@@ -324,13 +324,20 @@ export class AuthService {
       user.isAdmin === true,
     );
 
+    // NOTE (escalation fix #3): we deliberately DROP the `roleId` claim. It
+    // used to bake `user.roleId` — the PRIMARY org's role — into every token,
+    // which was stale/wrong for tokens minted against a secondary active org.
+    // Nothing reads `payload.roleId` for authorization: JwtStrategy.validate
+    // re-resolves the EFFECTIVE active-org role from the membership FK on
+    // every request (and exposes it as `req.user.roleId`), and RbacGuard
+    // authorizes off `role.permissions`. Carrying a misleading claim was pure
+    // downside, so it is removed rather than recomputed.
     const payload = {
       sub: user.id,
       orgId: user.organizationId,
       type: user.type,
       aud: user.type === 'contact' ? 'portal' : 'staff',
       isAdmin,
-      roleId: user.roleId,
     };
 
     const accessToken = this.jwt.sign(payload, {

@@ -93,6 +93,138 @@ export class OrganizationsService {
     });
   }
 
+  // ─── White-label branding ─────────────────────────────────
+  //
+  // The existing `logo` column doubles as the brand logo, so it is
+  // included in the branding payload (read + write). All colors are
+  // validated against a strict hex regex before persistence to prevent
+  // CSS injection on the web side (the values land in `style` / CSS vars).
+
+  static readonly HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+  /** Safe display branding fields read by any authenticated org user. */
+  async getBranding(orgId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        logo: true,
+        customDomain: true,
+        brandPrimaryColor: true,
+        brandSidebarColor: true,
+        brandFaviconUrl: true,
+        brandEmailFooter: true,
+        whiteLabelEnabled: true,
+      },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+    return org;
+  }
+
+  /**
+   * Upsert branding fields. Colors are validated to be 6-digit hex so the
+   * web layer can safely inject them into CSS variables / inline styles.
+   * Logo/favicon URLs are stored as-is (uploaded via the storage module).
+   */
+  async updateBranding(
+    orgId: string,
+    body: Partial<{
+      logo: string | null;
+      brandPrimaryColor: string | null;
+      brandSidebarColor: string | null;
+      brandFaviconUrl: string | null;
+      brandEmailFooter: string | null;
+      whiteLabelEnabled: boolean;
+    }>,
+  ) {
+    const data: Record<string, any> = {};
+
+    const assignColor = (
+      key: 'brandPrimaryColor' | 'brandSidebarColor',
+      value: unknown,
+    ) => {
+      if (value === undefined) return;
+      if (value === null || value === '') {
+        data[key] = null;
+        return;
+      }
+      if (typeof value !== 'string' || !OrganizationsService.HEX_COLOR.test(value)) {
+        throw new BadRequestException(
+          `${key} must be a 6-digit hex color like #3B82F6`,
+        );
+      }
+      // Normalise to the canonical lowercase form.
+      data[key] = value.toLowerCase();
+    };
+
+    assignColor('brandPrimaryColor', body.brandPrimaryColor);
+    assignColor('brandSidebarColor', body.brandSidebarColor);
+
+    if (body.logo !== undefined) {
+      data.logo = body.logo === '' ? null : body.logo;
+    }
+    if (body.brandFaviconUrl !== undefined) {
+      data.brandFaviconUrl =
+        body.brandFaviconUrl === '' ? null : body.brandFaviconUrl;
+    }
+    if (body.brandEmailFooter !== undefined) {
+      // Strip <script> blocks so an admin can't smuggle JS into the footer
+      // that later renders inside outgoing email HTML. Other HTML is allowed.
+      data.brandEmailFooter =
+        body.brandEmailFooter === null || body.brandEmailFooter === ''
+          ? null
+          : OrganizationsService.stripScripts(body.brandEmailFooter);
+    }
+    if (body.whiteLabelEnabled !== undefined) {
+      data.whiteLabelEnabled = !!body.whiteLabelEnabled;
+    }
+
+    if (Object.keys(data).length > 0) {
+      await this.prisma.organization.update({ where: { id: orgId }, data });
+    }
+    return this.getBranding(orgId);
+  }
+
+  /**
+   * Public (unauthenticated) branding by slug — for the portal login and
+   * public lead/quote forms. Returns ONLY safe display fields. When
+   * white-label is disabled (or the org is missing) returns null so the
+   * caller falls back to the platform default theme.
+   */
+  async getPublicBranding(slug: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { slug },
+      select: {
+        name: true,
+        slug: true,
+        logo: true,
+        brandPrimaryColor: true,
+        brandSidebarColor: true,
+        brandFaviconUrl: true,
+        whiteLabelEnabled: true,
+      },
+    });
+    if (!org || !org.whiteLabelEnabled) return null;
+    return {
+      name: org.name,
+      slug: org.slug,
+      logo: org.logo,
+      brandPrimaryColor: org.brandPrimaryColor,
+      brandSidebarColor: org.brandSidebarColor,
+      brandFaviconUrl: org.brandFaviconUrl,
+      whiteLabelEnabled: org.whiteLabelEnabled,
+    };
+  }
+
+  /** Remove <script>…</script> blocks (and stray opening tags) from HTML. */
+  static stripScripts(html: string): string {
+    return html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+      .replace(/<\/?script\b[^>]*>/gi, '');
+  }
+
   async setCustomDomain(orgId: string, domain: string) {
     const existing = await this.prisma.organization.findFirst({
       where: { customDomain: domain, NOT: { id: orgId } },
