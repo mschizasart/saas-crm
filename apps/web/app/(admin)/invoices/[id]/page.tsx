@@ -133,6 +133,16 @@ export default function InvoiceDetailPage() {
   // Bumped after a "send" action so the SentEmailsPanel re-fetches.
   const [sentEmailsKey, setSentEmailsKey] = useState(0);
 
+  // ── Auto tax ───────────────────────────────────────────────────────────────
+  // Whether automatic tax is configured for this org, and whether it's
+  // auto-applied on save (in which case the manual button is hidden).
+  const [taxEnabled, setTaxEnabled] = useState(false);
+  const [taxAutoApply, setTaxAutoApply] = useState(false);
+  const [taxCalcLoading, setTaxCalcLoading] = useState(false);
+  const [taxBreakdown, setTaxBreakdown] = useState<
+    { jurisdictions: { name: string; rate: number; amount: number }[] } | null
+  >(null);
+
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
   const fetchInvoice = useCallback(async () => {
@@ -168,7 +178,45 @@ export default function InvoiceDetailPage() {
       .finally(() => setActivitiesLoading(false));
   }, [showActivity, invoiceId]);
 
+  // Load tax-automation settings so we know whether to show the
+  // "Calculate tax" button (provider enabled & not auto-applied).
+  useEffect(() => {
+    fetch(`${API_BASE}/api/v1/tax/settings`, { headers: authHeaders() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (!s) return;
+        setTaxEnabled(!!s.enabled && s.provider !== 'NONE');
+        setTaxAutoApply(!!s.autoApply);
+      })
+      .catch(() => {});
+  }, []);
+
   // ── Action helpers ─────────────────────────────────────────────────────────
+
+  async function calculateTax() {
+    setTaxCalcLoading(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/tax/calculate`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ entityType: 'invoice', entityId: invoiceId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message ?? `Tax calculation failed (${res.status})`);
+      }
+      setTaxBreakdown(data?.breakdown ?? null);
+      // If autoApply persisted the result, refresh so the new totals show.
+      if (data?.applied) await fetchInvoice();
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Tax calculation failed',
+      );
+    } finally {
+      setTaxCalcLoading(false);
+    }
+  }
 
   async function runAction(path: string, onSuccess?: (data: any) => void) {
     setActionLoading(true);
@@ -253,6 +301,16 @@ export default function InvoiceDetailPage() {
     disabled: actionLoading,
     variant: 'secondary',
   });
+  // Manual "Calculate tax" only when auto tax is enabled but NOT auto-applied
+  // (autoApply already computes tax on every save, so no button needed).
+  if (taxEnabled && !taxAutoApply) {
+    actions.push({
+      label: taxCalcLoading ? 'Calculating…' : 'Calculate tax',
+      onClick: calculateTax,
+      disabled: taxCalcLoading || actionLoading,
+      variant: 'secondary',
+    });
+  }
 
   return (
     <DetailPageLayout
@@ -340,6 +398,30 @@ export default function InvoiceDetailPage() {
               <span>Tax</span>
               <span>{fmt(invoice.totalTax)}</span>
             </div>
+            {taxBreakdown && taxBreakdown.jurisdictions.length > 0 && (
+              <div className="rounded-md bg-gray-50 dark:bg-gray-800/60 px-2.5 py-2 text-xs space-y-1">
+                <div className="font-medium text-gray-500 dark:text-gray-400">
+                  Calculated tax breakdown
+                </div>
+                {taxBreakdown.jurisdictions.map((j, i) => (
+                  <div
+                    key={`${j.name}-${i}`}
+                    className="flex justify-between text-gray-500 dark:text-gray-400"
+                  >
+                    <span>
+                      {j.name} ({j.rate}%)
+                    </span>
+                    <span>{fmt(j.amount)}</span>
+                  </div>
+                ))}
+                {!taxAutoApply && (
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 pt-1">
+                    Preview only — save/edit the invoice or enable auto-apply to
+                    persist these totals.
+                  </p>
+                )}
+              </div>
+            )}
             {discount > 0 && (
               <div className="flex justify-between text-gray-600 dark:text-gray-400">
                 <span>Discount</span>

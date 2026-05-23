@@ -36,7 +36,12 @@ export class TenantInterceptor implements NestInterceptor {
       url.startsWith('/api/v1/platform') ||
       url.startsWith('/api/v1/memberships') ||
       url.startsWith('/api/v1/push/public-key') ||
-      url.startsWith('/api/push/public-key')
+      url.startsWith('/api/push/public-key') ||
+      // Twilio inbound-SMS webhook: org-less (no JWT, no subdomain). The
+      // controller resolves the org from the :orgSlug path param itself and
+      // validates the X-Twilio-Signature. See modules/sms/sms-webhook.controller.ts.
+      url.startsWith('/api/v1/public/sms/webhook') ||
+      url.startsWith('/api/public/sms/webhook')
     ) {
       return next.handle();
     }

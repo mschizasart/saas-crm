@@ -46,6 +46,17 @@ async function bootstrap() {
     console.warn(`@fastify/multipart not registered: ${e.message}`);
   }
 
+  // Custom content-type parsers (urlencoded for Twilio inbound SMS, and a
+  // raw-body-capturing JSON parser for Stripe signature verification) were
+  // tried here but COLLIDE with the parsers NestJS's FastifyAdapter registers
+  // itself during app.listen() ("Content type parser already present" → boot
+  // crash). The correct way to capture the raw body on this stack is
+  // `NestFactory.create(AppModule, new FastifyAdapter(), { rawBody: true })`
+  // plus the `@fastify/formbody` plugin for urlencoded — to be wired as a
+  // dedicated follow-up. Until then, the inbound Twilio webhook parses
+  // urlencoded manually and Stripe sig verification uses the controller
+  // JSON.stringify fallback (both already non-load-bearing in prod).
+
   // CORS
   app.enableCors({
     origin: process.env.APP_URL || 'http://localhost:3000',

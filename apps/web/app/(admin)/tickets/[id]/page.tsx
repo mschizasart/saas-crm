@@ -7,6 +7,7 @@ import { useModalA11y } from '@/components/ui/use-modal-a11y';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 import { AiImproveButton } from '@/components/ui/ai-improve-button';
 import { DocumentPanel } from '@/components/ui/document-panel';
+import { SmsPanel } from '@/components/ui/sms-panel';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -197,6 +198,10 @@ export default function TicketDetailPage() {
   }, []);
   const mergeModalRef = useModalA11y(mergeOpen, closeMergeModal);
 
+  // Client phone for prefilling the SMS panel recipient (the ticket payload
+  // only carries client {id, company}, so we look the phone up separately).
+  const [clientPhone, setClientPhone] = useState<string | null>(null);
+
   // Auto-refresh ref
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -240,6 +245,32 @@ export default function TicketDetailPage() {
     }
     loadPredefinedReplies();
   }, []);
+
+  // ── Fetch client phone for the SMS panel prefill ──────────────────────────
+
+  useEffect(() => {
+    const clientId = ticket?.client?.id;
+    if (!clientId) {
+      setClientPhone(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/clients/${clientId}`, {
+          headers: authHeaders(),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setClientPhone(data?.phone ?? null);
+      } catch {
+        // silent — prefill is optional
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ticket?.client?.id]);
 
   // ── Auto-refresh every 30s ────────────────────────────────────────────────
 
@@ -675,6 +706,9 @@ export default function TicketDetailPage() {
       )}
       <div className="mt-6">
         <DocumentPanel entityType="ticket" entityId={ticketId} />
+      </div>
+      <div className="mt-6">
+        <SmsPanel entityType="ticket" entityId={ticketId} defaultTo={clientPhone} />
       </div>
     </DetailPageLayout>
   );

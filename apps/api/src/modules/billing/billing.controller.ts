@@ -61,6 +61,17 @@ export class BillingController {
     @Req() req: RawBodyRequest<any>,
     @Headers('stripe-signature') signature: string,
   ) {
-    return this.service.handleWebhook(req.rawBody, signature);
+    // `req.rawBody` is the EXACT raw JSON bytes Stripe signed — captured by the
+    // application/json content-type parser in main.ts. Stripe signature
+    // verification REQUIRES these exact bytes. The `JSON.stringify(req.body)`
+    // fallback (mirroring payments.controller.ts) only exists for safety if the
+    // raw-body parser is somehow absent; it can produce different bytes than
+    // Stripe signed (key order/whitespace/unicode), so signature verification
+    // can still fail under that fallback. With the main.ts parser in place,
+    // req.rawBody is populated and verification works.
+    return this.service.handleWebhook(
+      req.rawBody ?? JSON.stringify(req.body ?? {}),
+      signature,
+    );
   }
 }

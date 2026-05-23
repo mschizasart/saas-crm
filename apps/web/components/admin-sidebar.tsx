@@ -9,7 +9,7 @@ import {
   Headphones, BookOpen, FileSignature, Receipt, Target,
   BarChart3, Settings, Bell, Building2, Zap, ClipboardList,
   ChevronDown, ChevronRight, ListTodo, Calendar, Megaphone,
-  Activity, Tag, Lock, MessageCircle, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
+  Activity, Tag, Lock, MessageCircle, MessageSquare, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
   ShieldX, Inbox, KeyRound, Sparkles,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -317,6 +317,8 @@ function useNavItems(): NavItem[] {
         { label: 'Notifications', href: '/settings/notifications', icon: Bell },
         { label: t('nav.email'), href: '/settings/email', icon: Bell },
         { label: 'AI', href: '/settings/ai', icon: Sparkles },
+        { label: 'Tax', href: '/settings/tax', icon: Receipt },
+        { label: 'SMS', href: '/settings/sms', icon: MessageSquare },
         { label: 'E-Invoice', href: '/settings/einvoice', icon: FileCode },
         { label: 'Branding', href: '/settings/branding', icon: Palette },
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },

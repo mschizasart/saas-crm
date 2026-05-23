@@ -9,6 +9,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
+import { TaxConfigService } from '../tax/tax-config.service';
 
 export interface CreateInvoiceDto {
   clientId: string;
@@ -130,7 +131,40 @@ export class InvoicesService {
     private prisma: PrismaService,
     private events: EventEmitter2,
     private activityLog: ActivityLogService,
+    private taxConfig: TaxConfigService,
   ) {}
+
+  /**
+   * If the org has tax automation enabled with autoApply, recompute the
+   * invoice's tax via the configured provider and overwrite totalTax / total.
+   *
+   * Precedence: when auto tax is active, the provider-computed tax REPLACES
+   * the manual tax1/tax2 contribution (which the base totals calc currently
+   * derives from per-line `taxRate` — see calculateTotals). Manual tax ids are
+   * preserved on the line items for display/PDF but are ignored for the
+   * persisted totalTax.
+   *
+   * Graceful degradation: ANY failure (no provider, provider 4xx/5xx,
+   * transport error) is swallowed and logged. The invoice keeps the
+   * manual/zero tax already on it. A tax-provider problem must NEVER fail an
+   * invoice create/update.
+   */
+  private async maybeApplyAutoTax(orgId: string, invoiceId: string): Promise<void> {
+    try {
+      const settings = await this.taxConfig.getForOrg(orgId);
+      if (!settings.enabled || !settings.autoApply || settings.provider === 'NONE') {
+        return;
+      }
+      await this.taxConfig.calculateForInvoice(orgId, invoiceId, {
+        entityType: 'invoice',
+        applyToEntity: true,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Auto tax skipped for invoice ${invoiceId} (org ${orgId}): ${(err as Error).message ?? err}`,
+      );
+    }
+  }
 
   // ─── Export ───────────────────────────────────────────────────────────────
   async findAllForExport(
@@ -202,6 +236,7 @@ export class InvoicesService {
       taxRate?: number;
     }>,
     discount = 0,
+    discountType: string = 'fixed',
   ): { subtotal: number; tax: number; discount: number; total: number } {
     let subtotal = 0;
     let tax = 0;
@@ -213,7 +248,13 @@ export class InvoicesService {
       tax += lineTax;
     }
 
-    const total = subtotal + tax - discount;
+    // Honor discountType so this manual path agrees with the auto-tax path in
+    // tax-config.service.applyTaxToEntity: percent => subtotal * discount/100,
+    // fixed => flat amount. Floor the total at 0 (negative invoice totals make
+    // no business sense) so both paths produce the same non-negative total.
+    const discountAmount =
+      discountType === 'percent' ? (subtotal * discount) / 100 : discount;
+    const total = Math.max(0, subtotal + tax - discountAmount);
     return { subtotal, tax, discount, total };
   }
 
@@ -447,6 +488,7 @@ export class InvoicesService {
           taxRate: i.taxRate,
         })),
         dto.discount ?? 0,
+        dto.discountType ?? 'fixed',
       );
 
       const invoiceData: any = {
@@ -524,6 +566,13 @@ export class InvoicesService {
       });
     });
 
+    // Auto tax (opt-in): recompute totalTax/total via the configured provider
+    // when enabled+autoApply. Never blocks creation — failures degrade to the
+    // manual/zero tax already persisted above.
+    if (invoice?.id) {
+      await this.maybeApplyAutoTax(orgId, invoice.id);
+    }
+
     this.events.emit('invoice.created', { invoice, orgId, createdBy });
     return invoice;
   }
@@ -543,7 +592,7 @@ export class InvoicesService {
       await assertProductIdsBelongToOrg(this.prisma, orgId, dto.items);
     }
 
-    return this.prisma.withOrganization(orgId, async (tx) => {
+    const updated = await this.prisma.withOrganization(orgId, async (tx) => {
       // Normalize items for totals calculation (support both old and new field names)
       const rawItems = dto.items ?? existing.items.map((i: any) => ({
         description: i.description,
@@ -566,6 +615,7 @@ export class InvoicesService {
       const totals = this.calculateTotals(
         normalizedForCalc,
         dto.discount ?? Number(existing.discount),
+        dto.discountType ?? (existing as any).discountType ?? 'fixed',
       );
 
       if (dto.items) {
@@ -651,6 +701,21 @@ export class InvoicesService {
 
       return updated;
     });
+
+    // Auto tax (opt-in): recompute totalTax/total via the configured provider
+    // when enabled+autoApply. Degrades gracefully on any provider error.
+    await this.maybeApplyAutoTax(orgId, id);
+
+    // Re-fetch so the caller sees the (possibly) auto-taxed totals.
+    return this.prisma.withOrganization(orgId, (tx) =>
+      tx.invoice.findUnique({
+        where: { id },
+        include: {
+          client: { select: { id: true, company: true } },
+          items: { orderBy: { order: 'asc' } },
+        },
+      }),
+    );
   }
 
   // ─── delete ────────────────────────────────────────────────────────────────
@@ -1026,6 +1091,7 @@ export class InvoicesService {
           taxRate: 0,
         })),
         Number(invoice.discount ?? 0),
+        (invoice as any).discountType ?? 'fixed',
       );
 
       return tx.invoice.update({

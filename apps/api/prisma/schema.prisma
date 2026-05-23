@@ -121,7 +121,11 @@ model Organization {
   stockMovements     StockMovement[]
   emailSettings      EmailSettings?
   aiSettings         AiSettings?
+  smsSettings        SmsSettings?
+  smsMessages        SmsMessage[]
   einvoiceSettings   EInvoiceSettings?
+  taxSettings        TaxSettings?
+  taxCalculations    TaxCalculation[]
   leadForms          LeadForm[]
   estimateRequestForms EstimateRequestForm[]
   ticketSpamFilters  TicketSpamFilter[]
@@ -1581,9 +1585,28 @@ model CustomField {
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
 
+  // ── Custom Fields v2 — COMPUTED fields (migration 021) ──────────────
+  // fieldKind discriminates static input fields from read-only computed
+  // fields. Existing rows default to "input" (a plain user-entered value).
+  //   "input"   — user-entered value stored in CustomFieldValue (legacy).
+  //   "formula" — evaluated from formulaExpr over sibling field values +
+  //               a whitelist of the entity's own numeric columns. Pure
+  //               arithmetic only; evaluated by a sandboxed shunting-yard
+  //               parser (NO eval/Function/vm). Never persisted.
+  //   "lookup"  — pulls one field off a related (same-org) record.
+  //   "rollup"  — aggregates a field over child (same-org) records.
+  fieldKind      String   @default("input")
+  // formula: e.g. "quantity * unitPrice" or "subtotal * 0.2".
+  formulaExpr    String?
+  // lookup:  { relation: "client", field: "company" }
+  lookupConfig   Json?
+  // rollup:  { relation: "invoices", op: "sum"|"count"|"avg"|"min"|"max", field: "total" }
+  rollupConfig   Json?
+
   organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   values         CustomFieldValue[]
 
+  @@unique([organizationId, fieldTo, slug], map: "custom_fields_org_fieldTo_slug_key")
   @@index([organizationId, fieldTo])
   @@map("custom_fields")
 }
@@ -1752,6 +1775,53 @@ model AiSettings {
   @@map("ai_settings")
 }
 
+// Per-organization SMS (Twilio) configuration (migration 022).
+// One row per org. When absent OR enabled = false, SMS sending is disabled
+// for the tenant. authToken is AES-256-GCM encrypted at rest and never
+// returned raw (redacted to `authTokenSet` boolean on read).
+model SmsSettings {
+  id              String   @id @default(uuid())
+  organizationId  String   @unique
+  // Currently only TWILIO; column kept generic for future providers.
+  provider        String   @default("TWILIO")
+  accountSid      String?  // Twilio Account SID (public-ish, not encrypted)
+  authToken       String?  // AES-256-GCM encrypted (iv:tag:cipher hex) — never returned raw
+  fromNumber      String?  // the tenant's Twilio number, E.164 (e.g. +14155551234)
+  enabled         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("sms_settings")
+}
+
+// SMS message log — both outbound (sent via Twilio) and inbound (received
+// through the Twilio webhook). Attached to a CRM record via entityType /
+// entityId when known. See migration 022.
+model SmsMessage {
+  id              String   @id @default(uuid())
+  organizationId  String
+  direction       String   // 'outbound' | 'inbound'
+  entityType      String?  // 'ticket' | 'lead' | 'client'
+  entityId        String?
+  toNumber        String
+  fromNumber      String
+  body            String
+  // 'queued' | 'sent' | 'delivered' | 'failed' | 'received'
+  status          String
+  providerSid     String?  // Twilio message SID (e.g. SMxxxxxxxx)
+  errorMessage    String?
+  sentById        String?  // staff user who sent it (outbound only)
+  createdAt       DateTime @default(now())
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, createdAt])
+  @@map("sms_messages")
+}
+
 // Per-organization e-invoice / UBL XML configuration.
 // When absent, EinvoiceService falls back to its built-in defaults so
 // non-EU tenants are unaffected. Targeted at tenants that need to issue
@@ -1785,6 +1855,70 @@ model EInvoiceSettings {
   organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("einvoice_settings")
+}
+
+// Per-organization automatic sales-tax / VAT configuration (migration 023).
+// This is an OPT-IN layer on top of the existing manual `Tax` rates
+// (taxes table + tax1/tax2 on line items). When provider = NONE or
+// enabled = false, nothing changes: invoices keep using manual tax ids.
+// When enabled + autoApply, totals are computed via TaxJar/Avalara and the
+// manual tax1/tax2 are ignored for the persisted totalTax (precedence:
+// auto > manual). A provider error never blocks invoice save — it degrades
+// to manual/zero tax (see TaxConfigService).
+model TaxSettings {
+  id                  String    @id @default(uuid())
+  organizationId      String    @unique
+  // NONE | TAXJAR | AVALARA
+  provider            String    @default("NONE")
+  // AES-256-GCM encrypted (iv:tag:cipher hex) — never returned raw.
+  // For TaxJar this is the API token; for Avalara it is the license key.
+  apiKey              String?
+  // Avalara needs account id + license (apiKey) + a company code.
+  // avalaraAccountId is the Basic-auth USERNAME (the non-secret half of the
+  // credential) — stored plaintext ON PURPOSE and returned to anyone with
+  // settings.view so admins can confirm their config. The secret half (the
+  // license key) lives in `apiKey` and IS encrypted.
+  avalaraAccountId    String?
+  avalaraCompanyCode  String?
+  // The address the tenant ships/bills FROM (origin / nexus).
+  // Shape: { street, city, state, zip, country }
+  originAddress       Json?
+  enabled             Boolean   @default(false)
+  // false = manual "Calculate tax" button only; true = auto-calc on every save.
+  autoApply           Boolean   @default(false)
+  lastTestedAt        DateTime?
+  lastTestError       String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("tax_settings")
+}
+
+// Audit / cache of automatic tax calculations (migration 023). One row per
+// successful provider calculation so we can show the jurisdiction breakdown
+// and avoid re-calling the provider on every render.
+model TaxCalculation {
+  id              String    @id @default(uuid())
+  organizationId  String
+  // 'invoice' | 'estimate'
+  entityType      String
+  entityId        String
+  // NONE | TAXJAR | AVALARA — provider used for this calc.
+  provider        String
+  taxableAmount   Decimal   @db.Decimal(15, 2)
+  taxAmount       Decimal   @db.Decimal(15, 2)
+  // Effective combined rate as a percentage, e.g. 8.875.
+  rate            Decimal   @db.Decimal(7, 4)
+  // Raw jurisdiction breakdown returned by the provider.
+  breakdown       Json?
+  calculatedAt    DateTime  @default(now())
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, entityType, entityId])
+  @@map("tax_calculations")
 }
 
 model MailQueue {

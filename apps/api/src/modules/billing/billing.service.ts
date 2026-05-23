@@ -94,7 +94,7 @@ export class BillingService {
     return { url: session.url };
   }
 
-  async handleWebhook(payload: Buffer, signature: string) {
+  async handleWebhook(payload: string | Buffer, signature: string) {
     let event: Stripe.Event;
     try {
       event = this.stripe.webhooks.constructEvent(
