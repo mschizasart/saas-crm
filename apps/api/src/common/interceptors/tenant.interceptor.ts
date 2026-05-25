@@ -41,7 +41,16 @@ export class TenantInterceptor implements NestInterceptor {
       // controller resolves the org from the :orgSlug path param itself and
       // validates the X-Twilio-Signature. See modules/sms/sms-webhook.controller.ts.
       url.startsWith('/api/v1/public/sms/webhook') ||
-      url.startsWith('/api/public/sms/webhook')
+      url.startsWith('/api/public/sms/webhook') ||
+      // Calendar-sync OAuth callback: the provider redirects the browser here
+      // with no Bearer token and no resolvable org. Trust comes from the
+      // HMAC-signed `state`. See modules/calendar/calendar-sync.controller.ts.
+      /^\/api\/(v1\/)?calendar-sync\/(google|microsoft)\/callback/.test(url) ||
+      // Campaign unsubscribe: org-less (no JWT, no subdomain). The org is
+      // recovered from the HMAC-signed token in the path. See
+      // modules/campaigns/public-campaigns.controller.ts.
+      url.startsWith('/api/v1/public/campaigns') ||
+      url.startsWith('/api/public/campaigns')
     ) {
       return next.handle();
     }

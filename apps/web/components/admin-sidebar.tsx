@@ -10,7 +10,7 @@ import {
   BarChart3, Settings, Bell, Building2, Zap, ClipboardList,
   ChevronDown, ChevronRight, ListTodo, Calendar, Megaphone,
   Activity, Tag, Lock, MessageCircle, MessageSquare, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
-  ShieldX, Inbox, KeyRound, Sparkles,
+  ShieldX, Inbox, KeyRound, Sparkles, Clock, Mail,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -283,6 +283,7 @@ function useNavItems(): NavItem[] {
       label: t('nav.marketing'),
       icon: Megaphone,
       children: [
+        { label: 'Campaigns', href: '/campaigns', icon: Mail },
         { label: t('nav.surveys'), href: '/surveys', icon: ClipboardList },
         { label: t('nav.announcements'), href: '/announcements', icon: Megaphone },
         { label: t('nav.knowledgeBase'), href: '/knowledge-base', icon: BookOpen },
@@ -319,6 +320,7 @@ function useNavItems(): NavItem[] {
         { label: 'AI', href: '/settings/ai', icon: Sparkles },
         { label: 'Tax', href: '/settings/tax', icon: Receipt },
         { label: 'SMS', href: '/settings/sms', icon: MessageSquare },
+        { label: 'Payment reminders', href: '/settings/dunning', icon: Clock },
         { label: 'E-Invoice', href: '/settings/einvoice', icon: FileCode },
         { label: 'Branding', href: '/settings/branding', icon: Palette },
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },

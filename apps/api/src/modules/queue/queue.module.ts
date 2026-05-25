@@ -42,6 +42,16 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
       // Concurrency is set on the WorkerHost (LeadScoringProcessor),
       // not here — BullModule.registerQueue is for queue config only.
       { name: 'lead-scoring' },
+      // Dunning (migration 026) — per-org overdue-invoice reminder sweeps.
+      // Concurrency is set on the WorkerHost (DunningProcessor).
+      { name: 'dunning' },
+      // 2-way calendar sync (migration 025) — per-CalendarSync sync job
+      // enqueued by CalendarSyncScheduler every 15 min. Concurrency (4) is
+      // set on CalendarSyncProcessor.
+      { name: 'calendar-sync' },
+      // Bulk email campaigns (migration 024) — one job per campaign drives
+      // the send loop. Concurrency (5) is set on CampaignsProcessor.
+      { name: 'campaigns' },
     ),
   ],
   exports: [BullModule],

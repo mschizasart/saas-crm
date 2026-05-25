@@ -72,6 +72,8 @@ import { ProductsModule } from './modules/products/products.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { SuggestionsModule } from './modules/suggestions/suggestions.module';
 import { PushModule } from './modules/push/push.module';
+import { DunningModule } from './modules/dunning/dunning.module';
+import { CampaignsModule } from './modules/campaigns/campaigns.module';
 
 @Module({
   imports: [
@@ -157,6 +159,8 @@ import { PushModule } from './modules/push/push.module';
     ChatModule,
     SuggestionsModule,
     PushModule,
+    DunningModule,
+    CampaignsModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },

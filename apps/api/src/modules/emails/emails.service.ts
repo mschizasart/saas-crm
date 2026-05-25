@@ -28,7 +28,10 @@ export interface OutboundTracking {
     | 'estimate'
     | 'ticket'
     | 'proposal'
-    | 'statement';
+    | 'statement'
+    // Bulk email campaigns (migration 024). routedToId is the Campaign.id —
+    // many OutboundMessage rows share one campaignId (one per recipient).
+    | 'campaign';
   routedToId: string;
 }
 
@@ -54,6 +57,17 @@ export interface SendMailOpts {
 /** queue worker can recover the row after BullMQ delivery.            */
 interface EmailJobData extends SendMailOpts {
   trackingId?: string;
+}
+
+/**
+ * Result of {@link EmailsService.queue}. When tracking was requested AND the
+ * OutboundMessage row was pre-created, `outboundMessageId` is the id of that
+ * row so callers can link records to it directly (no time-of-check race
+ * re-querying for "the latest" row). Undefined when no tracking row was made
+ * (no tracking, no orgId, prisma unavailable, or row creation failed).
+ */
+export interface QueueResult {
+  outboundMessageId?: string;
 }
 
 @Injectable()
@@ -91,16 +105,19 @@ export class EmailsService {
    * is stable across retries. The processor pulls the same trackingId
    * from job data and applies it to the HTML at send time.
    */
-  async queue(opts: SendMailOpts) {
+  async queue(opts: SendMailOpts): Promise<QueueResult> {
     const job: EmailJobData = { ...opts };
+    let outboundMessageId: string | undefined;
 
     if (opts.tracking && opts.orgId && this.prisma) {
-      job.trackingId = await this.preCreateTrackingRow(
+      const row = await this.preCreateTrackingRow(
         opts.orgId,
         opts.tracking,
         opts.to,
         opts.subject,
       );
+      job.trackingId = row?.trackingId;
+      outboundMessageId = row?.id;
     }
 
     await this.emailsQueue.add('send-email', job, {
@@ -109,6 +126,8 @@ export class EmailsService {
       removeOnComplete: 1000,
       removeOnFail: 5000,
     });
+
+    return { outboundMessageId };
   }
 
   async send(opts: SendMailOpts | EmailJobData) {
@@ -118,12 +137,13 @@ export class EmailsService {
       //   2. send() called directly with `tracking` — we allocate now.
       let trackingId = (opts as EmailJobData).trackingId;
       if (!trackingId && opts.tracking && opts.orgId && this.prisma) {
-        trackingId = await this.preCreateTrackingRow(
+        const row = await this.preCreateTrackingRow(
           opts.orgId,
           opts.tracking,
           opts.to,
           opts.subject,
         );
+        trackingId = row?.trackingId;
       }
 
       // Inject pixel + rewrite anchors. Cheap string ops; only happens
@@ -257,31 +277,39 @@ export class EmailsService {
    * Create the OutboundMessage row before delivery so we have a stable
    * trackingId to embed in the HTML. Tolerates the (rare) duplicate
    * trackingId collision — re-rolls once, then gives up.
+   *
+   * Returns both the row `id` (used by callers that need to link records to
+   * this exact OutboundMessage — e.g. CampaignRecipient.outboundMessageId)
+   * and the `trackingId` (embedded in the HTML at send time). Undefined when
+   * the row could not be created.
    */
   private async preCreateTrackingRow(
     orgId: string,
     tracking: OutboundTracking,
     recipientEmail: string,
     subject: string,
-  ): Promise<string | undefined> {
+  ): Promise<{ id: string; trackingId: string } | undefined> {
     if (!this.prisma) return undefined;
     for (let attempt = 0; attempt < 2; attempt++) {
       const trackingId = generateTrackingId(12);
       try {
-        await this.prisma.withOrganization(orgId, async (tx: any) => {
-          await tx.outboundMessage.create({
-            data: {
-              organizationId: orgId,
-              trackingId,
-              routedTo: tracking.routedTo,
-              routedToId: tracking.routedToId,
-              subject,
-              recipientEmail,
-              sentAt: new Date(),
-            },
-          });
-        });
-        return trackingId;
+        const created = await this.prisma.withOrganization(
+          orgId,
+          async (tx: any) =>
+            tx.outboundMessage.create({
+              data: {
+                organizationId: orgId,
+                trackingId,
+                routedTo: tracking.routedTo,
+                routedToId: tracking.routedToId,
+                subject,
+                recipientEmail,
+                sentAt: new Date(),
+              },
+              select: { id: true },
+            }),
+        );
+        return { id: created.id, trackingId };
       } catch (err: any) {
         if (err?.code === 'P2002' && attempt === 0) {
           // Unique violation on trackingId — retry with a new one.

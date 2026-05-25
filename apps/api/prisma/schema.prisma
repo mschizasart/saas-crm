@@ -126,6 +126,7 @@ model Organization {
   einvoiceSettings   EInvoiceSettings?
   taxSettings        TaxSettings?
   taxCalculations    TaxCalculation[]
+  calendarSyncs      CalendarSync[]
   leadForms          LeadForm[]
   estimateRequestForms EstimateRequestForm[]
   ticketSpamFilters  TicketSpamFilter[]
@@ -134,6 +135,12 @@ model Organization {
   signatures         Signature[]
   documents          Document[]
   documentVersions   DocumentVersion[]
+  dunningSettings    DunningSettings?
+  dunningRules       DunningRule[]
+  dunningLogs        DunningLog[]
+  campaigns          Campaign[]
+  campaignRecipients CampaignRecipient[]
+  emailUnsubscribes  EmailUnsubscribe[]
   // Multi-org membership: every User row that explicitly belongs to this
   // org via the new many-to-many table. The legacy `users` relation above
   // (via `User.organizationId`) represents the user's primary/legacy org;
@@ -685,6 +692,7 @@ model Invoice {
   creditNotes      CreditNote[]
   customFieldValues CustomFieldValue[]
   paymentAttempts  PaymentAttempt[]
+  dunningLogs      DunningLog[]
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -2143,10 +2151,20 @@ model Event {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  // ── 2-way calendar sync (migration 025) ──
+  // externalId/externalProvider map this local event to its remote
+  // counterpart; syncHash detects local edits worth pushing without
+  // re-pushing events we just pulled. See modules/calendar/calendar-sync.*.
+  externalId       String?
+  externalProvider String?   // 'google' | 'microsoft'
+  lastSyncedAt     DateTime?
+  syncHash         String?
+
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([organizationId, startDate])
+  @@index([externalProvider, externalId])
   @@map("events")
 }
 
@@ -2162,6 +2180,45 @@ model Todo {
 
   @@index([organizationId, userId])
   @@map("todos")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  2-WAY CALENDAR SYNC (migration 025)
+// ═══════════════════════════════════════════════════════════════
+
+// One row per (user, provider). Holds the encrypted OAuth tokens and the
+// per-connection sync state. Tokens are AES-256-GCM encrypted with
+// ENCRYPTION_KEY (same scheme as EmailSettings.oauth*). See
+// modules/calendar/calendar-sync.service.ts.
+model CalendarSync {
+  id                 String    @id @default(uuid())
+  organizationId     String
+  userId             String
+  // 'google' | 'microsoft'
+  provider           String
+  // AES-256-GCM encrypted (iv:tag:cipher hex) — never returned raw.
+  refreshToken       String
+  // Cached access token, also encrypted; refreshed on demand.
+  accessToken        String?
+  tokenExpiresAt     DateTime?
+  // Which remote calendar to read/write. NULL = the account's primary.
+  externalCalendarId String?
+  syncEnabled        Boolean   @default(true)
+  // 'both' | 'push' | 'pull'
+  syncDirection      String    @default("both")
+  lastSyncedAt       DateTime?
+  lastSyncError      String?
+  // The email the user consented with (display only).
+  connectedEmail     String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([organizationId])
+  @@index([syncEnabled])
+  @@map("calendar_syncs")
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2496,6 +2553,89 @@ model OutboundMessage {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  BULK EMAIL CAMPAIGNS / NEWSLETTERS  (migration 024)
+// ═══════════════════════════════════════════════════════════════
+//
+// A Campaign targets a recipient *segment* (segmentType + segmentConfig).
+// The segment is resolved to concrete CampaignRecipient rows at send time
+// (dedup by email, unsubscribed addresses skipped). Sending runs off the
+// HTTP path via the BullMQ 'campaigns' queue and reuses EmailsService.queue()
+// with tracking { routedTo: 'campaign', routedToId: campaign.id } so opens /
+// clicks attribute back through OutboundMessage.
+
+model Campaign {
+  id               String    @id @default(uuid())
+  organizationId   String
+  name             String
+  subject          String
+  /// HTML body — unsubscribe link + tracking pixel injected at send time.
+  body             String    @default("")
+  /// 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed'
+  status           String    @default("draft")
+  /// 'all_clients' | 'all_leads' | 'lead_status' | 'manual'
+  segmentType      String    @default("all_clients")
+  /// e.g. { statusId } for lead_status, { ids: [...] } for manual select.
+  segmentConfig    Json      @default("{}")
+  scheduledAt      DateTime?
+  sentAt           DateTime?
+  totalRecipients  Int       @default(0)
+  sentCount        Int       @default(0)
+  failedCount      Int       @default(0)
+  createdById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipients       CampaignRecipient[]
+
+  @@index([organizationId, status])
+  @@map("campaigns")
+}
+
+model CampaignRecipient {
+  id                String    @id @default(uuid())
+  campaignId        String
+  organizationId    String
+  email             String
+  name              String?
+  /// 'client' | 'lead'
+  recipientType     String
+  /// Client.id / Lead.id (or contact User.id). Nullable for free-typed addrs.
+  recipientId       String?
+  /// 'pending' | 'sent' | 'failed' | 'skipped'
+  status            String    @default("pending")
+  /// FK-by-id (not a relation) to the OutboundMessage tracking row, so the
+  /// stats endpoint can join opens/clicks back to this recipient.
+  outboundMessageId String?
+  error             String?
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  campaign          Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, email])
+  @@index([campaignId, status])
+  @@map("campaign_recipients")
+}
+
+// Per-org suppression list. An email present here is SKIPPED when building
+// campaign recipients. Populated via the public unsubscribe endpoint
+// (HMAC-signed token). CAN-SPAM / GDPR table-stakes.
+model EmailUnsubscribe {
+  id               String    @id @default(uuid())
+  organizationId   String
+  email            String
+  campaignId       String?
+  createdAt        DateTime  @default(now())
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, email])
+  @@map("email_unsubscribes")
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  CROSS-RECORD SEARCH INDEX  (migration 012)
 // ═══════════════════════════════════════════════════════════════
 //
@@ -2615,4 +2755,68 @@ model DocumentVersion {
   @@unique([documentId, version])
   @@index([documentId])
   @@map("document_versions")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DUNNING  (automated overdue-invoice reminders — migration 026)
+// ═══════════════════════════════════════════════════════════════
+//
+// dunning_settings.enabled is the per-org master switch. dunning_rules
+// are the ordered reminder steps (offsetDays relative to dueDate).
+// dunning_logs is the idempotency + audit table — the
+// @@unique([invoiceId, ruleId]) is the double-send guard (a given rule
+// fires at most once per invoice, even across concurrent scheduler runs).
+// See dunning.service.ts for the insert-then-send ordering.
+
+model DunningSettings {
+  id             String   @id @default(uuid())
+  organizationId String   @unique
+  enabled        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("dunning_settings")
+}
+
+model DunningRule {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  // Days relative to the invoice due date. Negative = before due,
+  // positive = after due (e.g. -3, +1, +7, +14).
+  offsetDays     Int
+  subject        String
+  // HTML body. Supports {{invoice_number}} {{amount}} {{due_date}}
+  // {{client_name}} placeholders, interpolated by dunning.service.ts.
+  body           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dunningLogs    DunningLog[]
+
+  @@index([organizationId, isActive])
+  @@map("dunning_rules")
+}
+
+model DunningLog {
+  id                String   @id @default(uuid())
+  organizationId    String
+  invoiceId         String
+  ruleId            String
+  sentAt            DateTime @default(now())
+  recipientEmail    String
+  outboundMessageId String?
+
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice           Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  rule              DunningRule  @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  // Double-send guard: a rule fires at most once per invoice.
+  @@unique([invoiceId, ruleId])
+  @@index([organizationId, sentAt])
+  @@map("dunning_logs")
 }
