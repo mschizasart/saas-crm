@@ -23,8 +23,26 @@ export const ALL_PERMISSIONS = {
   contracts: { view: true, create: true, edit: true, delete: true },
   users: { view: true, create: true, edit: true, delete: true },
   roles: { view: true, create: true, edit: true, delete: true },
-  reports: { view: true },
+  // `view` is the legacy canned-reports permission. Wave D2 (builder)
+  // adds `create / edit / delete` so admins can manage saved report
+  // definitions and dashboards.
+  reports: { view: true, create: true, edit: true, delete: true },
   settings: { view: true, edit: true },
+  // Opportunities (deal pipeline + weighted forecast — migration 027)
+  opportunities: {
+    view: true,
+    create: true,
+    edit: true,
+    delete: true,
+    configure: true,
+  },
+  // ── Wave D3: Custom Objects (migration 029) ──
+  // 'custom-objects.*' gates the schema-config endpoints (define an
+  // object, add/edit/delete fields). 'custom-records.*' gates the
+  // tenant data layer (rows). Admins get both by default; non-admin
+  // roles need explicit grants per object family.
+  'custom-objects': { view: true, configure: true },
+  'custom-records': { view: true, create: true, edit: true, delete: true },
 };
 
 export async function seedOrganization(
@@ -55,6 +73,8 @@ export async function seedOrganization(
         invoices: { view: true, create: true, edit: true, delete: true, send: true },
         estimates: { view: true, create: true, edit: true, delete: true, send: true },
         proposals: { view: true, create: true, edit: true, delete: true },
+        // Opportunities — sales reps own deals but don't reconfigure the pipeline
+        opportunities: { view: true, create: true, edit: true, delete: true },
         users: { view: true },
       },
     },
@@ -188,6 +208,37 @@ export async function seedOrganization(
     });
     if (!existing) {
       await prisma.leadSource.create({ data: { organizationId, name } });
+    }
+  }
+
+  // ─── Opportunity Stages (default pipeline) ──────────────
+  // Canonical Salesforce-style 6-stage pipeline. The whole block is
+  // skipped if ANY stage already exists for the org, so we don't add
+  // ours alongside a customised pipeline the user has already tailored.
+  // Migration 027 ships an idempotent backfill for prod-side parity.
+  const existingStageCount = await prisma.opportunityStage.count({
+    where: { organizationId },
+  });
+  if (existingStageCount === 0) {
+    const stages = [
+      { name: 'Prospecting', order: 1, probability: 20, isWon: false, isLost: false },
+      { name: 'Qualified',   order: 2, probability: 40, isWon: false, isLost: false },
+      { name: 'Proposal',    order: 3, probability: 60, isWon: false, isLost: false },
+      { name: 'Negotiation', order: 4, probability: 80, isWon: false, isLost: false },
+      { name: 'Closed Won',  order: 5, probability: 100, isWon: true,  isLost: false },
+      { name: 'Closed Lost', order: 6, probability: 0,   isWon: false, isLost: true  },
+    ];
+    for (const s of stages) {
+      await prisma.opportunityStage.create({
+        data: {
+          organizationId,
+          name: s.name,
+          order: s.order,
+          probability: s.probability,
+          isWon: s.isWon,
+          isLost: s.isLost,
+        },
+      });
     }
   }
 

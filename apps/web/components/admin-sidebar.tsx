@@ -11,6 +11,7 @@ import {
   ChevronDown, ChevronRight, ListTodo, Calendar, Megaphone,
   Activity, Tag, Lock, MessageCircle, MessageSquare, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
   ShieldX, Inbox, KeyRound, Sparkles, Clock, Mail,
+  Briefcase, TrendingUp,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -216,6 +217,9 @@ function useNavItems(): NavItem[] {
             { label: 'Forms', href: '/leads/forms', icon: ClipboardList },
           ],
         },
+        // Opportunities + Forecasts — Wave D1
+        { label: 'Opportunities', href: '/opportunities', icon: Briefcase },
+        { label: 'Forecasts', href: '/forecasts', icon: TrendingUp },
         { label: t('nav.proposals'), href: '/proposals', icon: FileCheck },
         {
           label: t('nav.estimates'),
@@ -294,6 +298,9 @@ function useNavItems(): NavItem[] {
       icon: BarChart3,
       children: [
         { label: t('nav.reportsHub'), href: '/reports', icon: BarChart3 },
+        // Wave D2 — saved report-definitions builder + dashboards composer
+        { label: 'Report Builder', href: '/reports/builder', icon: FileCode },
+        { label: 'Dashboards', href: '/dashboards', icon: LayoutDashboard },
         { label: 'Items', href: '/reports/items', icon: Package },
         { label: 'Payment modes', href: '/reports/payment-modes', icon: CreditCard },
         { label: 'Expenses by Category', href: '/reports/expenses-by-category', icon: DollarSign },
@@ -325,6 +332,7 @@ function useNavItems(): NavItem[] {
         { label: 'Branding', href: '/settings/branding', icon: Palette },
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },
         { label: t('nav.customFields'), href: '/settings/custom-fields', icon: FileText },
+        { label: 'Custom Objects', href: '/settings/custom-objects', icon: Package },
         { label: t('nav.tags'), href: '/settings/tags', icon: Tag },
         { label: t('nav.roles'), href: '/staff/roles', icon: Users },
         { label: t('nav.savedItems'), href: '/settings/saved-items', icon: BookOpen },
@@ -332,6 +340,8 @@ function useNavItems(): NavItem[] {
         { label: 'Spam filters', href: '/settings/spam-filters', icon: ShieldX },
         { label: t('nav.leadStatuses'), href: '/settings/lead-statuses', icon: Target },
         { label: t('nav.leadSources'), href: '/settings/lead-sources', icon: UserCircle },
+        // Pipelines (opportunity stages) — Wave D1
+        { label: 'Pipelines', href: '/settings/pipelines', icon: Briefcase },
         { label: t('nav.emailTemplates'), href: '/settings/email-templates', icon: FileCheck },
         { label: t('nav.paymentModes'), href: '/settings/payment-modes', icon: CreditCard },
         { label: 'Expense Categories', href: '/settings/expense-categories', icon: DollarSign },

@@ -74,6 +74,8 @@ import { SuggestionsModule } from './modules/suggestions/suggestions.module';
 import { PushModule } from './modules/push/push.module';
 import { DunningModule } from './modules/dunning/dunning.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
+import { OpportunitiesModule } from './modules/opportunities/opportunities.module';
+import { CustomObjectsModule } from './modules/custom-objects/custom-objects.module';
 
 @Module({
   imports: [
@@ -161,6 +163,8 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
     PushModule,
     DunningModule,
     CampaignsModule,
+    OpportunitiesModule,
+    CustomObjectsModule,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },

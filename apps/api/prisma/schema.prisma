@@ -141,6 +141,10 @@ model Organization {
   campaigns          Campaign[]
   campaignRecipients CampaignRecipient[]
   emailUnsubscribes  EmailUnsubscribe[]
+  // Opportunities (deal pipeline) — migration 027
+  opportunityStages       OpportunityStage[]
+  opportunities           Opportunity[]
+  opportunityStageHistory OpportunityStageHistory[]
   // Multi-org membership: every User row that explicitly belongs to this
   // org via the new many-to-many table. The legacy `users` relation above
   // (via `User.organizationId`) represents the user's primary/legacy org;
@@ -221,6 +225,9 @@ model User {
   newsfeedPosts  NewsfeedPost[]
   permissionOverrides UserPermissionOverride[]
   pushSubscriptions   PushSubscription[]
+  // Opportunities — migration 027
+  ownedOpportunities       Opportunity[]            @relation("OpportunityOwner")
+  stageHistoryChanges      OpportunityStageHistory[] @relation("OpportunityStageHistoryChangedBy")
   // Multi-org: a single human (User row) can be a member of multiple
   // organizations. See `UserOrganizationMembership`. The legacy scalar
   // `organizationId` above remains the user's *primary* org and the
@@ -391,6 +398,8 @@ model Client {
   subscriptions         ClientSubscription[]
   vaultEntries          VaultEntry[]
   customFieldValues     CustomFieldValue[]
+  // Opportunities — migration 027
+  opportunities         Opportunity[]
 
   @@index([organizationId])
   @@map("clients")
@@ -550,6 +559,8 @@ model Lead {
   notes          LeadNote[]
   emails         LeadEmail[]
   customFieldValues CustomFieldValue[]
+  // Opportunities — migration 027
+  opportunities  Opportunity[]
 
   @@index([organizationId])
   @@index([organizationId, statusId])
@@ -2819,4 +2830,235 @@ model DunningLog {
   @@unique([invoiceId, ruleId])
   @@index([organizationId, sentAt])
   @@map("dunning_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  OPPORTUNITIES  (deal pipeline + weighted forecast — migration 027)
+// ═══════════════════════════════════════════════════════════════
+//
+// Salesforce-style deal pipeline. Per-org configurable `OpportunityStage`
+// rows form an ordered Kanban (Prospecting → Qualified → … → Closed
+// Won/Lost). Each `Opportunity` carries an amount + closeDate; the
+// weighted forecast is sum(amount * stage.probability / 100) over open
+// deals (rows whose stage has isWon = isLost = false).
+//
+// `OpportunityStageHistory` records every transition for audit /
+// velocity reporting. The service writes the history row and the
+// opportunity update in a single prisma.$transaction so the two
+// can never diverge.
+//
+// Tenant isolation: service layer (prisma.withOrganization). No RLS.
+
+model OpportunityStage {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  // Display order in the Kanban (1-based by convention).
+  order          Int      @default(0) @map("order")
+  // 0.00 … 100.00 — weight used by the forecast endpoint.
+  probability    Decimal  @default(0) @db.Decimal(5, 2)
+  isWon          Boolean  @default(false)
+  isLost         Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz()
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  opportunities  Opportunity[]
+
+  // Match the SQL unique index — required for the seed/backfill upsert
+  // path and prevents duplicate stage names per org.
+  @@unique([organizationId, name], map: "opportunity_stages_org_name_key")
+  @@index([organizationId, order], map: "opportunity_stages_org_order_idx")
+  @@map("opportunity_stages")
+}
+
+model Opportunity {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  // A deal can be linked to either a Client (existing customer) or a
+  // Lead (still being qualified), or neither (pure prospecting).
+  clientId       String?
+  leadId         String?
+  ownerId        String
+  stageId        String
+  amount         Decimal  @default(0) @db.Decimal(15, 2)
+  currency       String   @default("USD")
+  closeDate      DateTime @db.Date
+  description    String?
+  source         String?
+  createdAt      DateTime @default(now()) @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @db.Timestamptz()
+
+  organization   Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client         Client?                   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  lead           Lead?                     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  owner          User                      @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  stage          OpportunityStage          @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  stageHistory   OpportunityStageHistory[]
+
+  @@index([organizationId, stageId], map: "opportunities_org_stage_idx")
+  @@index([organizationId, ownerId], map: "opportunities_org_owner_idx")
+  @@index([organizationId, closeDate], map: "opportunities_org_close_date_idx")
+  @@map("opportunities")
+}
+
+model OpportunityStageHistory {
+  id             String   @id @default(uuid())
+  organizationId String
+  opportunityId  String
+  // Null on the very first row (the create itself).
+  fromStageId    String?
+  toStageId      String
+  changedById    String
+  changedAt      DateTime @default(now()) @db.Timestamptz()
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  opportunity    Opportunity  @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  changedBy      User         @relation("OpportunityStageHistoryChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([opportunityId, changedAt(sort: Desc)], map: "opportunity_stage_history_opp_idx")
+  @@index([organizationId], map: "opportunity_stage_history_org_idx")
+  @@map("opportunity_stage_history")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CUSTOM OBJECTS  (Wave D3 — migration 029)
+// ═══════════════════════════════════════════════════════════════
+//
+// Tenants define their own entity types at runtime. NOT stored as
+// real Postgres tables (too dangerous to expose to tenants) — every
+// record is a row in `custom_records` with a `data` jsonb column keyed
+// by field.key. Validation happens in the API layer against
+// `custom_object_fields`. A GIN index on `data` covers basic jsonb
+// queries; per-field text search falls back to ILIKE on `data->>'key'`.
+//
+// `slug` is per-org unique (two orgs may use the same slug). Reserved
+// slugs and snake_case rules are enforced in custom-objects/validation.ts
+// — see RESERVED_SLUGS and validateSlug() there.
+
+model CustomObject {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String   // e.g. "Vehicle"
+  slug           String   // e.g. "vehicle" (lowercase snake_case)
+  pluralName     String   // e.g. "Vehicles"
+  icon           String?  // lucide-react icon name (nullable)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  fields  CustomObjectField[]
+  records CustomRecord[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("custom_objects")
+}
+
+model CustomObjectField {
+  id             String   @id @default(uuid())
+  organizationId String
+  customObjectId String
+  label          String
+  key            String   // snake_case, unique within the object
+  // One of: 'text' | 'number' | 'date' | 'boolean' | 'select' | 'relation'
+  fieldType      String
+  // Per-type config:
+  //   select   → { "choices": ["A","B","C"] }
+  //   relation → { "relatedEntity": "clients" | "leads" | … }
+  options        Json     @default("{}")
+  required       Boolean  @default(false)
+  order          Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  customObject CustomObject @relation(fields: [customObjectId], references: [id], onDelete: Cascade)
+
+  @@unique([customObjectId, key])
+  @@index([customObjectId, order])
+  @@map("custom_object_fields")
+}
+
+model CustomRecord {
+  id             String   @id @default(uuid())
+  organizationId String
+  customObjectId String
+  // Keyed by field.key. Validated/stripped against the object's field
+  // defs in custom-records.service.ts before insert/update.
+  data           Json     @default("{}")
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  customObject CustomObject @relation(fields: [customObjectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, customObjectId])
+  @@map("custom_records")
+}
+
+// ─── Reports & Dashboards builder (migration 028, Wave D2) ────────────
+// Saved report definitions executed by the whitelisted safe query
+// builder in apps/api/src/modules/reports/report-engine.ts. Tenant
+// isolation is enforced at the service layer; no Organization
+// back-relation is declared here (same pattern as CustomObject above)
+// to keep this slice self-contained.
+
+model Report {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  // Whitelisted key into report-engine.ts ENTITY_REGISTRY
+  // (e.g. "clients", "leads", "invoices", "opportunities", "tickets", "tasks").
+  entityType     String
+  // JSONB array of { field, op, value } — validated by the engine.
+  filters        Json     @default("[]")
+  // Optional field name to group by.
+  groupBy        String?
+  // JSONB array of { fn, field } where fn in count|sum|avg|min|max.
+  aggregations   Json     @default("[]")
+  // table | bar | line | pie — also CHECK-constrained in SQL.
+  chartType      String   @default("table")
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  widgets        DashboardWidget[]
+
+  @@index([organizationId, entityType])
+  @@index([organizationId])
+  @@map("reports")
+}
+
+model Dashboard {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  // Optional global layout hints (forward-compat with react-grid-layout).
+  layout         Json     @default("[]")
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  widgets        DashboardWidget[]
+
+  @@index([organizationId])
+  @@map("dashboards")
+}
+
+model DashboardWidget {
+  id             String   @id @default(uuid())
+  organizationId String
+  dashboardId    String
+  reportId       String
+  title          String?
+  // {x:number, y:number, w:number, h:number} — shape validated server-side.
+  position       Json     @default("{\"x\":0,\"y\":0,\"w\":6,\"h\":4}")
+  createdAt      DateTime @default(now())
+
+  dashboard      Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  report         Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, dashboardId])
+  @@index([reportId])
+  @@map("dashboard_widgets")
 }
