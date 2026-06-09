@@ -75,6 +75,10 @@ model Organization {
   brandFaviconUrl    String?                    // optional favicon URL
   brandEmailFooter   String?                    // optional HTML/text appended to outgoing mail
   whiteLabelEnabled  Boolean   @default(false)  // master toggle; false = platform defaults
+  // Wave F3 — reporting / display base currency (ISO 4217). Distinct
+  // from the per-org `currencies.isDefault` flag (legacy formatting).
+  // FxService.convert() uses this when no `to` currency is specified.
+  baseCurrency       String    @default("USD")
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -150,6 +154,11 @@ model Organization {
   // (via `User.organizationId`) represents the user's primary/legacy org;
   // this back-relation enumerates *additional* org memberships.
   userMemberships    UserOrganizationMembership[]
+  // CPQ (Wave F2 — migration 034)
+  productBundles     ProductBundle[]
+  bundleItems        BundleItem[]
+  quotes             Quote[]
+  quoteLineItems     QuoteLineItem[]
 
   @@map("organizations")
 }
@@ -228,6 +237,9 @@ model User {
   // Opportunities — migration 027
   ownedOpportunities       Opportunity[]            @relation("OpportunityOwner")
   stageHistoryChanges      OpportunityStageHistory[] @relation("OpportunityStageHistoryChangedBy")
+  // CPQ (Wave F2 — migration 034)
+  createdProductBundles    ProductBundle[]          @relation("ProductBundleCreatedBy")
+  createdQuotes            Quote[]                  @relation("QuoteCreatedBy")
   // Multi-org: a single human (User row) can be a member of multiple
   // organizations. See `UserOrganizationMembership`. The legacy scalar
   // `organizationId` above remains the user's *primary* org and the
@@ -400,6 +412,16 @@ model Client {
   customFieldValues     CustomFieldValue[]
   // Opportunities — migration 027
   opportunities         Opportunity[]
+  // CPQ (Wave F2 — migration 034)
+  quotes                Quote[]
+
+  // Account hierarchy (Wave F1 — migration 033). Self-referential
+  // parent/child link so a logical customer can span several Client
+  // rows (subsidiaries, divisions). ON DELETE SET NULL keeps the
+  // children as new roots if the parent is removed.
+  parentClientId  String?
+  parent          Client?  @relation("ClientHierarchy", fields: [parentClientId], references: [id], onDelete: SetNull)
+  children        Client[] @relation("ClientHierarchy")
 
   @@index([organizationId])
   @@map("clients")
@@ -704,6 +726,8 @@ model Invoice {
   customFieldValues CustomFieldValue[]
   paymentAttempts  PaymentAttempt[]
   dunningLogs      DunningLog[]
+  // CPQ (Wave F2 — migration 034). Back-relation for Quote.convertedInvoiceId.
+  convertedFromQuotes Quote[]      @relation("QuoteConvertedInvoice")
 
   @@index([organizationId])
   @@index([organizationId, status])
@@ -2458,6 +2482,9 @@ model Product {
   invoiceItems   InvoiceItem[]
   estimateItems  EstimateItem[]
   proposalItems  ProposalItem[]
+  // CPQ (Wave F2 — migration 034)
+  bundleItems    BundleItem[]
+  quoteLineItems QuoteLineItem[]
 
   @@index([organizationId])
   @@map("products")
@@ -2895,6 +2922,8 @@ model Opportunity {
   owner          User                      @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   stage          OpportunityStage          @relation(fields: [stageId], references: [id], onDelete: Restrict)
   stageHistory   OpportunityStageHistory[]
+  // CPQ (Wave F2 — migration 034)
+  quotes         Quote[]
 
   @@index([organizationId, stageId], map: "opportunities_org_stage_idx")
   @@index([organizationId, ownerId], map: "opportunities_org_owner_idx")
@@ -3279,4 +3308,168 @@ model PublicWebhookDelivery {
   @@index([organizationId, webhookId, createdAt(sort: Desc)])
   @@index([succeeded, nextAttemptAt])
   @@map("public_webhook_deliveries")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CPQ — Configure-Price-Quote (Wave F2 — migration 034)
+//
+//  Salesforce-style quoting:
+//    * ProductBundle / BundleItem — admin-curated kits of products
+//      with a per-item discount. Bundles can be dropped onto a quote
+//      as a single line.
+//    * Quote / QuoteLineItem — the quote header + lines. Each line
+//      is EITHER a Product OR a Bundle (XOR enforced in service AND
+//      a DB CHECK in 034-cpq.sql).
+//
+//  Status flow: draft → sent → accepted | rejected. `expired` is set
+//  by the `expire-quotes` cron once `validUntil` passes (TODO Wave F2.1).
+//
+//  Numbering: per-org sequence — service generates `Q-YYYY-NNNN`,
+//  uniqueness enforced via @@unique([organizationId, number]).
+// ═══════════════════════════════════════════════════════════════
+
+model ProductBundle {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  active         Boolean  @default(true)
+  createdById    String?
+  createdAt      DateTime @default(now()) @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @db.Timestamptz()
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User?        @relation("ProductBundleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items          BundleItem[]
+  // Back-relation for QuoteLineItem.bundleId (SET NULL on bundle delete —
+  // accepted quotes keep their frozen unitPrice/lineTotal).
+  quoteLineItems QuoteLineItem[]
+
+  @@index([organizationId])
+  @@index([organizationId, active])
+  @@map("product_bundles")
+}
+
+model BundleItem {
+  id              String  @id @default(uuid())
+  organizationId  String
+  bundleId        String
+  productId       String
+  quantity        Int     @default(1)
+  discountPercent Decimal @default(0) @db.Decimal(5, 2)
+  order           Int     @default(0)
+
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bundle          ProductBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, bundleId])
+  @@index([productId])
+  @@map("bundle_items")
+}
+
+model Quote {
+  id                  String    @id @default(uuid())
+  organizationId      String
+  number              String
+  clientId            String
+  opportunityId       String?
+  // 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired'
+  status              String    @default("draft")
+  validUntil          DateTime? @db.Date
+  subtotal            Decimal   @default(0) @db.Decimal(15, 2)
+  discountPercent     Decimal   @default(0) @db.Decimal(5, 2)
+  total               Decimal   @default(0) @db.Decimal(15, 2)
+  currency            String    @default("USD")
+  notes               String?
+  sentAt              DateTime? @db.Timestamptz()
+  acceptedAt          DateTime? @db.Timestamptz()
+  // Populated when the quote is converted to an Invoice — used as the
+  // "already converted" guard (idempotency).
+  convertedInvoiceId  String?
+  createdById         String?
+  createdAt           DateTime  @default(now()) @db.Timestamptz()
+  updatedAt           DateTime  @updatedAt @db.Timestamptz()
+
+  organization        Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client              Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  opportunity         Opportunity?  @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  convertedInvoice    Invoice?      @relation("QuoteConvertedInvoice", fields: [convertedInvoiceId], references: [id], onDelete: SetNull)
+  createdBy           User?         @relation("QuoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lineItems           QuoteLineItem[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([organizationId, clientId])
+  @@index([organizationId, opportunityId])
+  @@map("quotes")
+}
+
+model QuoteLineItem {
+  id              String  @id @default(uuid())
+  organizationId  String
+  quoteId         String
+  // XOR — exactly one of productId / bundleId is set. Enforced in the
+  // service AND by a DB CHECK constraint in 034-cpq.sql.
+  productId       String?
+  bundleId        String?
+  description     String?
+  quantity        Int     @default(1)
+  unitPrice       Decimal @default(0) @db.Decimal(15, 2)
+  discountPercent Decimal @default(0) @db.Decimal(5, 2)
+  lineTotal       Decimal @default(0) @db.Decimal(15, 2)
+  order           Int     @default(0)
+
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote           Quote          @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  product         Product?       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  bundle          ProductBundle? @relation(fields: [bundleId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, quoteId])
+  @@index([productId])
+  @@index([bundleId])
+  @@map("quote_line_items")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  WAVE F3 — MULTI-CURRENCY + DAILY FX RATES (migration 035)
+//
+//  `FxCurrency` is a GLOBAL ISO-4217 reference table — no
+//  `organizationId`, the same for every tenant. Distinct from
+//  the legacy per-org `Currency` model above (which stores
+//  formatting + a fixed `exchangeRate` per org). We picked the
+//  `FxCurrency` name to avoid a collision with `Currency`.
+//
+//  `ExchangeRate` is PER-ORG so admins can manually override
+//  any ECB-pulled rate without polluting other tenants. One row
+//  per (org, from, to, date, source). See FxService.getRate()
+//  for lookup ordering (manual > ecb > inverse > EUR cross).
+// ═══════════════════════════════════════════════════════════════
+
+model FxCurrency {
+  code           String  @id              // ISO 4217, e.g. 'USD'
+  name           String
+  symbol         String
+  decimalPlaces  Int     @default(2)
+
+  @@map("fx_currencies")
+}
+
+model ExchangeRate {
+  id              String   @id @default(uuid())
+  organizationId  String
+  fromCurrency    String
+  toCurrency      String
+  // Wide precision so EUR→KRW or similar high-magnitude pairs
+  // (≈ 1400 KRW per EUR) stay loss-free.
+  rate            Decimal  @db.Decimal(20, 10)
+  date            DateTime @db.Date
+  // 'manual' | 'ecb' | 'openexchange' — enforced by a CHECK
+  // constraint in 035-multi-currency.sql.
+  source          String   @default("ecb")
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([organizationId, fromCurrency, toCurrency, date, source], map: "exchange_rates_org_pair_date_source_uniq")
+  @@index([organizationId, fromCurrency, toCurrency, date(sort: Desc)], map: "exchange_rates_org_pair_date_idx")
+  @@map("exchange_rates")
 }

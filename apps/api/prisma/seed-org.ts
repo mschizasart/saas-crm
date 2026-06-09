@@ -63,6 +63,28 @@ export const ALL_PERMISSIONS = {
   // by default; non-admin roles need explicit grants.
   api: { manage: true },
   webhooks: { manage: true },
+  // ── Wave F3: Multi-currency + daily FX rates (migration 035) ──
+  // 'fx.view'      — see stored rates + run convert().
+  // 'fx.configure' — manual rate overrides + force ECB refresh.
+  // Currencies list (GET /fx/currencies) is public — no perm needed.
+  fx: { view: true, configure: true },
+  // ── Wave F2: CPQ — Configure-Price-Quote (migration 034) ──
+  // 'view'      — read quotes + bundles.
+  // 'create'    — create new quotes (also gates duplicate).
+  // 'edit'      — modify drafts + status transitions
+  //               (mark-accepted / mark-rejected / convert-to-invoice).
+  // 'delete'    — delete a draft quote.
+  // 'send'      — send a quote to a client.
+  // 'configure' — admin-only: manage Product Bundles
+  //               (CRUD under /settings/product-bundles).
+  quotes: {
+    view: true,
+    create: true,
+    edit: true,
+    delete: true,
+    send: true,
+    configure: true,
+  },
 };
 
 export async function seedOrganization(
@@ -95,6 +117,9 @@ export async function seedOrganization(
         proposals: { view: true, create: true, edit: true, delete: true },
         // Opportunities — sales reps own deals but don't reconfigure the pipeline
         opportunities: { view: true, create: true, edit: true, delete: true },
+        // CPQ — sales reps create + send quotes but don't manage Product Bundles
+        // (which is admin-curated catalog work).
+        quotes: { view: true, create: true, edit: true, delete: true, send: true },
         users: { view: true },
       },
     },

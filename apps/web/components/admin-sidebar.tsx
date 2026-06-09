@@ -267,6 +267,8 @@ function useNavItems(): NavItem[] {
         // Opportunities + Forecasts — Wave D1
         { label: 'Opportunities', href: '/opportunities', icon: Briefcase },
         { label: 'Forecasts', href: '/forecasts', icon: TrendingUp },
+        // Quotes (CPQ) — Wave F2
+        { label: 'Quotes', href: '/quotes', icon: FileCheck },
         { label: t('nav.proposals'), href: '/proposals', icon: FileCheck },
         {
           label: t('nav.estimates'),
@@ -375,6 +377,8 @@ function useNavItems(): NavItem[] {
         { label: 'Tax', href: '/settings/tax', icon: Receipt },
         { label: 'SMS', href: '/settings/sms', icon: MessageSquare },
         { label: 'Payment reminders', href: '/settings/dunning', icon: Clock },
+        // Wave F3 — Multi-currency + daily FX rates
+        { label: 'Currencies & FX', href: '/settings/fx', icon: DollarSign },
         { label: 'E-Invoice', href: '/settings/einvoice', icon: FileCode },
         { label: 'Branding', href: '/settings/branding', icon: Palette },
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },
@@ -391,6 +395,8 @@ function useNavItems(): NavItem[] {
         { label: t('nav.leadSources'), href: '/settings/lead-sources', icon: UserCircle },
         // Pipelines (opportunity stages) — Wave D1
         { label: 'Pipelines', href: '/settings/pipelines', icon: Briefcase },
+        // Product Bundles (CPQ catalog) — Wave F2
+        { label: 'Product Bundles', href: '/settings/product-bundles', icon: Package },
         // Approval Processes — Wave E1
         { label: 'Approval Processes', href: '/settings/approval-processes', icon: ShieldCheck },
         { label: t('nav.emailTemplates'), href: '/settings/email-templates', icon: FileCheck },

@@ -408,6 +408,16 @@ export default function ClientDetailPage() {
         </div>
       )}
 
+      {/* ── Quick links (Wave F1: hierarchy entry-point) ─────────────────── */}
+      <div className="mb-4">
+        <Link
+          href={`/clients/${client.id}/hierarchy`}
+          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+        >
+          View hierarchy →
+        </Link>
+      </div>
+
       {/* ── Tabs ───────────────────────────────────────────────────────────── */}
       <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
         <nav className="flex gap-1 -mb-px">

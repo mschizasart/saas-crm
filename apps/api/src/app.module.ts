@@ -77,9 +77,12 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { OpportunitiesModule } from './modules/opportunities/opportunities.module';
 import { CustomObjectsModule } from './modules/custom-objects/custom-objects.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
+import { CpqModule } from './modules/cpq/cpq.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuditContextInterceptor } from './modules/audit/audit-context.interceptor';
 import { PublicApiModule } from './modules/public-api/public-api.module';
+import { AccountHierarchyModule } from './modules/account-hierarchy/account-hierarchy.module';
+import { FxModule } from './modules/fx/fx.module';
 
 @Module({
   imports: [
@@ -173,6 +176,12 @@ import { PublicApiModule } from './modules/public-api/public-api.module';
     AuditModule,
     // Wave E3 — Public REST API + Webhooks
     PublicApiModule,
+    // Wave F1 — Account hierarchy
+    AccountHierarchyModule,
+    // Wave F2 — CPQ (product bundles + quotes)
+    CpqModule,
+    // Wave F3 — Multi-currency + daily FX rates
+    FxModule,
   ],
   providers: [
     // TenantInterceptor must run before AuditContextInterceptor so

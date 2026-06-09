@@ -50,7 +50,13 @@ export class TenantInterceptor implements NestInterceptor {
       // recovered from the HMAC-signed token in the path. See
       // modules/campaigns/public-campaigns.controller.ts.
       url.startsWith('/api/v1/public/campaigns') ||
-      url.startsWith('/api/public/campaigns')
+      url.startsWith('/api/public/campaigns') ||
+      // FX currencies are global reference data — no org context needed.
+      // The route uses @Public() but the interceptor's skip list is
+      // hand-maintained (see gotchas memory: TenantInterceptor doesn't
+      // read @Public() metadata).
+      url.startsWith('/api/v1/fx/currencies') ||
+      url.startsWith('/api/fx/currencies')
     ) {
       return next.handle();
     }
