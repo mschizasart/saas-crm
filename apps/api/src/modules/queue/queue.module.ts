@@ -52,6 +52,14 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
       // Bulk email campaigns (migration 024) — one job per campaign drives
       // the send loop. Concurrency (5) is set on CampaignsProcessor.
       { name: 'campaigns' },
+      // Public outbound webhook delivery (Wave E3, migration 032) — one
+      // job per delivery row. Concurrency (8) is set on
+      // WebhookDeliveryProcessor. The delivery row in
+      // public_webhook_deliveries is the source of truth; the queue is
+      // just the scheduler. A 1-min fallback sweep
+      // (WebhookRetryScheduler) re-enqueues due rows in case BullMQ
+      // loses a delayed job.
+      { name: 'webhook-delivery' },
     ),
   ],
   exports: [BullModule],

@@ -43,6 +43,26 @@ export const ALL_PERMISSIONS = {
   // roles need explicit grants per object family.
   'custom-objects': { view: true, configure: true },
   'custom-records': { view: true, create: true, edit: true, delete: true },
+  // ── Wave E2: Field history / audit trail (migration 031) ──
+  // 'audit.view' gates all three read endpoints (per-entity timeline,
+  // org-wide feed, by-user). There's no write permission — audit rows
+  // are produced automatically by the Prisma extension and are not
+  // mutable from any endpoint.
+  audit: { view: true },
+  // ── Wave E1: Approvals (migration 030) ──
+  // 'view'      — read processes + requests + decisions.
+  // 'configure' — create/edit/delete process definitions (settings page).
+  // 'request'   — submit a new approval request, cancel your own.
+  // 'decide'    — approve/reject a step (also gated by the step's
+  //               approverUserId / approverRoleId eligibility check).
+  approvals: { view: true, configure: true, request: true, decide: true },
+  // ── Wave E3: Public REST API + Webhooks (migration 032) ──
+  // 'api.manage' gates the public-API-key CRUD endpoints
+  // (/settings/api-keys). 'webhooks.manage' gates the outbound webhook
+  // CRUD + delivery-history endpoints (/settings/webhooks). Admin-only
+  // by default; non-admin roles need explicit grants.
+  api: { manage: true },
+  webhooks: { manage: true },
 };
 
 export async function seedOrganization(

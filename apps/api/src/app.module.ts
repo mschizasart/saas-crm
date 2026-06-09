@@ -76,6 +76,10 @@ import { DunningModule } from './modules/dunning/dunning.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { OpportunitiesModule } from './modules/opportunities/opportunities.module';
 import { CustomObjectsModule } from './modules/custom-objects/custom-objects.module';
+import { ApprovalsModule } from './modules/approvals/approvals.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { AuditContextInterceptor } from './modules/audit/audit-context.interceptor';
+import { PublicApiModule } from './modules/public-api/public-api.module';
 
 @Module({
   imports: [
@@ -165,9 +169,21 @@ import { CustomObjectsModule } from './modules/custom-objects/custom-objects.mod
     CampaignsModule,
     OpportunitiesModule,
     CustomObjectsModule,
+    ApprovalsModule,
+    AuditModule,
+    // Wave E3 — Public REST API + Webhooks
+    PublicApiModule,
   ],
   providers: [
+    // TenantInterceptor must run before AuditContextInterceptor so
+    // request.organization is populated when AuditContextInterceptor
+    // reads it to seed the AsyncLocalStorage audit context.
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
+    // Wave E2 — stashes { orgId, userId, ip } into AsyncLocalStorage so
+    // the Prisma audit extension can attribute writes without each
+    // service having to pass the actor down. See
+    // apps/api/src/modules/audit/audit-context.interceptor.ts.
+    { provide: APP_INTERCEPTOR, useClass: AuditContextInterceptor },
   ],
 })
 export class AppModule {}

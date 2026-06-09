@@ -11,7 +11,7 @@ import {
   ChevronDown, ChevronRight, ListTodo, Calendar, Megaphone,
   Activity, Tag, Lock, MessageCircle, MessageSquare, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
   ShieldX, Inbox, KeyRound, Sparkles, Clock, Mail,
-  Briefcase, TrendingUp,
+  Briefcase, TrendingUp, ShieldCheck,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -193,9 +193,47 @@ function useInboxUnreadCount(): number {
   return count;
 }
 
+/**
+ * Pulls the count of approval requests currently pending the logged-in
+ * user (Wave E1). Mirrors `useInboxUnreadCount` — silent on errors so
+ * the badge just won't render. Polls every 60s; could be socket-driven
+ * once the approvals push channel lands.
+ */
+function useApprovalsPendingCount(): number {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const token = () =>
+      typeof window === 'undefined' ? null : localStorage.getItem('access_token');
+
+    const load = async () => {
+      try {
+        const t = token();
+        if (!t) return;
+        const res = await fetch(
+          `${API_BASE}/api/v1/approval-requests/my-pending`,
+          { headers: { Authorization: `Bearer ${t}` } },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (typeof data?.total === 'number') setCount(data.total);
+      } catch {
+        /* silent */
+      }
+    };
+
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  return count;
+}
+
 function useNavItems(): NavItem[] {
   const { t } = useI18n();
   const inboxUnread = useInboxUnreadCount();
+  const approvalsPending = useApprovalsPendingCount();
   return [
     { label: t('nav.dashboard'), href: '/dashboard', icon: LayoutDashboard },
     {
@@ -203,6 +241,15 @@ function useNavItems(): NavItem[] {
       href: '/inbox',
       icon: Inbox,
       badge: inboxUnread > 0 ? (inboxUnread > 99 ? '99+' : String(inboxUnread)) : undefined,
+    },
+    {
+      label: 'Approvals',
+      href: '/approvals',
+      icon: ShieldCheck,
+      badge:
+        approvalsPending > 0
+          ? approvalsPending > 99 ? '99+' : String(approvalsPending)
+          : undefined,
     },
     {
       label: t('nav.sales'),
@@ -333,6 +380,8 @@ function useNavItems(): NavItem[] {
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },
         { label: t('nav.customFields'), href: '/settings/custom-fields', icon: FileText },
         { label: 'Custom Objects', href: '/settings/custom-objects', icon: Package },
+        // Wave E2 — field history / audit trail
+        { label: 'Audit Trail', href: '/audit', icon: Activity },
         { label: t('nav.tags'), href: '/settings/tags', icon: Tag },
         { label: t('nav.roles'), href: '/staff/roles', icon: Users },
         { label: t('nav.savedItems'), href: '/settings/saved-items', icon: BookOpen },
@@ -342,12 +391,19 @@ function useNavItems(): NavItem[] {
         { label: t('nav.leadSources'), href: '/settings/lead-sources', icon: UserCircle },
         // Pipelines (opportunity stages) — Wave D1
         { label: 'Pipelines', href: '/settings/pipelines', icon: Briefcase },
+        // Approval Processes — Wave E1
+        { label: 'Approval Processes', href: '/settings/approval-processes', icon: ShieldCheck },
         { label: t('nav.emailTemplates'), href: '/settings/email-templates', icon: FileCheck },
         { label: t('nav.paymentModes'), href: '/settings/payment-modes', icon: CreditCard },
         { label: 'Expense Categories', href: '/settings/expense-categories', icon: DollarSign },
         { label: 'Automations', href: '/settings/automations', icon: Workflow },
         { label: 'Webhooks', href: '/settings/webhooks', icon: Webhook },
         { label: 'API Keys', href: '/settings/api-keys', icon: Key },
+        // Wave E3 — public REST API surface (scoped keys + signed
+        // outbound webhooks with retry). Distinct from the legacy
+        // 'API Keys' / 'Webhooks' entries above, which power the simple
+        // in-app integrations console.
+        { label: 'API & Webhooks', href: '/settings/api', icon: Webhook },
         { label: 'Chat Widget', href: '/settings/chat-widget', icon: MessageCircle },
       ],
     },

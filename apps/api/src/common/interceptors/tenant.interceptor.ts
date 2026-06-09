@@ -128,6 +128,10 @@ export class TenantInterceptor implements NestInterceptor {
     if (
       organization &&
       request.user?.sub /* JWT-authenticated, not API-key */ &&
+      // Accept both 'api-key' (Wave E3 public-API strategy) and 'api_key'
+      // (legacy in-app x-api-key path at common/guards/api-key.guard.ts).
+      // Either form should bypass the membership check — they're not human users.
+      request.user?.type !== 'api-key' &&
       request.user?.type !== 'api_key'
     ) {
       const userId = request.user.sub;

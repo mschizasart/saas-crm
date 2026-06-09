@@ -3062,3 +3062,221 @@ model DashboardWidget {
   @@index([reportId])
   @@map("dashboard_widgets")
 }
+
+// ─── Field history / audit trail (migration 031, Wave E2) ────────────
+// Salesforce-style row-level change tracking for Client/Lead/Opportunity/
+// Invoice/Ticket. Rows are written by the Prisma client extension at
+// apps/api/src/modules/audit/audit-extension.ts — never by entity services
+// directly. Tenant isolation is enforced in audit.service.ts (every read
+// filters by organizationId) and in the extension (writes only happen when
+// the AsyncLocalStorage AuditContext carries a non-null orgId).
+//
+// Tenant isolation is enforced at the service layer; no Organization
+// back-relation is declared here (same pattern as Report/CustomObject
+// above) to keep this slice self-contained.
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  // Prisma model name lowercase: 'client' | 'lead' | 'opportunity' |
+  // 'invoice' | 'ticket'. Kept as a free-form text column so adding
+  // more audited models doesn't require a schema migration.
+  entityType     String
+  entityId       String
+  // 'create' | 'update' | 'delete' — also CHECK-constrained in SQL.
+  action         String
+  // Update: { field: { from, to }, ... }
+  // Create: { _all: { ...scalar snapshot } }
+  // Delete: { _all: { ...scalar snapshot } }
+  // Capped at ~10KB by the extension (values truncated to '[truncated]').
+  changes        Json     @default("{}")
+  changedById    String?
+  ip             String?
+  changedAt      DateTime @default(now())
+
+  @@index([organizationId, entityType, entityId, changedAt])
+  @@index([organizationId, changedAt])
+  @@index([organizationId, changedById, changedAt])
+  @@map("audit_log")
+}
+
+// ─── Approval Workflows (migration 030, Wave E1) ──────────────────────
+// Multi-step approval chains. Tenants define `ApprovalProcess` rows
+// (one per gated entity type) with an ordered list of `ApprovalStep`s.
+// A live `ApprovalRequest` advances through steps as eligible approvers
+// post `ApprovalDecision` rows. Tenant isolation is enforced at the
+// service layer with explicit `where: { organizationId: orgId }` on
+// every read AND write; no Organization back-relation declared here
+// (same pattern as Report / Dashboard above) to keep this slice
+// self-contained and avoid touching existing models.
+
+model ApprovalProcess {
+  id               String   @id @default(uuid())
+  organizationId   String
+  name             String
+  // 'invoice' | 'opportunity' | 'expense' | 'custom' — CHECK constraint
+  // in 030-approvals.sql enforces the enum at the DB.
+  entityType       String
+  active           Boolean  @default(true)
+  // {field, op, value} — when to require approval. Empty object = always.
+  // The calling subsystem (e.g. invoices.service) evaluates this BEFORE
+  // creating a request.
+  triggerCondition Json     @default("{}")
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  steps            ApprovalStep[]
+  requests         ApprovalRequest[]
+
+  @@index([organizationId])
+  @@index([organizationId, entityType])
+  @@map("approval_processes")
+}
+
+model ApprovalStep {
+  id              String   @id @default(uuid())
+  organizationId  String
+  processId       String
+  order           Int
+  // 'user' | 'role' | 'manager' — also CHECK-constrained in SQL.
+  // 'manager' is reserved for future use (resolved at decide-time from
+  // the requester's reports-to chain; not implemented yet — see TODO
+  // in approval-requests.service.ts).
+  approverType    String
+  approverUserId  String?
+  approverRoleId  String?
+  name            String?
+  createdAt       DateTime @default(now())
+
+  process         ApprovalProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([processId, order])
+  @@map("approval_steps")
+}
+
+model ApprovalRequest {
+  id                String   @id @default(uuid())
+  organizationId    String
+  processId         String
+  targetType        String
+  targetId          String
+  // 'pending' | 'approved' | 'rejected' | 'cancelled' — CHECK in SQL.
+  status            String   @default("pending")
+  // The ORDER (not id) of the step currently awaiting a decision.
+  // Updated atomically with the decision insert inside ONE $transaction
+  // so the request can never "skip" a step.
+  currentStepOrder  Int      @default(0)
+  requestedById     String
+  startedAt         DateTime @default(now())
+  completedAt       DateTime?
+
+  process           ApprovalProcess    @relation(fields: [processId], references: [id])
+  decisions         ApprovalDecision[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, targetType, targetId])
+  @@index([organizationId, requestedById])
+  @@map("approval_requests")
+}
+
+model ApprovalDecision {
+  id              String   @id @default(uuid())
+  organizationId  String
+  requestId       String
+  stepOrder       Int
+  decidedById     String
+  // 'approve' | 'reject' — CHECK in SQL.
+  decision        String
+  comment         String?
+  decidedAt       DateTime @default(now())
+
+  request         ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, stepOrder], name: "approval_decisions_request_step_uniq")
+  @@index([requestId, decidedAt])
+  @@index([organizationId, decidedById])
+  @@map("approval_decisions")
+}
+
+// ─── Public REST API + Webhooks (migration 032, Wave E3) ──────────────
+// Tables named `public_*` so the legacy in-app `ApiKey` / `Webhook` models
+// above remain untouched and keep powering the in-app console pages
+// (`/settings/api-keys`, `/settings/webhooks`). These NEW models back the
+// public REST API surface (`/settings/api`) with scoped keys, HMAC-signed
+// outbound deliveries, retries with back-off, and an audit trail.
+//
+// Tenant isolation: every read AND write goes through the service layer
+// with `where: { organizationId: orgId }` — no RLS here.
+
+model PublicApiKey {
+  id             String    @id @default(uuid())
+  organizationId String
+  name           String
+  // First 8 chars after the `crm_` prefix; plaintext, indexed for lookup
+  // before the constant-time hash compare. NOT a secret on its own.
+  keyPrefix      String
+  // sha256(full_key) hex — the secret part of the key is NEVER stored.
+  keyHash        String
+  // ['clients.read','invoices.write', ...] — checked by the strategy at
+  // request time (see api-key.strategy.ts). Empty array == no scopes
+  // (caller can only hit endpoints that don't require a scope).
+  scopes         Json      @default("[]")
+  lastUsedAt     DateTime?
+  expiresAt      DateTime?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  // Soft delete — preserves audit / delivery attribution. NULL == active.
+  revokedAt      DateTime?
+
+  @@unique([organizationId, keyPrefix])
+  @@index([keyPrefix])
+  @@map("public_api_keys")
+}
+
+model PublicWebhook {
+  id             String    @id @default(uuid())
+  organizationId String
+  // Validated to start with `https://` at the DTO layer.
+  url            String
+  // ['client.created','invoice.paid',…] — must be a subset of ALLOWED_EVENTS
+  // (see webhook-events.ts). Enforced at the service layer on write.
+  events         Json      @default("[]")
+  // 32-byte hex secret; stored encrypted at-rest (envelope-compatible with
+  // email_settings.smtpPassword via the common/crypto/encrypt.ts helper).
+  // Decrypted only inside webhook-delivery.processor.ts at HMAC sign time.
+  secret         String
+  active         Boolean   @default(true)
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  deliveries     PublicWebhookDelivery[]
+
+  @@index([organizationId, active])
+  @@map("public_webhooks")
+}
+
+model PublicWebhookDelivery {
+  id             String    @id @default(uuid())
+  organizationId String
+  webhookId      String
+  event          String
+  payload        Json      @default("{}")
+  statusCode     Int?
+  responseBody   String?
+  attemptCount   Int       @default(0)
+  lastAttemptAt  DateTime?
+  // Driven by the back-off schedule in webhook-delivery.processor.ts:
+  // attempt 1→+1m, 2→+5m, 3→+30m, 4→+2h, 5→+12h. NULL after permanent fail.
+  nextAttemptAt  DateTime?
+  succeeded      Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  webhook        PublicWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, webhookId, createdAt(sort: Desc)])
+  @@index([succeeded, nextAttemptAt])
+  @@map("public_webhook_deliveries")
+}

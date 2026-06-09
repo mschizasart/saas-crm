@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { auditExtension } from '../modules/audit/audit-extension';
 
 /**
  * Tenant-aware Prisma service.
@@ -31,6 +32,16 @@ export class PrismaService
           ? ['query', 'error', 'warn']
           : ['error'],
     });
+
+    // ── Wave E2: attach the audit-trail extension ─────────────────
+    // `$extends` returns a NEW client (it does not mutate `this`), so we
+    // copy the extended client's prototype methods back onto the service
+    // instance. This preserves the `PrismaService` identity (DI still
+    // works) while routing every `prisma.<model>.<op>` call through the
+    // audit extension's `query` hooks. `withOrganization` and
+    // `withoutTenant` keep working because they call methods that the
+    // extended client also exposes (`$transaction`, `$executeRaw`).
+    Object.assign(this, this.$extends(auditExtension));
   }
 
   async onModuleInit() {
@@ -45,6 +56,19 @@ export class PrismaService
   /**
    * Execute a callback with the RLS organization context set.
    * All queries inside the callback are automatically scoped to the tenant.
+   *
+   * ── Audit-extension caveat (Wave E2.2, known limitation) ─────────
+   * The audit extension's query hooks fire on `this.prisma.<model>.<op>`
+   * but NOT on `tx.<model>.<op>` inside this `$transaction` block.
+   * Prisma 6 deny-lists `$extends` on the transaction client
+   * (see runtime/library.d.ts: `denylist = [..., "$extends"]`), so we
+   * cannot re-extend `tx` to forward writes through the hooks.
+   *
+   * Services that mutate audited entities must either
+   *   (a) do the mutation OUTSIDE `withOrganization` / `$transaction`, or
+   *   (b) explicitly write an `AuditLog` row inside the transaction.
+   *
+   * Tracked as Wave E2.2.
    */
   async withOrganization<T>(
     organizationId: string,
