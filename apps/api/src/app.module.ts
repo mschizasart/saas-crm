@@ -83,6 +83,10 @@ import { AuditContextInterceptor } from './modules/audit/audit-context.intercept
 import { PublicApiModule } from './modules/public-api/public-api.module';
 import { AccountHierarchyModule } from './modules/account-hierarchy/account-hierarchy.module';
 import { FxModule } from './modules/fx/fx.module';
+import { RecordSharingModule } from './modules/record-sharing/record-sharing.module';
+import { TerritoriesModule } from './modules/territories/territories.module';
+// Wave G3 — Chatter-style internal feed + @mentions
+import { FeedModule } from './modules/feed/feed.module';
 
 @Module({
   imports: [
@@ -182,6 +186,12 @@ import { FxModule } from './modules/fx/fx.module';
     CpqModule,
     // Wave F3 — Multi-currency + daily FX rates
     FxModule,
+    // Wave G1 — Role hierarchy + hierarchical record sharing
+    RecordSharingModule,
+    // Wave G2 — Territory management
+    TerritoriesModule,
+    // Wave G3 — Chatter-style internal feed + @mentions
+    FeedModule,
   ],
   providers: [
     // TenantInterceptor must run before AuditContextInterceptor so

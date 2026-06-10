@@ -5,6 +5,7 @@ import { ForecastsController } from './forecasts.controller';
 import { OpportunitiesService } from './opportunities.service';
 import { PipelinesService } from './pipelines.service';
 import { ForecastsService } from './forecasts.service';
+import { RecordSharingModule } from '../record-sharing/record-sharing.module';
 
 /**
  * Opportunities / deal pipeline / weighted forecast (Wave D1).
@@ -21,6 +22,11 @@ import { ForecastsService } from './forecasts.service';
  * import needed — same pattern as DunningModule / CampaignsModule).
  */
 @Module({
+  imports: [
+    // Wave G1 — hierarchical record sharing helper injected by
+    // OpportunitiesService.list() to scope by manager/report tree.
+    RecordSharingModule,
+  ],
   controllers: [
     OpportunitiesController,
     PipelinesController,

@@ -37,8 +37,8 @@ export class OpportunitiesController {
   @Get('kanban')
   @Permissions('opportunities.view')
   @ApiOperation({ summary: 'Kanban board: stages with their opportunities' })
-  kanban(@CurrentOrg() org: any) {
-    return this.service.kanban(org.id);
+  kanban(@CurrentOrg() org: any, @CurrentUser() user: any) {
+    return this.service.kanban(org.id, user);
   }
 
   // ─── CRUD ────────────────────────────────────────────────────
@@ -48,19 +48,24 @@ export class OpportunitiesController {
   @ApiOperation({ summary: 'List opportunities (paginated, filterable)' })
   list(
     @CurrentOrg() org: any,
+    @CurrentUser() user: any,
     @Query('search') search?: string,
     @Query('stageId') stageId?: string,
     @Query('ownerId') ownerId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.service.list(org.id, {
-      search,
-      stageId,
-      ownerId,
-      page: page ? Number(page) : undefined,
-      limit: limit ? Number(limit) : undefined,
-    });
+    return this.service.list(
+      org.id,
+      {
+        search,
+        stageId,
+        ownerId,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      },
+      user,
+    );
   }
 
   @Post()

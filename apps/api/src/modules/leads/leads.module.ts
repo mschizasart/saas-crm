@@ -5,6 +5,7 @@ import { LeadsService } from './leads.service';
 import { LeadScoringService } from './lead-scoring.service';
 import { LeadScoringProcessor } from './lead-scoring.processor';
 import { LeadScoringListener } from './lead-scoring.listener';
+import { RecordSharingModule } from '../record-sharing/record-sharing.module';
 
 @Module({
   imports: [
@@ -12,6 +13,9 @@ import { LeadScoringListener } from './lead-scoring.listener';
     // this module (the global QueueModule already declares the queue
     // for the connection / worker host wiring).
     BullModule.registerQueue({ name: 'lead-scoring' }),
+    // Wave G1 — hierarchical record sharing helper injected by
+    // LeadsService.findAll() to scope by manager/report relationships.
+    RecordSharingModule,
   ],
   controllers: [LeadsController],
   providers: [

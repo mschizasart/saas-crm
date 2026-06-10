@@ -11,7 +11,7 @@ import {
   ChevronDown, ChevronRight, ListTodo, Calendar, Megaphone,
   Activity, Tag, Lock, MessageCircle, MessageSquare, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
   ShieldX, Inbox, KeyRound, Sparkles, Clock, Mail,
-  Briefcase, TrendingUp, ShieldCheck,
+  Briefcase, TrendingUp, ShieldCheck, Map, AtSign,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -230,10 +230,54 @@ function useApprovalsPendingCount(): number {
   return count;
 }
 
+/**
+ * Pulls the count of recent un-stamped mentions for the logged-in user
+ * (Wave G3 — Chatter feed). Same shape as `useInboxUnreadCount`: silent
+ * on errors so the badge just won't render. Uses limit=1 because we
+ * only need the `total` count off the paged response.
+ *
+ * v2: the API already stamps `notifiedAt` after delivering the
+ * notification; once we add an `onlyUnread` query param to
+ * `/feed/mentions/my` we can drop the static "1" badge in favour of a
+ * real unread count. For now we just light the badge if there are ANY
+ * mentions in the inbox.
+ */
+function useMyMentionsCount(): number {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const token = () =>
+      typeof window === 'undefined' ? null : localStorage.getItem('access_token');
+
+    const load = async () => {
+      try {
+        const t = token();
+        if (!t) return;
+        const res = await fetch(
+          `${API_BASE}/api/v1/feed/mentions/my?limit=1`,
+          { headers: { Authorization: `Bearer ${t}` } },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (typeof data?.total === 'number') setCount(data.total);
+      } catch {
+        /* silent */
+      }
+    };
+
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  return count;
+}
+
 function useNavItems(): NavItem[] {
   const { t } = useI18n();
   const inboxUnread = useInboxUnreadCount();
   const approvalsPending = useApprovalsPendingCount();
+  const mentionsCount = useMyMentionsCount();
   return [
     { label: t('nav.dashboard'), href: '/dashboard', icon: LayoutDashboard },
     {
@@ -249,6 +293,16 @@ function useNavItems(): NavItem[] {
       badge:
         approvalsPending > 0
           ? approvalsPending > 99 ? '99+' : String(approvalsPending)
+          : undefined,
+    },
+    // Wave G3 — Chatter-style feed mentions inbox.
+    {
+      label: 'My Mentions',
+      href: '/feed/mentions',
+      icon: AtSign,
+      badge:
+        mentionsCount > 0
+          ? mentionsCount > 99 ? '99+' : String(mentionsCount)
           : undefined,
     },
     {
@@ -395,6 +449,10 @@ function useNavItems(): NavItem[] {
         { label: t('nav.leadSources'), href: '/settings/lead-sources', icon: UserCircle },
         // Pipelines (opportunity stages) — Wave D1
         { label: 'Pipelines', href: '/settings/pipelines', icon: Briefcase },
+        // Territories — Wave G2
+        { label: 'Territories', href: '/settings/territories', icon: Map },
+        // Team Hierarchy — Wave G1 (drives hierarchical record sharing)
+        { label: 'Team Hierarchy', href: '/settings/team-hierarchy', icon: Users },
         // Product Bundles (CPQ catalog) — Wave F2
         { label: 'Product Bundles', href: '/settings/product-bundles', icon: Package },
         // Approval Processes — Wave E1

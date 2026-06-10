@@ -85,6 +85,38 @@ export const ALL_PERMISSIONS = {
     send: true,
     configure: true,
   },
+  // ── Wave G2: Territories (migration 037) ──
+  // 'view'      — list / read territories, members, assignments,
+  //               hierarchy + reverse-lookup endpoints.
+  // 'configure' — admin-only: create/update/delete territories,
+  //               manage members + assignments. No separate
+  //               create/edit/delete keys — territory management
+  //               is a single concern owned by sales-ops admins.
+  territories: { view: true, configure: true },
+  // ── Wave G1: Hierarchical record sharing (migration 036) ──
+  // Scopes list endpoints (leads, opportunities, ...) by ownership
+  // along the org chart. Resource key is 'records.sharing'; actions
+  // are the visibility levels:
+  //   'team'      — sees records owned by self + direct reports.
+  //   'hierarchy' — sees records owned by self + ALL transitive
+  //                 reports (whole subtree).
+  //   'all'       — sees everything (admin / super-grant). Equivalent
+  //                 to the legacy behaviour before G1 shipped — no
+  //                 scoping is applied.
+  // Default grants: Admin gets all three; Sales gets 'team' (a sales
+  // manager naturally sees their direct team's deals).
+  'records.sharing': { team: true, hierarchy: true, all: true },
+  // ── Wave G3: Chatter-style internal feed + @mentions (migration 038) ──
+  // 'view'      — read the feed on any record + the "my mentions" inbox.
+  // 'create'    — post notes & replies, @mention teammates.
+  // 'edit_own'  — edit your OWN posts within a 5-min window; soft-delete
+  //               your own posts at any time. The window is enforced
+  //               server-side (FeedService.update); the UI hides the
+  //               button as a UX courtesy only.
+  // 'moderate'  — admin/ops can soft-delete ANYONE'S post (e.g. takedown
+  //               inappropriate content). Admin-only by default; all
+  //               other roles get view + create + edit_own only.
+  feed: { view: true, create: true, edit_own: true, moderate: true },
 };
 
 export async function seedOrganization(
@@ -105,6 +137,10 @@ export async function seedOrganization(
         estimates: { view: true, create: true, edit: true, delete: true, send: true },
         proposals: { view: true, create: true, edit: true, delete: true },
         users: { view: true },
+        // Wave G3 — everyone collaborates on the record feed; only
+        // admins get the moderate flag (to take down inappropriate
+        // posts).
+        feed: { view: true, create: true, edit_own: true },
       },
     },
     {
@@ -121,6 +157,14 @@ export async function seedOrganization(
         // (which is admin-curated catalog work).
         quotes: { view: true, create: true, edit: true, delete: true, send: true },
         users: { view: true },
+        // Wave G1 — sales managers see their direct team's records.
+        // Hierarchy + all are admin-only; Sales gets 'team' so a
+        // first-line manager naturally sees their reports' leads /
+        // opportunities without seeing the whole org's pipeline.
+        'records.sharing': { team: true },
+        // Wave G3 — sales reps post freely on record feeds + @mention
+        // teammates. Moderation stays admin-only.
+        feed: { view: true, create: true, edit_own: true },
       },
     },
   ];

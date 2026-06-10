@@ -246,6 +246,12 @@ model User {
   // tenant the row is anchored to for RLS; memberships add additional
   // orgs the same user can switch into without re-registering.
   memberships    UserOrganizationMembership[]
+  // Role hierarchy (Wave G1 — migration 036). Self-referential FK so
+  // each user points at their manager. Drives hierarchical record
+  // sharing (RecordSharingService.applyVisibilityScope).
+  managerId       String?
+  manager         User?    @relation("UserReportsHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
+  directReports   User[]   @relation("UserReportsHierarchy")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -3472,4 +3478,166 @@ model ExchangeRate {
   @@unique([organizationId, fromCurrency, toCurrency, date, source], map: "exchange_rates_org_pair_date_source_uniq")
   @@index([organizationId, fromCurrency, toCurrency, date(sort: Desc)], map: "exchange_rates_org_pair_date_idx")
   @@map("exchange_rates")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Territories (Wave G2 — migration 037)
+//
+//  Sales orgs partition their book of business by geography,
+//  industry, or product line. Each tenant defines territories
+//  (optionally arranged into a parent/child hierarchy),
+//  assigns users as members or managers, and routes Clients /
+//  Leads / Opportunities to specific territories.
+//
+//  Tenant isolation is enforced at the service layer — every read
+//  AND write goes through `where: { organizationId: orgId }`. No
+//  Organization / User / Client back-relations are declared here
+//  so this slice stays self-contained (same pattern as Approval /
+//  Audit / Custom Objects above). Cross-tenant FK guards on every
+//  user-supplied id at the service layer.
+// ═══════════════════════════════════════════════════════════════
+
+model Territory {
+  id                  String   @id @default(uuid())
+  organizationId      String
+  name                String
+  description         String?
+  // Self-FK for the territory tree. NULL == root.
+  parentTerritoryId   String?
+  parent              Territory?  @relation("TerritoryHierarchy", fields: [parentTerritoryId], references: [id], onDelete: SetNull)
+  children            Territory[] @relation("TerritoryHierarchy")
+  // Designated manager — the single routing pointer. Multiple
+  // members may carry `role='manager'` in territory_members for
+  // elevated visibility without changing this routing pointer.
+  managerId           String?
+  createdAt           DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  members             TerritoryMember[]
+  assignments         TerritoryAssignment[]
+
+  @@unique([organizationId, name], map: "territories_org_name_uniq")
+  @@index([organizationId, parentTerritoryId], map: "territories_org_parent_idx")
+  @@index([organizationId], map: "territories_org_idx")
+  @@map("territories")
+}
+
+model TerritoryMember {
+  id              String   @id @default(uuid())
+  organizationId  String
+  territoryId     String
+  userId          String
+  // 'member' | 'manager' — enforced by SQL CHECK constraint.
+  role            String   @default("member")
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  territory       Territory @relation(fields: [territoryId], references: [id], onDelete: Cascade)
+
+  @@unique([territoryId, userId], map: "territory_members_territory_user_uniq")
+  @@index([organizationId, territoryId, userId], map: "territory_members_org_territory_user_idx")
+  @@index([organizationId, userId], map: "territory_members_org_user_idx")
+  @@map("territory_members")
+}
+
+model TerritoryAssignment {
+  id              String   @id @default(uuid())
+  organizationId  String
+  territoryId     String
+  // Polymorphic — 'client' | 'lead' | 'opportunity' (CHECK in SQL).
+  // No DB-level FK on entityId; the service layer validates that
+  // the entity exists in the right table for the caller's org
+  // before insert (same pattern as audit_log).
+  entityType      String
+  entityId        String
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  territory       Territory @relation(fields: [territoryId], references: [id], onDelete: Cascade)
+
+  @@unique([territoryId, entityType, entityId], map: "territory_assignments_territory_entity_uniq")
+  @@index([organizationId, entityType, entityId], map: "territory_assignments_org_entity_idx")
+  @@index([organizationId, territoryId, entityType], map: "territory_assignments_org_territory_type_idx")
+  @@map("territory_assignments")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CHATTER-STYLE INTERNAL FEED + @MENTIONS  (Wave G3 — migration 038)
+//
+//  Every record (Client / Lead / Opportunity / Ticket) has a feed
+//  where teammates post notes, ask questions, and @mention each
+//  other. Mentioned users get an in-app notification (and best-
+//  effort web push) via the existing NotificationsService.
+//
+//  Polymorphic attach point is `entityType` + `entityId` — same
+//  pattern as `territory_assignments` and `audit_log`. The
+//  service layer cross-tenant-guards every entityId on write.
+//
+//  Threading is via a self-FK on `parentPostId`. Replies cascade
+//  with the parent on hard delete, but the API path prefers
+//  SOFT-delete (setting `deletedAt`) so threads stay readable
+//  after a moderator removes a post.
+//
+//  `FeedMention` has a UNIQUE(post, user) so the notification
+//  listener can't fire twice for the same mention even if the
+//  caller submits dupes.
+// ═══════════════════════════════════════════════════════════════
+
+model FeedPost {
+  id              String   @id @default(uuid())
+  organizationId  String
+  // Polymorphic — 'client' | 'lead' | 'opportunity' | 'ticket'.
+  // CHECK constraint in 038-feed.sql; the service uses the same
+  // enum in its switch to validate cross-tenant entity access
+  // before insert.
+  entityType      String
+  entityId        String
+  // Nullable so a removed author doesn't blow away the thread.
+  // The UI renders "[former member]" when this is null. No formal
+  // Prisma relation back to User — kept as a scalar (same pattern
+  // as TerritoryMember.userId) to avoid touching the User model.
+  // The DB-level FK to users(id) with ON DELETE SET NULL lives in
+  // 038-feed.sql.
+  authorId        String?
+  body            String
+  // Self-FK for threaded replies. The list endpoint returns only
+  // top-level posts (parentPostId IS NULL) with their children
+  // hydrated; arbitrary depth is allowed at the DB level.
+  parentPostId    String?
+  // Soft-delete: preserves thread structure when a post is
+  // removed. UI renders deleted posts as "[deleted]" placeholders.
+  deletedAt       DateTime? @db.Timestamptz()
+  createdAt       DateTime  @default(now()) @db.Timestamptz()
+  updatedAt       DateTime  @updatedAt @db.Timestamptz()
+
+  // Self-relation only — organisation / author are scalar-only on
+  // purpose (see comment above). The DB-level FKs are in
+  // 038-feed.sql and still cascade correctly on org/user delete.
+  parentPost      FeedPost?     @relation("FeedPostThread", fields: [parentPostId], references: [id], onDelete: Cascade)
+  replies         FeedPost[]    @relation("FeedPostThread")
+  mentions        FeedMention[]
+
+  @@index([organizationId, entityType, entityId, createdAt(sort: Desc)], map: "feed_posts_org_entity_created_idx")
+  @@index([organizationId, parentPostId], map: "feed_posts_org_parent_idx")
+  @@map("feed_posts")
+}
+
+model FeedMention {
+  id               String    @id @default(uuid())
+  organizationId   String
+  postId           String
+  // Scalar-only (no Prisma relation to User) — see FeedPost.authorId
+  // comment. DB-level FK with ON DELETE CASCADE in 038-feed.sql.
+  mentionedUserId  String
+  // Stamped by the notification listener after the in-app
+  // notification is delivered. NULL means "still pending" — lets
+  // ops re-fire missed notifications by scanning for nulls.
+  notifiedAt       DateTime? @db.Timestamptz()
+  createdAt        DateTime  @default(now()) @db.Timestamptz()
+
+  post             FeedPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  // Belt-and-braces uniqueness — even a buggy caller can't make
+  // the same user receive two notifications for one post.
+  @@unique([postId, mentionedUserId], map: "feed_mentions_post_user_uniq")
+  @@index([organizationId, mentionedUserId, createdAt(sort: Desc)], map: "feed_mentions_org_user_created_idx")
+  @@map("feed_mentions")
 }

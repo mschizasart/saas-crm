@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { RecordSharingService } from '../record-sharing/record-sharing.service';
 import {
   CreateOpportunityDto,
   UpdateOpportunityDto,
@@ -21,7 +22,10 @@ import {
  */
 @Injectable()
 export class OpportunitiesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private recordSharing: RecordSharingService,
+  ) {}
 
   // ─── List / Find ──────────────────────────────────────────────
 
@@ -33,6 +37,18 @@ export class OpportunitiesService {
       ownerId?: string;
       page?: number;
       limit?: number;
+    },
+    /**
+     * Optional caller — when supplied, opportunities are scoped via
+     * RecordSharingService.applyVisibilityScope() to (self + reports)
+     * unless the caller has the `records.sharing.all` grant. Optional
+     * so internal callers (forecasts service etc.) keep working
+     * unchanged. Wave G1.
+     */
+    currentUser?: {
+      id: string;
+      isAdmin?: boolean;
+      role?: { permissions?: Record<string, Record<string, boolean>> };
     },
   ) {
     const { search, stageId, ownerId, page = 1, limit = 20 } = query;
@@ -50,9 +66,32 @@ export class OpportunitiesService {
       if (stageId) where.stageId = stageId;
       if (ownerId) where.ownerId = ownerId;
 
+      // Wave G1 — hierarchical record sharing. Scope by ownership
+      // for non-admin callers. Admins fall through unchanged.
+      //
+      // `user.isAdmin === true` is a blanket no-scope bypass mirroring
+      // RbacGuard's admin contract. The `records.sharing.all` permission
+      // inside applyVisibilityScope is the role-level equivalent for
+      // non-admin users.
+      //
+      // We call the Tx variant because we're already inside a
+      // `withOrganization` callback — the public method would open a
+      // nested transaction and Prisma would throw.
+      const scopedWhere =
+        currentUser && currentUser.isAdmin !== true
+          ? await this.recordSharing.applyVisibilityScopeTx(
+              tx,
+              orgId,
+              currentUser.id,
+              currentUser.role?.permissions,
+              where,
+              'ownerId',
+            )
+          : where;
+
       const [data, total] = await Promise.all([
         tx.opportunity.findMany({
-          where,
+          where: scopedWhere,
           skip,
           take: limit,
           orderBy: { createdAt: 'desc' },
@@ -63,7 +102,7 @@ export class OpportunitiesService {
             lead:   { select: { id: true, name: true } },
           },
         }),
-        tx.opportunity.count({ where }),
+        tx.opportunity.count({ where: scopedWhere }),
       ]);
 
       return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
@@ -312,15 +351,40 @@ export class OpportunitiesService {
    * Returns every stage in the pipeline, each with up to 100 most
    * recent opportunities. The web UI renders one column per stage.
    */
-  async kanban(orgId: string) {
+  async kanban(
+    orgId: string,
+    /**
+     * Optional caller — Wave G1 visibility-scope contract. Without it
+     * non-admin users would see every opportunity in the tenant on the
+     * kanban board, sidestepping the list-endpoint scope.
+     */
+    currentUser?: {
+      id: string;
+      isAdmin?: boolean;
+      role?: { permissions?: Record<string, Record<string, boolean>> };
+    },
+  ) {
     return this.prisma.withOrganization(orgId, async (tx) => {
       const stages = await tx.opportunityStage.findMany({
         where: { organizationId: orgId },
         orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
       });
 
+      const baseWhere: any = { organizationId: orgId };
+      const scopedWhere =
+        currentUser && currentUser.isAdmin !== true
+          ? await this.recordSharing.applyVisibilityScopeTx(
+              tx,
+              orgId,
+              currentUser.id,
+              currentUser.role?.permissions,
+              baseWhere,
+              'ownerId',
+            )
+          : baseWhere;
+
       const opps = await tx.opportunity.findMany({
-        where: { organizationId: orgId },
+        where: scopedWhere,
         orderBy: { createdAt: 'desc' },
         // Generous cap; UI may further limit per column to 100.
         take: stages.length * 100,

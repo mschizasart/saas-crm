@@ -10,6 +10,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EmailsService } from '../emails/emails.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { RecordSharingService } from '../record-sharing/record-sharing.service';
 import { parse as parseCsvSync } from 'csv-parse/sync';
 import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
@@ -83,6 +84,7 @@ export class LeadsService {
     private prisma: PrismaService,
     private events: EventEmitter2,
     private activityLog: ActivityLogService,
+    private recordSharing: RecordSharingService,
     @Optional() private emailsService?: EmailsService,
   ) {}
 
@@ -90,6 +92,18 @@ export class LeadsService {
   async findAllForExport(
     orgId: string,
     query: { search?: string; status?: string; assignedToId?: string } = {},
+    /**
+     * Optional caller — when supplied (and not isAdmin), the export
+     * obeys the same hierarchical record-sharing scope as findAll().
+     * Without this, a sales rep with `leads.view` would CSV-export
+     * every lead in the tenant — bypassing the visibility check the
+     * list view enforces. Wave G1.
+     */
+    currentUser?: {
+      id: string;
+      isAdmin?: boolean;
+      role?: { permissions?: Record<string, Record<string, boolean>> };
+    },
   ): Promise<{ rows: any[]; truncated: boolean }> {
     const { search, status, assignedToId } = query;
 
@@ -108,8 +122,22 @@ export class LeadsService {
       }
       if (assignedToId) where.assignedTo = assignedToId;
 
+      // Apply hierarchical visibility scope (Wave G1) — same contract
+      // as findAll(). Admins fall through unchanged.
+      const scopedWhere =
+        currentUser && currentUser.isAdmin !== true
+          ? await this.recordSharing.applyVisibilityScopeTx(
+              tx,
+              orgId,
+              currentUser.id,
+              currentUser.role?.permissions,
+              where,
+              'assignedTo',
+            )
+          : where;
+
       const rows = await tx.lead.findMany({
-        where,
+        where: scopedWhere,
         orderBy: { createdAt: 'desc' },
         take: EXPORT_ROW_CAP + 1,
         include: {
@@ -141,6 +169,18 @@ export class LeadsService {
       /** 'createdAt' (default) | 'score' — score sorts NULLS LAST, desc. */
       sortBy?: string;
     },
+    /**
+     * Optional caller — when supplied, leads are scoped via
+     * RecordSharingService.applyVisibilityScope() to (self + reports)
+     * unless the caller has the `records.sharing.all` grant. Kept
+     * optional so non-HTTP callers (CSV import internals, cron jobs)
+     * keep working unchanged. Wave G1.
+     */
+    currentUser?: {
+      id: string;
+      isAdmin?: boolean;
+      role?: { permissions?: Record<string, Record<string, boolean>> };
+    },
   ) {
     const { search, status, assignedToId, page = 1, limit = 20, sortBy } = query;
     const skip = (page - 1) * limit;
@@ -161,6 +201,32 @@ export class LeadsService {
       }
       if (assignedToId) where.assignedTo = assignedToId;
 
+      // Wave G1 — hierarchical record sharing. When a caller is
+      // present and is NOT a super-admin, scope leads to owners the
+      // caller can see. Admins fall through unchanged. The Lead
+      // model uses the scalar `assignedTo` column for ownership,
+      // hence the explicit fourth arg.
+      //
+      // `user.isAdmin === true` is a blanket no-scope bypass mirroring
+      // RbacGuard's admin contract. The `records.sharing.all` permission
+      // inside applyVisibilityScope is the role-level equivalent for
+      // non-admin users.
+      //
+      // We call the Tx variant because we're already inside a
+      // `withOrganization` callback — the public method would open a
+      // nested transaction and Prisma would throw.
+      const scopedWhere =
+        currentUser && currentUser.isAdmin !== true
+          ? await this.recordSharing.applyVisibilityScopeTx(
+              tx,
+              orgId,
+              currentUser.id,
+              currentUser.role?.permissions,
+              where,
+              'assignedTo',
+            )
+          : where;
+
       // "Hottest first" sort uses Prisma's nullable-sort syntax to push
       // un-scored leads to the bottom; createdAt is the secondary key
       // so leads with identical (or null) scores order deterministically.
@@ -171,7 +237,7 @@ export class LeadsService {
 
       const [data, total] = await Promise.all([
         tx.lead.findMany({
-          where,
+          where: scopedWhere,
           skip,
           take: limit,
           orderBy,
@@ -181,7 +247,7 @@ export class LeadsService {
             _count: { select: { notes: true } },
           },
         }),
-        tx.lead.count({ where }),
+        tx.lead.count({ where: scopedWhere }),
       ]);
 
       return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
@@ -948,10 +1014,37 @@ export class LeadsService {
 
   // ─── Kanban Board ────────────────────────────────────────────
 
-  async getKanbanBoard(orgId: string) {
+  async getKanbanBoard(
+    orgId: string,
+    /**
+     * Optional caller — same Wave G1 visibility-scope contract as
+     * findAll/findAllForExport. Without it, a sales rep with
+     * `leads.view` would see the entire tenant on the kanban board
+     * regardless of ownership.
+     */
+    currentUser?: {
+      id: string;
+      isAdmin?: boolean;
+      role?: { permissions?: Record<string, Record<string, boolean>> };
+    },
+  ) {
     return this.prisma.withOrganization(orgId, async (tx) => {
+      const where: any = { organizationId: orgId };
+
+      const scopedWhere =
+        currentUser && currentUser.isAdmin !== true
+          ? await this.recordSharing.applyVisibilityScopeTx(
+              tx,
+              orgId,
+              currentUser.id,
+              currentUser.role?.permissions,
+              where,
+              'assignedTo',
+            )
+          : where;
+
       const leads = await tx.lead.findMany({
-        where: { organizationId: orgId },
+        where: scopedWhere,
         select: {
           id: true,
           name: true,

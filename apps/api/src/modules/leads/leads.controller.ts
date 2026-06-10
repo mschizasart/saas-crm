@@ -79,8 +79,8 @@ export class LeadsController {
   @Get('kanban')
   @Permissions('leads.view')
   @ApiOperation({ summary: 'Get leads grouped by status for kanban board' })
-  getKanbanBoard(@CurrentOrg() org: any) {
-    return this.service.getKanbanBoard(org.id);
+  getKanbanBoard(@CurrentOrg() org: any, @CurrentUser() user: any) {
+    return this.service.getKanbanBoard(org.id, user);
   }
 
   // ─── CRUD ────────────────────────────────────────────────────
@@ -90,6 +90,7 @@ export class LeadsController {
   @ApiOperation({ summary: 'List all leads (paginated, searchable, sortable)' })
   findAll(
     @CurrentOrg() org: any,
+    @CurrentUser() user: any,
     @Query('search') search?: string,
     @Query('status') status?: string,
     @Query('assignedToId') assignedToId?: string,
@@ -97,14 +98,18 @@ export class LeadsController {
     @Query('limit') limit?: string,
     @Query('sortBy') sortBy?: string,
   ) {
-    return this.service.findAll(org.id, {
-      search,
-      status,
-      assignedToId,
-      page: page ? Number(page) : undefined,
-      limit: limit ? Number(limit) : undefined,
-      sortBy,
-    });
+    return this.service.findAll(
+      org.id,
+      {
+        search,
+        status,
+        assignedToId,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        sortBy,
+      },
+      user,
+    );
   }
 
   // ─── Scoring (bulk first so it doesn't collide with /:id) ────
@@ -224,16 +229,21 @@ export class LeadsController {
   @ApiOperation({ summary: 'Export leads as CSV (respects search/status/assignedTo filters)' })
   async exportCsv(
     @CurrentOrg() org: any,
+    @CurrentUser() user: any,
     @Res() res: any,
     @Query('search') search?: string,
     @Query('status') status?: string,
     @Query('assignedToId') assignedToId?: string,
   ) {
-    const { rows, truncated } = await this.service.findAllForExport(org.id, {
-      search,
-      status,
-      assignedToId,
-    });
+    const { rows, truncated } = await this.service.findAllForExport(
+      org.id,
+      {
+        search,
+        status,
+        assignedToId,
+      },
+      user,
+    );
 
     const csv = buildCsv({
       columns: [
