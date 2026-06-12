@@ -18,7 +18,11 @@ import {
   CreateTicketDto,
   CreateReplyDto,
 } from './tickets.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+// Wave H3 (E3.1 follow-up) — accept BOTH in-app JWTs and public-API
+// `crm_*` bearers on tickets endpoints. The guard delegates to
+// JwtAuthGuard for any non-`crm_` Authorization header, so existing
+// JWT auth is unchanged.
+import { JwtOrApiKeyGuard } from '../auth/jwt-or-api-key.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -27,7 +31,7 @@ import { buildCsv, csvFilename } from '../../common/csv/csv-writer';
 
 @ApiTags('Tickets')
 @Controller({ version: '1', path: 'tickets' })
-@UseGuards(JwtAuthGuard, RbacGuard)
+@UseGuards(JwtOrApiKeyGuard, RbacGuard)
 @ApiBearerAuth()
 export class TicketsController {
   constructor(private service: TicketsService) {}

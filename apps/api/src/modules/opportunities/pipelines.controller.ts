@@ -18,14 +18,14 @@ import {
   UpdateStageDto,
   ReorderStageItem,
 } from './opportunities.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { JwtOrApiKeyGuard } from '../auth/jwt-or-api-key.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @ApiTags('Pipelines')
 @Controller({ version: '1', path: 'pipelines' })
-@UseGuards(JwtAuthGuard, RbacGuard)
+@UseGuards(JwtOrApiKeyGuard, RbacGuard)
 @ApiBearerAuth()
 export class PipelinesController {
   constructor(private service: PipelinesService) {}

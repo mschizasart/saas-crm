@@ -21,7 +21,11 @@ import { LeadsService, CreateLeadDto } from './leads.service';
 import { LeadScoringService } from './lead-scoring.service';
 import { LeadScoringListener } from './lead-scoring.listener';
 import { PrismaService } from '../../database/prisma.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+// Wave H3 (E3.1 follow-up) — accept BOTH in-app JWTs and public-API
+// `crm_*` bearers on the leads endpoints. See clients.controller.ts
+// for the rationale; the guard delegates to JwtAuthGuard for any
+// non-`crm_` Authorization header so existing JWT auth is unchanged.
+import { JwtOrApiKeyGuard } from '../auth/jwt-or-api-key.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -31,7 +35,7 @@ import { NotFoundException } from '@nestjs/common';
 
 @ApiTags('Leads')
 @Controller({ version: '1', path: 'leads' })
-@UseGuards(JwtAuthGuard, RbacGuard)
+@UseGuards(JwtOrApiKeyGuard, RbacGuard)
 @ApiBearerAuth()
 export class LeadsController {
   constructor(

@@ -48,6 +48,10 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
     WebhookDispatcherService,
     ApiKeyStrategy,
     JwtOrApiKeyGuard,
+    // Importers (clients/leads/opportunities/tickets) need JwtAuthGuard in
+    // scope so Nest can resolve JwtOrApiKeyGuard's constructor dependency
+    // when those modules use @UseGuards(JwtOrApiKeyGuard).
+    JwtAuthGuard,
   ],
 })
 export class PublicApiModule implements OnModuleInit {

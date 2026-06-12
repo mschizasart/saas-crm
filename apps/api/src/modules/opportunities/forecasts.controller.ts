@@ -7,14 +7,14 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 
 import { ForecastsService } from './forecasts.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { JwtOrApiKeyGuard } from '../auth/jwt-or-api-key.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @ApiTags('Forecasts')
 @Controller({ version: '1', path: 'forecasts' })
-@UseGuards(JwtAuthGuard, RbacGuard)
+@UseGuards(JwtOrApiKeyGuard, RbacGuard)
 @ApiBearerAuth()
 export class ForecastsController {
   constructor(private service: ForecastsService) {}

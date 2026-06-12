@@ -6,6 +6,8 @@ import { OpportunitiesService } from './opportunities.service';
 import { PipelinesService } from './pipelines.service';
 import { ForecastsService } from './forecasts.service';
 import { RecordSharingModule } from '../record-sharing/record-sharing.module';
+// Wave H3 (E3.1) — JwtOrApiKeyGuard provider supply.
+import { PublicApiModule } from '../public-api/public-api.module';
 
 /**
  * Opportunities / deal pipeline / weighted forecast (Wave D1).
@@ -26,6 +28,8 @@ import { RecordSharingModule } from '../record-sharing/record-sharing.module';
     // Wave G1 — hierarchical record sharing helper injected by
     // OpportunitiesService.list() to scope by manager/report tree.
     RecordSharingModule,
+    // Wave H3 (E3.1) — public-API key auth.
+    PublicApiModule,
   ],
   controllers: [
     OpportunitiesController,

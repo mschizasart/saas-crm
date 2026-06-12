@@ -12,6 +12,7 @@ import {
   Activity, Tag, Lock, MessageCircle, MessageSquare, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
   ShieldX, Inbox, KeyRound, Sparkles, Clock, Mail,
   Briefcase, TrendingUp, ShieldCheck, Map, AtSign,
+  Wrench, Truck, Upload,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -344,6 +345,12 @@ function useNavItems(): NavItem[] {
         { label: t('nav.creditNotes'), href: '/credit-notes', icon: Receipt },
         { label: t('nav.expenses'), href: '/expenses', icon: DollarSign },
         { label: t('nav.subscriptions'), href: '/subscriptions', icon: Zap },
+        // Wave H1 — Field Service (work orders + dispatch).
+        // Service businesses dispatch technicians on-site; WOs live
+        // alongside the rest of the post-sale workflow (invoices,
+        // subscriptions) because completed WOs feed into billing.
+        { label: 'Work Orders', href: '/work-orders', icon: Wrench },
+        { label: 'Dispatch', href: '/dispatch', icon: Truck },
       ],
     },
     {
@@ -469,6 +476,12 @@ function useNavItems(): NavItem[] {
         // in-app integrations console.
         { label: 'API & Webhooks', href: '/settings/api', icon: Webhook },
         { label: 'Chat Widget', href: '/settings/chat-widget', icon: MessageCircle },
+        // Wave H2 — Einstein Activity Capture toggles + backfill.
+        { label: 'Activity Capture', href: '/settings/activity-capture', icon: Activity },
+        // Wave H3 — Bulk API + CSV import. Primary entry is the
+        // history list page (which has a "+ New CSV import" CTA
+        // that navigates to the upload form).
+        { label: 'Bulk Imports', href: '/bulk/imports', icon: Upload },
       ],
     },
   ];

@@ -117,6 +117,44 @@ export const ALL_PERMISSIONS = {
   //               inappropriate content). Admin-only by default; all
   //               other roles get view + create + edit_own only.
   feed: { view: true, create: true, edit_own: true, moderate: true },
+  // ── Wave H1: Field Service — work orders + dispatch (migration 039) ──
+  // 'view'      — read work orders + dispatch board.
+  // 'create'    — create a new draft work order.
+  // 'edit'      — modify non-terminal WOs + cancel them.
+  // 'delete'    — delete a DRAFT WO (any other status: cancel instead).
+  // 'schedule'  — assign technicians + windows (dispatch board write).
+  // 'execute'   — start / complete a WO (the technician's permission;
+  //               the service also requires the caller to be the
+  //               assigned tech OR hold `manage`).
+  // 'manage'    — dispatcher override: start/complete on a tech's
+  //               behalf (admin / lead dispatcher). Admin-only by default.
+  'field-service': {
+    view: true,
+    create: true,
+    edit: true,
+    delete: true,
+    schedule: true,
+    execute: true,
+    manage: true,
+  },
+  // ── Wave H3: Bulk API + CSV import (migration 041) ──
+  // 'view'         — list past bulk-operation runs + read details
+  //                  (drives the "Bulk Imports" admin page).
+  // 'clients'      — bulk-create / bulk-update / bulk-delete clients,
+  //                  plus CSV import.
+  // 'leads'        — same surface for leads.
+  // 'opportunities'— same surface for opportunities.
+  // 'tasks'        — same surface for tasks.
+  // Admin gets the whole namespace. Sales gets view + leads +
+  // opportunities (the entities a non-admin sales rep typically owns
+  // the bulk lifecycle for). Staff has no bulk grants by default.
+  bulk: {
+    view: true,
+    clients: true,
+    leads: true,
+    opportunities: true,
+    tasks: true,
+  },
 };
 
 export async function seedOrganization(
@@ -165,6 +203,10 @@ export async function seedOrganization(
         // Wave G3 — sales reps post freely on record feeds + @mention
         // teammates. Moderation stays admin-only.
         feed: { view: true, create: true, edit_own: true },
+        // Wave H3 — sales reps can bulk-manage their own pipeline
+        // (leads + opps). No clients / tasks bulk by default — those
+        // are admin or ops concerns.
+        bulk: { view: true, leads: true, opportunities: true },
       },
     },
   ];

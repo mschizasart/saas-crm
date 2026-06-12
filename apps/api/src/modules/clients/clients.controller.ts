@@ -18,7 +18,12 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { ClientsService, CreateClientDto, CreateContactDto } from './clients.service';
 import { HealthScoreService } from './health-score.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+// Wave H3 (E3.1 follow-up) — JwtOrApiKeyGuard replaces JwtAuthGuard here
+// so customers can hit /clients with a public-API `crm_*` bearer in
+// addition to the in-app JWT. The guard delegates to JwtAuthGuard for
+// any non-`crm_` Authorization header, so existing JWT auth is
+// unchanged. See apps/api/src/modules/auth/jwt-or-api-key.guard.ts.
+import { JwtOrApiKeyGuard } from '../auth/jwt-or-api-key.guard';
 import { RbacGuard } from '../../common/guards/rbac.guard';
 import { CurrentOrg } from '../../common/decorators/current-org.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -30,7 +35,7 @@ import { PrismaService } from '../../database/prisma.service';
 
 @ApiTags('Clients')
 @Controller({ version: '1', path: 'clients' })
-@UseGuards(JwtAuthGuard, RbacGuard)
+@UseGuards(JwtOrApiKeyGuard, RbacGuard)
 @ApiBearerAuth()
 export class ClientsController {
   constructor(

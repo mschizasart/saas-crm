@@ -87,6 +87,17 @@ import { RecordSharingModule } from './modules/record-sharing/record-sharing.mod
 import { TerritoriesModule } from './modules/territories/territories.module';
 // Wave G3 — Chatter-style internal feed + @mentions
 import { FeedModule } from './modules/feed/feed.module';
+// Wave H1 — Field Service (work orders + dispatch)
+import { FieldServiceModule } from './modules/field-service/field-service.module';
+// Wave H2 — Einstein Activity Capture (auto-log emails/SMS into the
+// Activity timeline). Observes the four messaging pipeline events
+// and stamps a unified `activities` row pinned to the matched CRM
+// record.
+import { ActivityCaptureModule } from './modules/activity-capture/activity-capture.module';
+// Wave H3 — Bulk API + CSV import (per-row partial-success
+// semantics; opt-in JwtOrApiKeyGuard so customers can drive it
+// from public-API keys).
+import { BulkApiModule } from './modules/bulk-api/bulk-api.module';
 
 @Module({
   imports: [
@@ -192,6 +203,12 @@ import { FeedModule } from './modules/feed/feed.module';
     TerritoriesModule,
     // Wave G3 — Chatter-style internal feed + @mentions
     FeedModule,
+    // Wave H1 — Field Service (work orders + dispatch)
+    FieldServiceModule,
+    // Wave H2 — Einstein Activity Capture
+    ActivityCaptureModule,
+    // Wave H3 — Bulk API + CSV import
+    BulkApiModule,
   ],
   providers: [
     // TenantInterceptor must run before AuditContextInterceptor so

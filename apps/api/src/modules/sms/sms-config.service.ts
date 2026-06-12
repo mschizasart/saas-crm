@@ -1,5 +1,6 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../database/prisma.service';
 import { decrypt, encrypt, isEncrypted } from '../../common/crypto/encrypt';
 
@@ -65,6 +66,10 @@ export class SmsConfigService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    // Wave H2 — Einstein Activity Capture observes
+    // `sms.outbound.sent` / `sms.inbound.received` to log SMS to the
+    // timeline. Optional so unit tests still boot.
+    @Optional() private readonly events?: EventEmitter2,
   ) {}
 
   private encKey(): string | undefined {
@@ -282,8 +287,11 @@ export class SmsConfigService {
 
     const result = await this.twilioSend(cfg, to, body);
 
-    await this.prisma
-      .withOrganization(orgId, (tx) =>
+    // Capture the created row id so Wave H2 can fire
+    // `sms.outbound.sent` with a stable pointer for capture-log dedup.
+    let smsMessageId: string | undefined;
+    try {
+      const created = await this.prisma.withOrganization(orgId, (tx) =>
         tx.smsMessage.create({
           data: {
             organizationId: orgId,
@@ -298,13 +306,27 @@ export class SmsConfigService {
             errorMessage: result.error ?? null,
             sentById: params.sentById ?? null,
           },
+          select: { id: true, createdAt: true },
         }),
-      )
-      .catch((e) =>
-        this.logger.error(
-          `Failed to log outbound SMS for org ${orgId}: ${(e as Error).message}`,
-        ),
       );
+      smsMessageId = created.id;
+      // Wave H2 — fire-and-forget for Activity Capture. Emit for both
+      // success AND failure: a failed outbound SMS still belongs on
+      // the customer's timeline as "we tried to text you".
+      if (smsMessageId && this.events) {
+        this.events.emit('sms.outbound.sent', {
+          orgId,
+          smsMessageId,
+          toNumber: to,
+          body,
+          createdAt: created.createdAt ?? new Date(),
+        });
+      }
+    } catch (e) {
+      this.logger.error(
+        `Failed to log outbound SMS for org ${orgId}: ${(e as Error).message}`,
+      );
+    }
 
     return result;
   }
@@ -454,7 +476,7 @@ export class SmsConfigService {
       params.from,
     );
 
-    await this.prisma.withOrganization(orgId, (tx) =>
+    const created = await this.prisma.withOrganization(orgId, (tx) =>
       tx.smsMessage.create({
         data: {
           organizationId: orgId,
@@ -467,8 +489,23 @@ export class SmsConfigService {
           status: 'received',
           providerSid: params.providerSid ?? null,
         },
+        select: { id: true, createdAt: true },
       }),
     );
+
+    // Wave H2 — emit for Activity Capture. The matcher inside
+    // SmsConfigService is per-record (lead vs client) and may differ
+    // from the capture pipeline's per-Contact resolution — that's
+    // fine, both timelines coexist.
+    if (created?.id && this.events) {
+      this.events.emit('sms.inbound.received', {
+        orgId,
+        smsMessageId: created.id,
+        fromNumber: params.from,
+        body: params.body ?? '',
+        createdAt: created.createdAt ?? new Date(),
+      });
+    }
   }
 
   /**

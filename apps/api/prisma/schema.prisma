@@ -240,6 +240,13 @@ model User {
   // CPQ (Wave F2 — migration 034)
   createdProductBundles    ProductBundle[]          @relation("ProductBundleCreatedBy")
   createdQuotes            Quote[]                  @relation("QuoteCreatedBy")
+  // Field service (Wave H1 — migration 039). A user can be a technician
+  // (assignable on work orders) only when `isTechnician` is true. The flag
+  // is set on the staff edit page; assigning a non-technician throws a 400
+  // in WorkOrdersService. The DB-level FKs in 039-field-service.sql still
+  // reference users(id) directly; we keep this side self-contained and
+  // avoid adding back-relations on User to mirror the Wave G2 pattern.
+  isTechnician   Boolean   @default(false)
   // Multi-org: a single human (User row) can be a member of multiple
   // organizations. See `UserOrganizationMembership`. The legacy scalar
   // `organizationId` above remains the user's *primary* org and the
@@ -428,6 +435,9 @@ model Client {
   parentClientId  String?
   parent          Client?  @relation("ClientHierarchy", fields: [parentClientId], references: [id], onDelete: SetNull)
   children        Client[] @relation("ClientHierarchy")
+  // Wave H1 back-relation. WorkOrder forward FK lives on the
+  // WorkOrder side.
+  workOrders      WorkOrder[] @relation("ClientWorkOrders")
 
   @@index([organizationId])
   @@map("clients")
@@ -2930,6 +2940,8 @@ model Opportunity {
   stageHistory   OpportunityStageHistory[]
   // CPQ (Wave F2 — migration 034)
   quotes         Quote[]
+  // Field Service (Wave H1 — migration 039)
+  workOrders     WorkOrder[] @relation("OpportunityWorkOrders")
 
   @@index([organizationId, stageId], map: "opportunities_org_stage_idx")
   @@index([organizationId, ownerId], map: "opportunities_org_owner_idx")
@@ -3640,4 +3652,283 @@ model FeedMention {
   @@unique([postId, mentionedUserId], map: "feed_mentions_post_user_uniq")
   @@index([organizationId, mentionedUserId, createdAt(sort: Desc)], map: "feed_mentions_org_user_created_idx")
   @@map("feed_mentions")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  EINSTEIN ACTIVITY CAPTURE (Wave H2 — migration 040)
+// ═══════════════════════════════════════════════════════════════
+//
+// Salesforce-style unified customer-interaction timeline. Email
+// and SMS sent / received are auto-logged here so reps stop
+// having to manually log every touch. See
+// `apps/api/src/modules/activity-capture/*` for the listeners
+// that observe email.outbound.sent / email.inbound.received /
+// sms.outbound.sent / sms.inbound.received and stamp these rows.
+//
+// Back-relations are intentionally NOT defined on the existing
+// Organization model — following the Wave G2 / Wave G3 pattern
+// of declaring polymorphic FK targets at the DB layer
+// (migration 040) without touching existing models in
+// schema.prisma. The application is the only tenancy boundary;
+// every read/write must include `organizationId` in the WHERE.
+
+model Activity {
+  id             String   @id @default(uuid())
+  organizationId String
+  // 'email' | 'sms' | 'call' | 'note' | 'meeting'. v1 only writes
+  // 'email' and 'sms' (the capture pipeline); 'call' / 'note' /
+  // 'meeting' are reserved for the manual-log UI follow-up.
+  type           String
+  // 'email' | 'sms' | 'phone' | 'in_person' — null for note/meeting.
+  channel        String?
+  // 'inbound' | 'outbound' — null for note (not directional).
+  direction      String?
+  subject        String?
+  // Body is truncated to 4000 chars at capture time so a giant
+  // newsletter doesn't bloat the timeline row.
+  body           String?
+  // Polymorphic pin — matches the inbox/outbound message routing
+  // taxonomy so a future "unified inbox" view can join across.
+  relatedToType  String
+  relatedToId    String
+  // Optional secondary pin: the Contact (User type='contact') the
+  // capture matched against. Lets the UI show both "John (Acme)
+  // <john@acme.com>" AND "Acme Inc." for the same row.
+  contactId      String?
+  occurredAt     DateTime @default(now()) @db.Timestamptz()
+  createdAt      DateTime @default(now()) @db.Timestamptz()
+  updatedAt      DateTime @default(now()) @updatedAt @db.Timestamptz()
+
+  @@index([organizationId, relatedToType, relatedToId, occurredAt(sort: Desc)], map: "activities_org_related_idx")
+  @@index([organizationId, contactId, occurredAt(sort: Desc)], map: "activities_org_contact_idx")
+  @@map("activities")
+}
+
+model ActivityCaptureSettings {
+  id                     String   @id @default(uuid())
+  organizationId         String   @unique
+  emailCaptureEnabled    Boolean  @default(true)
+  smsCaptureEnabled      Boolean  @default(true)
+  // Default OFF — most tenants do NOT want internal staff↔staff
+  // mail polluting customer timelines.
+  captureInternalEmails  Boolean  @default(false)
+  createdAt              DateTime @default(now()) @db.Timestamptz()
+  updatedAt              DateTime @default(now()) @updatedAt @db.Timestamptz()
+
+  @@map("activity_capture_settings")
+}
+
+model ActivityCaptureLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  // 'outbound_email' | 'inbound_email' | 'outbound_sms' | 'inbound_sms'
+  sourceType     String
+  // OutboundMessage.id | InboxMessage.id | SmsMessage.id — points
+  // back at the row the capture pipeline observed.
+  sourceId       String
+  // null when no Activity was created (no match / disabled / internal).
+  activityId     String?
+  matched        Boolean  @default(false)
+  // 'captured' | 'no_matching_contact' | 'disabled_by_settings'
+  // | 'internal_email' | 'duplicate' — human-readable explanation
+  // of what the pipeline decided. Kept as a free-form string so
+  // we can introduce new reasons without a migration.
+  reason         String
+  createdAt      DateTime @default(now()) @db.Timestamptz()
+
+  // Belt-and-braces dedup: even a buggy listener firing twice
+  // (retry, replay, backfill rerun) can only produce ONE
+  // Activity row. The second insert hits P2002 and the service
+  // treats it as "already captured, skip".
+  @@unique([sourceType, sourceId], map: "activity_capture_log_source_uniq")
+  @@index([organizationId, sourceType], map: "activity_capture_log_org_source_idx")
+  @@index([activityId], map: "activity_capture_log_activity_idx")
+  @@map("activity_capture_log")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  FIELD SERVICE — WORK ORDERS + DISPATCH  (Wave H1 — migration 039)
+//
+//  Service businesses (HVAC / IT / landscaping) dispatch
+//  technicians to client sites. A WorkOrder ties together:
+//    - the client + optional originating opportunity
+//    - the assigned technician + scheduled window
+//    - on-site work captured as line items (service or part).
+//
+//  Lifecycle:
+//      draft → scheduled → in_progress → completed
+//                                     ↓
+//                                  cancelled (also from draft / scheduled)
+//
+//  The status machine is the single source of truth for what
+//  transitions are legal (see ALLOWED_TRANSITIONS in
+//  work-orders.service.ts). Every transition writes a
+//  `WorkOrderStatusHistory` row inside the SAME `$transaction`
+//  as the parent update — mirroring the
+//  opportunity_stage_history pattern from Wave D so the audit
+//  log can never drift from the live row.
+//
+//  Self-contained — no back-relations on Client / Opportunity /
+//  Product / User beyond the User.isTechnician flag (which is
+//  the assignability gate). DB-level FKs in 039-field-service.sql
+//  still cascade correctly. Same self-contained pattern as
+//  Territories (Wave G2) and Feed (Wave G3).
+// ═══════════════════════════════════════════════════════════════
+
+model WorkOrder {
+  id               String   @id @default(uuid())
+  organizationId   String
+  // Per-org sequence "WO-YYYY-NNNN" — generated in
+  // WorkOrdersService.generateWorkOrderNumber(). The
+  // @@unique([organizationId, number]) catches concurrent
+  // collisions as a P2002 the caller can retry.
+  number           String
+  clientId         String
+  // Nullable — work orders can be created standalone (a one-off
+  // service call) or rolled from an accepted opportunity.
+  opportunityId    String?
+  // Free-form site address; defaults populated by the create
+  // form from the client record but kept independent because a
+  // single client may have many service locations.
+  locationAddress  String?
+  scheduledStart   DateTime? @db.Timestamptz()
+  scheduledEnd     DateTime? @db.Timestamptz()
+  // 'draft' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
+  // CHECK constraint in 039-field-service.sql mirrors the
+  // ALLOWED_TRANSITIONS map in the service.
+  status           String   @default("draft")
+  // Scalar-only FK to users(id) — the DB-level constraint with
+  // ON DELETE SET NULL lives in 039-field-service.sql. The
+  // service enforces assignment only against users where
+  // `isTechnician = true`.
+  technicianId     String?
+  // 'low' | 'normal' | 'high' | 'urgent' — CHECK in SQL.
+  priority         String   @default("normal")
+  description      String?
+  // Free-form notes written by the technician on completion
+  // (e.g. "Replaced compressor; site clean on departure").
+  completionNotes  String?
+  createdById      String?
+  createdAt        DateTime @default(now()) @db.Timestamptz()
+  updatedAt        DateTime @updatedAt @db.Timestamptz()
+  // Lifecycle timestamps — stamped atomically with the status
+  // transition by the dedicated start / complete / cancel
+  // endpoints. Never written via the generic update.
+  startedAt        DateTime? @db.Timestamptz()
+  completedAt      DateTime? @db.Timestamptz()
+  cancelledAt      DateTime? @db.Timestamptz()
+
+  // Forward relations to existing entities. Back-relations are
+  // declared on Client / Opportunity. Wave H1 smoke surfaced
+  // that the service layer's `include: { client, opportunity }`
+  // calls require these declarations.
+  client           Client       @relation("ClientWorkOrders", fields: [clientId], references: [id], onDelete: Restrict)
+  opportunity      Opportunity? @relation("OpportunityWorkOrders", fields: [opportunityId], references: [id], onDelete: SetNull)
+  lineItems        WorkOrderLineItem[]
+  statusHistory    WorkOrderStatusHistory[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([organizationId, technicianId, scheduledStart])
+  @@index([organizationId, clientId])
+  @@index([organizationId, scheduledStart])
+  @@map("work_orders")
+}
+
+model WorkOrderLineItem {
+  id              String   @id @default(uuid())
+  organizationId  String
+  workOrderId     String
+  // 'service' (labor / time) | 'part' (materials). CHECK in
+  // SQL. Drives downstream billing categorisation if the line
+  // is later flowed into an Invoice.
+  type            String   @default("service")
+  // Optional — free-form lines (custom labor descriptions) are
+  // allowed for ad-hoc charges that aren't in the catalog.
+  productId       String?
+  description     String
+  // NUMERIC(10,2) — fractional quantities (e.g. 1.5 hours of
+  // labor) are explicit and allowed.
+  quantity        Decimal  @default(1) @db.Decimal(10, 2)
+  unitPrice       Decimal  @default(0) @db.Decimal(15, 2)
+  // Server-computed (qty * unitPrice). The client never supplies
+  // this — same hardening as the Quote module.
+  lineTotal       Decimal  @default(0) @db.Decimal(15, 2)
+  order           Int      @default(0)
+  createdAt       DateTime @default(now()) @db.Timestamptz()
+
+  workOrder       WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, workOrderId])
+  @@map("work_order_line_items")
+}
+
+model WorkOrderStatusHistory {
+  id              String   @id @default(uuid())
+  organizationId  String
+  workOrderId     String
+  // NULL on the initial 'draft' insert row (mirroring the
+  // opportunity_stage_history pattern where the create event is
+  // logged with fromStageId = null).
+  fromStatus      String?
+  toStatus        String
+  // Scalar-only FK to users(id); DB-level ON DELETE SET NULL
+  // lives in 039-field-service.sql. A deleted user keeps the
+  // history row intact so the audit trail stays readable.
+  changedById     String?
+  notes           String?
+  changedAt       DateTime @default(now()) @db.Timestamptz()
+
+  workOrder       WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, workOrderId, changedAt(sort: Desc)])
+  @@map("work_order_status_history")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BULK OPERATIONS AUDIT LOG  (Wave H3 — migration 041)
+//
+//  One row per bulk-create / bulk-update / bulk-delete / csv-import
+//  request. Drives the "Bulk Imports" admin page (list + detail).
+//
+//  Scalar-only relations to organisations / users — the DB-level
+//  FKs in 041-bulk-operations.sql still cascade on org delete and
+//  set-null on user delete. We deliberately do NOT add a back-
+//  relation on `Organization` / `User` here to keep the heavy
+//  models lean (same pattern as TerritoryAssignment / FeedPost).
+//
+//  `errorsJson` caps at the first 50 per-row errors — the service
+//  enforces the cap when it writes the row. Storing the full
+//  failure list at 1000 rows per request would inflate the table
+//  quickly and the detail page only ever surfaces a sample.
+// ═══════════════════════════════════════════════════════════════
+
+model BulkOperation {
+  id              String    @id @default(uuid())
+  organizationId  String
+  // 'bulk_create' | 'bulk_update' | 'bulk_delete' | 'csv_import'
+  // CHECK in 041-bulk-operations.sql.
+  type            String
+  // 'client' | 'lead' | 'opportunity' | 'task'
+  // CHECK in 041-bulk-operations.sql.
+  entityType      String
+  totalRows       Int       @default(0)
+  succeededRows   Int       @default(0)
+  failedRows      Int       @default(0)
+  // Sample of the first 50 row errors. Shape:
+  //   [{ index: number, error: string }]
+  // Kept as Json so the service can serialise without a join.
+  errorsJson      Json      @default("[]")
+  // 'processing' | 'completed' | 'failed'
+  status          String    @default("processing")
+  startedAt       DateTime  @default(now()) @db.Timestamptz()
+  completedAt     DateTime? @db.Timestamptz()
+  // Scalar-only FK to users(id); DB-level ON DELETE SET NULL is
+  // declared in 041-bulk-operations.sql so a deleted user's
+  // import history stays readable.
+  createdById     String?
+
+  @@index([organizationId, createdById, startedAt(sort: Desc)], map: "bulk_operations_org_user_started_idx")
+  @@index([organizationId, entityType, startedAt(sort: Desc)], map: "bulk_operations_org_entity_started_idx")
+  @@map("bulk_operations")
 }

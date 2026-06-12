@@ -270,6 +270,47 @@ export class ImapConnectorService {
                   messageId,
                 });
               }
+
+              // Wave H2 — Einstein Activity Capture. Fire once per
+              // NEWLY-inserted inbox row so re-polled UIDs don't
+              // re-capture. The capture pipeline does its own
+              // contact-resolution + dedup; we just hand it the
+              // payload it needs.
+              //
+              // We re-query the row id here because createMany doesn't
+              // return ids — the InboxMessage row is identified by
+              // its DB-generated id which the capture log uses for
+              // dedup.
+              try {
+                const insertedRow = await this.prisma.withOrganization(
+                  orgId,
+                  (tx2: any) =>
+                    tx2.inboxMessage.findUnique({
+                      where: {
+                        organizationId_messageId: {
+                          organizationId: orgId,
+                          messageId,
+                        },
+                      },
+                      select: { id: true },
+                    }),
+                );
+                if (insertedRow?.id) {
+                  this.events.emit('email.inbound.received', {
+                    orgId,
+                    inboxMessageId: insertedRow.id,
+                    fromEmail,
+                    subject,
+                    bodyText,
+                    bodyHtml,
+                    receivedAt,
+                  });
+                }
+              } catch (emitErr) {
+                this.logger.warn(
+                  `IMAP capture-emit failed for ${orgId}/${messageId}: ${(emitErr as Error).message}`,
+                );
+              }
             }
 
             if (typeof msg.uid === 'number' && msg.uid > highestUid) {

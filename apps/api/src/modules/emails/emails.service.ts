@@ -1,6 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as nodemailer from 'nodemailer';
@@ -57,6 +57,9 @@ export interface SendMailOpts {
 /** queue worker can recover the row after BullMQ delivery.            */
 interface EmailJobData extends SendMailOpts {
   trackingId?: string;
+  /** Pre-allocated OutboundMessage.id — Wave H2 uses it to attach the
+   *  capture-pipeline Activity row to the same source message. */
+  outboundMessageId?: string;
 }
 
 /**
@@ -83,6 +86,11 @@ export class EmailsService {
     @Optional() private emailSettings?: EmailSettingsService,
     @Optional() private emailOAuth?: EmailOAuthService,
     @Optional() private prisma?: PrismaService,
+    // Wave H2 — Einstein Activity Capture observes
+    // `email.outbound.sent` to log outbound mail to the timeline.
+    // Optional so the service still boots in test contexts that
+    // don't wire EventEmitterModule.
+    @Optional() private events?: EventEmitter2,
   ) {
     this.envTransporter = nodemailer.createTransport({
       host: this.config.get('SMTP_HOST', 'localhost'),
@@ -117,6 +125,7 @@ export class EmailsService {
         opts.subject,
       );
       job.trackingId = row?.trackingId;
+      job.outboundMessageId = row?.id;
       outboundMessageId = row?.id;
     }
 
@@ -136,6 +145,17 @@ export class EmailsService {
       //   1. queue() pre-allocated a trackingId and stored it on the job.
       //   2. send() called directly with `tracking` — we allocate now.
       let trackingId = (opts as EmailJobData).trackingId;
+      // Wave H2 — remember the OutboundMessage row id so we can emit
+      // `email.outbound.sent` for the Activity Capture pipeline.
+      let outboundMessageId = (opts as EmailJobData).outboundMessageId;
+      // Wave H2 fix — gate the Activity Capture emit to ONLY fire when the
+      // OutboundMessage row was pre-allocated by queue() (i.e. trackingId
+      // came in on the job data). Without this gate, a BullMQ retry path
+      // where queue()'s pre-allocation failed would re-enter the allocation
+      // branch below on every retry, producing N Activity rows for 1 email.
+      // We deliberately do NOT emit on direct send()/freshly-allocated rows
+      // — those are not retried by BullMQ, so the emit risk is queue-only.
+      const passedThroughTrackingId = !!trackingId;
       if (!trackingId && opts.tracking && opts.orgId && this.prisma) {
         const row = await this.preCreateTrackingRow(
           opts.orgId,
@@ -144,6 +164,7 @@ export class EmailsService {
           opts.subject,
         );
         trackingId = row?.trackingId;
+        outboundMessageId = row?.id;
       }
 
       // Inject pixel + rewrite anchors. Cheap string ops; only happens
@@ -222,6 +243,21 @@ export class EmailsService {
         if (trackingId && info.messageId && this.prisma) {
           await this.attachMessageId(trackingId, info.messageId);
         }
+        // Wave H2 — fire-and-forget event for Activity Capture. Only
+        // emits when we actually have an OutboundMessage row to point
+        // back at (i.e. `tracking` was requested). System mail with
+        // no orgId / no tracking is intentionally skipped. Also gated
+        // on `passedThroughTrackingId` so BullMQ retries don't emit
+        // for rows freshly allocated inside send() (see fix above).
+        if (passedThroughTrackingId && opts.orgId && outboundMessageId && this.events) {
+          this.events.emit('email.outbound.sent', {
+            orgId: opts.orgId,
+            outboundMessageId,
+            recipientEmail: opts.to,
+            subject: opts.subject,
+            sentAt: new Date(),
+          });
+        }
         return info;
       }
 
@@ -241,6 +277,20 @@ export class EmailsService {
 
       if (trackingId && info.messageId && this.prisma) {
         await this.attachMessageId(trackingId, info.messageId);
+      }
+      // Wave H2 — fire-and-forget event for Activity Capture. Same
+      // gate as the per-org branch: only emit when there's an
+      // OutboundMessage row to point back at AND the trackingId arrived
+      // via job data (so BullMQ retries don't double-fire emits for
+      // freshly allocated rows).
+      if (passedThroughTrackingId && opts.orgId && outboundMessageId && this.events) {
+        this.events.emit('email.outbound.sent', {
+          orgId: opts.orgId,
+          outboundMessageId,
+          recipientEmail: opts.to,
+          subject: opts.subject,
+          sentAt: new Date(),
+        });
       }
       return info;
     } catch (e) {
