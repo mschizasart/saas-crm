@@ -52,6 +52,9 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
       // Bulk email campaigns (migration 024) — one job per campaign drives
       // the send loop. Concurrency (5) is set on CampaignsProcessor.
       { name: 'campaigns' },
+      // Sequences / cadences (migration 043) — one job per due enrollment
+      // drives a single step. Concurrency (10) is set on SequencesProcessor.
+      { name: 'sequences' },
       // Public outbound webhook delivery (Wave E3, migration 032) — one
       // job per delivery row. Concurrency (8) is set on
       // WebhookDeliveryProcessor. The delivery row in

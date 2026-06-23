@@ -31,7 +31,10 @@ export interface OutboundTracking {
     | 'statement'
     // Bulk email campaigns (migration 024). routedToId is the Campaign.id —
     // many OutboundMessage rows share one campaignId (one per recipient).
-    | 'campaign';
+    | 'campaign'
+    // Sequences / cadences (migration 043). routedToId is the
+    // SequenceEnrollment.id — one OutboundMessage per email step executed.
+    | 'sequence';
   routedToId: string;
 }
 
