@@ -40,6 +40,12 @@ export const ALL_PERMISSIONS = {
     execute: true,
     configure: true,
   },
+  // Calls — built-in calling + call logging (migration 044).
+  // 'view' read the call log; 'create' log a call / update / delete /
+  // click-to-call; 'log' + 'record' are reserved for forward-compat
+  // (no @Permissions uses them yet) so a finer split can land later
+  // without a re-seed.
+  calls: { view: true, create: true, log: true, record: true },
   // Opportunities (deal pipeline + weighted forecast — migration 027)
   opportunities: {
     view: true,
@@ -193,6 +199,8 @@ export async function seedOrganization(
         feed: { view: true, create: true, edit_own: true },
         // Sequences — staff can see cadences but not build/run them.
         sequences: { view: true },
+        // Calls — staff can see the call log but not log/dial.
+        calls: { view: true },
       },
     },
     {
@@ -224,6 +232,9 @@ export async function seedOrganization(
         // Sequences — sales reps build cadences and enroll their pipeline,
         // but don't get delete (draft cleanup is an admin concern).
         sequences: { view: true, create: true, execute: true },
+        // Calls — sales reps log calls and use click-to-call ('log' is
+        // forward-compat; no @Permissions uses it yet).
+        calls: { view: true, create: true, log: true },
       },
     },
   ];

@@ -127,6 +127,7 @@ model Organization {
   aiSettings              AiSettings?
   smsSettings             SmsSettings?
   smsMessages             SmsMessage[]
+  calls                   Call[]
   einvoiceSettings        EInvoiceSettings?
   taxSettings             TaxSettings?
   taxCalculations         TaxCalculation[]
@@ -1884,6 +1885,43 @@ model SmsMessage {
   @@index([organizationId, entityType, entityId])
   @@index([organizationId, createdAt])
   @@map("sms_messages")
+}
+
+// Built-in calling + call logging (migration 044). Two flavours in one
+// table: (A) manually logged calls (status='logged') and (B) Twilio
+// click-to-call calls whose status/recording is driven by the public
+// webhooks. Reuses the org's SmsSettings Twilio credentials — there is no
+// separate calling-credentials table. Polymorphically pinned to a
+// lead/client via relType/relId so the row shows on that record's timeline.
+model Call {
+  id              String   @id @default(uuid())
+  organizationId  String
+  relType         String? // 'lead' | 'client'
+  relId           String?
+  direction       String // 'outbound' | 'inbound'
+  fromNumber      String?
+  toNumber        String
+  // logged | queued | initiated | ringing | in-progress | completed |
+  // busy | no-answer | failed | canceled
+  status          String   @default("logged")
+  // connected | voicemail | no_answer | busy | wrong_number | callback_requested
+  outcome         String?
+  durationSeconds Int      @default(0)
+  notes           String?
+  recordingUrl    String?
+  recordingPath   String?
+  twilioCallSid   String?
+  loggedById      String? // staff user who logged / initiated the call
+  occurredAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, relType, relId])
+  @@index([organizationId, occurredAt])
+  @@index([twilioCallSid])
+  @@map("calls")
 }
 
 // Per-organization e-invoice / UBL XML configuration.

@@ -7,6 +7,7 @@ import { useModalA11y } from '@/components/ui/use-modal-a11y';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 import { DocumentPanel } from '@/components/ui/document-panel';
 import { SmsPanel } from '@/components/ui/sms-panel';
+import { CallsPanel } from '@/components/ui/calls-panel';
 
 interface LeadNote {
   id: string;
@@ -90,7 +91,7 @@ function authHeaders(): HeadersInit {
   return { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' };
 }
 
-type Tab = 'overview' | 'notes' | 'emails' | 'activity';
+type Tab = 'overview' | 'notes' | 'emails' | 'calls' | 'activity';
 
 export default function LeadDetailPage() {
   const params = useParams();
@@ -380,7 +381,7 @@ export default function LeadDetailPage() {
       {/* Tabs */}
       <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
         <nav className="flex gap-6">
-          {(['overview', 'notes', 'emails', 'activity'] as Tab[]).map((t) => (
+          {(['overview', 'notes', 'emails', 'calls', 'activity'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -679,6 +680,10 @@ export default function LeadDetailPage() {
             </div>
           )}
         </div>
+      )}
+
+      {tab === 'calls' && (
+        <CallsPanel entityType="lead" entityId={id} defaultPhone={lead.phone} />
       )}
 
       {tab === 'activity' && (

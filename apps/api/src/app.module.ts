@@ -75,6 +75,7 @@ import { PushModule } from './modules/push/push.module';
 import { DunningModule } from './modules/dunning/dunning.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { SequencesModule } from './modules/sequences/sequences.module';
+import { CallsModule } from './modules/calls/calls.module';
 import { OpportunitiesModule } from './modules/opportunities/opportunities.module';
 import { CustomObjectsModule } from './modules/custom-objects/custom-objects.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
@@ -187,6 +188,8 @@ import { BulkApiModule } from './modules/bulk-api/bulk-api.module';
     DunningModule,
     CampaignsModule,
     SequencesModule,
+    // Built-in calling + call logging (migration 044)
+    CallsModule,
     OpportunitiesModule,
     CustomObjectsModule,
     ApprovalsModule,

@@ -42,6 +42,12 @@ export class TenantInterceptor implements NestInterceptor {
       // validates the X-Twilio-Signature. See modules/sms/sms-webhook.controller.ts.
       url.startsWith('/api/v1/public/sms/webhook') ||
       url.startsWith('/api/public/sms/webhook') ||
+      // Twilio voice webhooks (TwiML / status / recording) for built-in
+      // calling: org-less (no JWT, no subdomain). The controller resolves
+      // the org from the :orgSlug path param and validates the
+      // X-Twilio-Signature. See modules/calls/public-calls.controller.ts.
+      url.startsWith('/api/v1/public/calls/') ||
+      url.startsWith('/api/public/calls/') ||
       // Calendar-sync OAuth callback: the provider redirects the browser here
       // with no Bearer token and no resolvable org. Trust comes from the
       // HMAC-signed `state`. See modules/calendar/calendar-sync.controller.ts.
