@@ -149,7 +149,8 @@ export class ClientsService {
   ): Promise<{ rows: any[]; truncated: boolean }> {
     const { search, active } = query;
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const where: any = { organizationId: orgId };
+      // mergedIntoId: null — exclude merged-away losers from the export (migration 045).
+      const where: any = { organizationId: orgId, mergedIntoId: null };
       if (search) where.company = { contains: search, mode: 'insensitive' };
       if (active !== undefined) where.active = active;
 
@@ -183,7 +184,8 @@ export class ClientsService {
     const skip = (page - 1) * limit;
 
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const where: any = { organizationId: orgId };
+      // mergedIntoId: null — exclude merged-away losers from the list (migration 045).
+      const where: any = { organizationId: orgId, mergedIntoId: null };
       if (search) where.company = { contains: search, mode: 'insensitive' };
       if (active !== undefined) where.active = active;
 

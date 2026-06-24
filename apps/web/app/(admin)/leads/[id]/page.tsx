@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, FormEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, FormEvent } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useModalA11y } from '@/components/ui/use-modal-a11y';
@@ -8,6 +8,7 @@ import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 import { DocumentPanel } from '@/components/ui/document-panel';
 import { SmsPanel } from '@/components/ui/sms-panel';
 import { CallsPanel } from '@/components/ui/calls-panel';
+import { FindDuplicatesAction, type FindDuplicatesHandle } from '@/components/ui/find-duplicates-action';
 
 interface LeadNote {
   id: string;
@@ -128,6 +129,9 @@ export default function LeadDetailPage() {
   // Lead scoring panel (migration 013)
   const [score, setScore] = useState<ScoreInfo>({ score: null, reason: null, updatedAt: null });
   const [recomputing, setRecomputing] = useState(false);
+
+  // Duplicate detection / merge — header action wired to an imperative handle.
+  const dedupRef = useRef<FindDuplicatesHandle | null>(null);
 
   const fetchLead = useCallback(async () => {
     setLoading(true);
@@ -360,6 +364,11 @@ export default function LeadDetailPage() {
       ]
     : [
         { label: 'Edit', onClick: () => setEditing(true), variant: 'secondary' as const },
+        {
+          label: 'Find duplicates / Merge',
+          onClick: () => dedupRef.current?.find(),
+          variant: 'secondary' as const,
+        },
         {
           label: converting ? 'Converting…' : 'Convert to Client',
           onClick: convertToClient,
@@ -711,6 +720,21 @@ export default function LeadDetailPage() {
       <div className="mt-6">
         <SmsPanel entityType="lead" entityId={id} defaultTo={lead?.phone ?? null} />
       </div>
+
+      {/* Duplicate detection / merge — driven by the header action. */}
+      <FindDuplicatesAction
+        entity="lead"
+        record={{
+          id: lead.id,
+          name: lead.name,
+          email: lead.email,
+          phone: lead.phone,
+          company: lead.company,
+          createdAt: lead.createdAt,
+        }}
+        onReady={(h) => { dedupRef.current = h; }}
+        onMerged={(winnerId) => router.push(`/leads/${winnerId}`)}
+      />
     </DetailPageLayout>
   );
 }

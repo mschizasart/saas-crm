@@ -165,6 +165,8 @@ model Organization {
   bundleItems             BundleItem[]
   quotes                  Quote[]
   quoteLineItems          QuoteLineItem[]
+  // Duplicate detection + record merge (migration 045)
+  mergeAudits             MergeAudit[]
 
   @@map("organizations")
 }
@@ -381,7 +383,7 @@ model ClientGroup {
 }
 
 model Client {
-  id                 String   @id @default(uuid())
+  id                 String    @id @default(uuid())
   organizationId     String
   groupId            String?
   company            String
@@ -394,8 +396,8 @@ model Client {
   phone              String?
   vat                String?
   currencyId         String?
-  defaultLanguage    String   @default("en")
-  active             Boolean  @default(true)
+  defaultLanguage    String    @default("en")
+  active             Boolean   @default(true)
   registrationNumber String?
   billingStreet      String?
   billingCity        String?
@@ -410,8 +412,14 @@ model Client {
   longitude          String?
   latitude           String?
   stripeId           String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  // Duplicate-merge soft marker (migration 045). A merged LOSER is kept (not
+  // deleted) with mergedIntoId → winner, mergedAt set, and active=false so it
+  // also drops out of active-client lists. Default list/kanban/export queries
+  // filter `mergedIntoId IS NULL`.
+  mergedIntoId       String?
+  mergedAt           DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   group             ClientGroup?         @relation(fields: [groupId], references: [id])
@@ -446,6 +454,8 @@ model Client {
   workOrders     WorkOrder[] @relation("ClientWorkOrders")
 
   @@index([organizationId])
+  // Reverse lookup "what did this loser merge into?" — partial in SQL (045).
+  @@index([mergedIntoId])
   @@map("clients")
 }
 
@@ -594,6 +604,12 @@ model Lead {
   score               Int?
   scoreReason         String?   @db.Text
   scoreUpdatedAt      DateTime?
+  // Duplicate-merge soft marker (migration 045). When this lead is the LOSER
+  // of a merge it is NOT deleted; mergedIntoId points at the surviving winner
+  // and mergedAt records when. Every default list / kanban / export query
+  // filters `mergedIntoId IS NULL` so losers disappear from the UI.
+  mergedIntoId        String?
+  mergedAt            DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -610,6 +626,8 @@ model Lead {
   @@index([organizationId, statusId])
   // "Hot leads" sort: highest score first, NULLs last (unscored leads at end)
   @@index([organizationId, score(sort: Desc)])
+  // Reverse lookup "what did this loser merge into?" — partial in SQL (045).
+  @@index([mergedIntoId])
   @@map("leads")
 }
 
@@ -4077,4 +4095,37 @@ model BulkOperation {
   @@index([organizationId, createdById, startedAt(sort: Desc)], map: "bulk_operations_org_user_started_idx")
   @@index([organizationId, entityType, startedAt(sort: Desc)], map: "bulk_operations_org_entity_started_idx")
   @@map("bulk_operations")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Duplicate detection + record merge — migration 045
+// ═══════════════════════════════════════════════════════════════
+//
+// One row per completed merge. Written inside the same atomic
+// withOrganization() transaction as the repoints. loserSnapshot keeps the
+// full loser row + per-table repoint counts captured during the merge, and
+// repointCounts is the { table: n } map — together they make every merge
+// forensically auditable and (manually) reversible. Tenant isolation is
+// service-layer (no RLS), same as sequences / campaigns / calls.
+model MergeAudit {
+  id             String   @id @default(uuid())
+  organizationId String
+  // 'lead' | 'client'
+  entityType     String
+  // The surviving record; the loser was soft-marked mergedIntoId = winnerId.
+  winnerId       String
+  loserId        String
+  // users(id) of who performed the merge; scalar-only (no FK) so a deleted
+  // user's merge history stays readable. Nullable for system/API merges.
+  mergedById     String?
+  // Full loser row + child counts captured during the merge.
+  loserSnapshot  Json
+  // { table: count } repoint map.
+  repointCounts  Json
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, entityType])
+  @@map("merge_audit")
 }

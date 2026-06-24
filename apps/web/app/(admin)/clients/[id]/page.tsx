@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 import { DetailPageLayout } from '@/components/layouts/detail-page-layout';
 import { DocumentPanel } from '@/components/ui/document-panel';
 import { CallsPanel } from '@/components/ui/calls-panel';
+import { FindDuplicatesAction, type FindDuplicatesHandle } from '@/components/ui/find-duplicates-action';
 import ClientStatementModal from './client-statement-modal';
 
 // ---------------------------------------------------------------------------
@@ -140,7 +141,11 @@ interface ActivityItem {
 
 export default function ClientDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const clientId = params.id as string;
+
+  // Duplicate detection / merge — header action wired to an imperative handle.
+  const dedupRef = useRef<FindDuplicatesHandle | null>(null);
 
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
@@ -344,6 +349,11 @@ export default function ClientDetailPage() {
         {
           label: 'Statement',
           onClick: () => setStatementOpen(true),
+          variant: 'secondary' as const,
+        },
+        {
+          label: 'Find duplicates / Merge',
+          onClick: () => dedupRef.current?.find(),
           variant: 'secondary' as const,
         },
         { label: 'Edit', onClick: startEdit, variant: 'primary' as const },
@@ -786,6 +796,21 @@ export default function ClientDetailPage() {
           )}
         </div>
       )}
+
+      {/* ── Duplicate detection / merge — driven by the header action. ────── */}
+      <FindDuplicatesAction
+        entity="client"
+        record={{
+          id: client.id,
+          company: client.company,
+          email: null,
+          phone: client.phone,
+          city: client.city,
+          createdAt: '',
+        }}
+        onReady={(h) => { dedupRef.current = h; }}
+        onMerged={(winnerId) => router.push(`/clients/${winnerId}`)}
+      />
 
       {/* ── Statement modal ───────────────────────────────────────────────── */}
       <ClientStatementModal
