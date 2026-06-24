@@ -12,7 +12,7 @@ import {
   Activity, Tag, Lock, MessageCircle, MessageSquare, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
   ShieldX, Inbox, KeyRound, Sparkles, Clock, Mail,
   Briefcase, TrendingUp, ShieldCheck, Map, AtSign,
-  Wrench, Truck, Upload, Phone,
+  Wrench, Truck, Upload, Phone, Copy,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -319,6 +319,8 @@ function useNavItems(): NavItem[] {
             { label: 'Forms', href: '/leads/forms', icon: ClipboardList },
           ],
         },
+        // Duplicate detection + record merge (leads + clients)
+        { label: 'Duplicates', href: '/duplicates', icon: Copy },
         // Opportunities + Forecasts — Wave D1
         { label: 'Opportunities', href: '/opportunities', icon: Briefcase },
         { label: 'Forecasts', href: '/forecasts', icon: TrendingUp },

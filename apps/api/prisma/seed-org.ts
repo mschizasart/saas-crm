@@ -10,8 +10,11 @@
 import { PrismaClient } from '@prisma/client';
 
 export const ALL_PERMISSIONS = {
-  clients: { view: true, create: true, edit: true, delete: true },
-  leads: { view: true, create: true, edit: true, delete: true },
+  // `merge` (migration 045) — gates the duplicate-detection record-merge
+  // endpoints (/dedup/*/merge). High-risk: it repoints every reference from
+  // a loser record onto a winner, so it is a distinct grant from edit/delete.
+  clients: { view: true, create: true, edit: true, delete: true, merge: true },
+  leads: { view: true, create: true, edit: true, delete: true, merge: true },
   invoices: { view: true, create: true, edit: true, delete: true, send: true },
   estimates: { view: true, create: true, edit: true, delete: true, send: true },
   proposals: { view: true, create: true, edit: true, delete: true },
@@ -206,8 +209,11 @@ export async function seedOrganization(
     {
       name: 'Sales',
       permissions: {
-        leads: { view: true, create: true, edit: true, delete: true },
-        clients: { view: true, create: true, edit: true, delete: true },
+        // Wave I — dedup merge (migration 045). Sales reps deduplicate their
+        // own pipeline, so they get leads.merge (and clients.merge — reps own
+        // the account relationship and routinely fold duplicate companies).
+        leads: { view: true, create: true, edit: true, delete: true, merge: true },
+        clients: { view: true, create: true, edit: true, delete: true, merge: true },
         invoices: { view: true, create: true, edit: true, delete: true, send: true },
         estimates: { view: true, create: true, edit: true, delete: true, send: true },
         proposals: { view: true, create: true, edit: true, delete: true },

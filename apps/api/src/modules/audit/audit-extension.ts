@@ -188,7 +188,7 @@ export const auditExtension = Prisma.defineExtension((client) => {
         async create({ model, args, query }) {
           // Hard recursion guard: never let the audit-log writer re-enter
           // this hook via the extended client. See AUDITED_SET note above.
-          if (model === 'AuditLog' || model === 'auditLog') return query(args);
+          if (model === 'AuditLog') return query(args);
           const lower = model.toLowerCase();
           if (!AUDITED_SET.has(lower)) return query(args);
           const result = await query(args);
@@ -203,7 +203,7 @@ export const auditExtension = Prisma.defineExtension((client) => {
 
         async update({ model, args, query }) {
           // Hard recursion guard (see create hook for rationale).
-          if (model === 'AuditLog' || model === 'auditLog') return query(args);
+          if (model === 'AuditLog') return query(args);
           const lower = model.toLowerCase();
           if (!AUDITED_SET.has(lower)) {
             return query(args);
@@ -248,7 +248,7 @@ export const auditExtension = Prisma.defineExtension((client) => {
 
         async delete({ model, args, query }) {
           // Hard recursion guard (see create hook for rationale).
-          if (model === 'AuditLog' || model === 'auditLog') return query(args);
+          if (model === 'AuditLog') return query(args);
           const lower = model.toLowerCase();
           if (!AUDITED_SET.has(lower)) {
             return query(args);

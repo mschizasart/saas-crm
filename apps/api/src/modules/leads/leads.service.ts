@@ -108,7 +108,10 @@ export class LeadsService {
     const { search, status, assignedToId } = query;
 
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const where: any = { organizationId: orgId };
+      // mergedIntoId: null — hide leads that were merged away as the loser
+      // of a dedup merge (migration 045). They live on (soft-marked) for the
+      // audit trail but must never appear in lists/exports.
+      const where: any = { organizationId: orgId, mergedIntoId: null };
 
       if (search) {
         where.OR = [
@@ -186,7 +189,8 @@ export class LeadsService {
     const skip = (page - 1) * limit;
 
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const where: any = { organizationId: orgId };
+      // mergedIntoId: null — hide merged-away losers from the list (migration 045).
+      const where: any = { organizationId: orgId, mergedIntoId: null };
 
       if (search) {
         where.OR = [
@@ -1029,7 +1033,8 @@ export class LeadsService {
     },
   ) {
     return this.prisma.withOrganization(orgId, async (tx) => {
-      const where: any = { organizationId: orgId };
+      // mergedIntoId: null — keep merged-away losers off the kanban board (migration 045).
+      const where: any = { organizationId: orgId, mergedIntoId: null };
 
       const scopedWhere =
         currentUser && currentUser.isAdmin !== true
