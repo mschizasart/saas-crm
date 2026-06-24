@@ -12,7 +12,7 @@ import {
   Activity, Tag, Lock, MessageCircle, MessageSquare, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
   ShieldX, Inbox, KeyRound, Sparkles, Clock, Mail,
   Briefcase, TrendingUp, ShieldCheck, Map, AtSign,
-  Wrench, Truck, Upload,
+  Wrench, Truck, Upload, Phone,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -378,6 +378,7 @@ function useNavItems(): NavItem[] {
       icon: Headphones,
       children: [
         { label: t('nav.tickets'), href: '/tickets', icon: Headphones },
+        { label: 'Calls', href: '/calls', icon: Phone },
         { label: 'Live Chat', href: '/chat', icon: MessageCircle },
         { label: t('nav.knowledgeBase'), href: '/knowledge-base', icon: BookOpen },
       ],
