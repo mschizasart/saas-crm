@@ -398,6 +398,7 @@ function useNavItems(): NavItem[] {
       icon: Megaphone,
       children: [
         { label: 'Campaigns', href: '/campaigns', icon: Mail },
+        { label: 'Sequences', href: '/sequences', icon: Workflow },
         { label: t('nav.surveys'), href: '/surveys', icon: ClipboardList },
         { label: t('nav.announcements'), href: '/announcements', icon: Megaphone },
         { label: t('nav.knowledgeBase'), href: '/knowledge-base', icon: BookOpen },

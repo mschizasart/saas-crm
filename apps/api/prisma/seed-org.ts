@@ -28,6 +28,18 @@ export const ALL_PERMISSIONS = {
   // definitions and dashboards.
   reports: { view: true, create: true, edit: true, delete: true },
   settings: { view: true, edit: true },
+  // Sequences / cadences (migration 043) — multi-step follow-up flows.
+  // 'view' read; 'create' new sequences; 'edit' steps/lifecycle;
+  // 'delete' draft sequences; 'execute' enroll/unenroll recipients;
+  // 'configure' reserved for future admin-only settings.
+  sequences: {
+    view: true,
+    create: true,
+    edit: true,
+    delete: true,
+    execute: true,
+    configure: true,
+  },
   // Opportunities (deal pipeline + weighted forecast — migration 027)
   opportunities: {
     view: true,
@@ -179,6 +191,8 @@ export async function seedOrganization(
         // admins get the moderate flag (to take down inappropriate
         // posts).
         feed: { view: true, create: true, edit_own: true },
+        // Sequences — staff can see cadences but not build/run them.
+        sequences: { view: true },
       },
     },
     {
@@ -207,6 +221,9 @@ export async function seedOrganization(
         // (leads + opps). No clients / tasks bulk by default — those
         // are admin or ops concerns.
         bulk: { view: true, leads: true, opportunities: true },
+        // Sequences — sales reps build cadences and enroll their pipeline,
+        // but don't get delete (draft cleanup is an admin concern).
+        sequences: { view: true, create: true, execute: true },
       },
     },
   ];
