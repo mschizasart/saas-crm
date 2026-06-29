@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { FormPageLayout } from '@/components/layouts/form-page-layout';
 import { Button } from '@/components/ui/button';
+import { parseApiErrors } from '@/lib/api';
 
 interface LeadForm {
   name: string;
@@ -84,6 +85,7 @@ export default function EditLeadPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
+    setError(null);
     try {
       const payload = { ...form, budget: form.budget ? Number(form.budget) : undefined };
       const res = await fetch(`${API_BASE}/api/v1/leads/${id}`, {
@@ -91,7 +93,11 @@ export default function EditLeadPage() {
         headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(`Save failed (${res.status})`);
+      if (!res.ok) {
+        const errs = await parseApiErrors(res, 'Save failed');
+        setError(errs.join('\n'));
+        return;
+      }
       router.push(`/leads/${id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
@@ -117,7 +123,7 @@ export default function EditLeadPage() {
       }
     >
       <div className="space-y-4">
-        {error && <div className="px-3 py-2 bg-red-50 border border-red-100 text-sm text-red-600 rounded">{error}</div>}
+        {error && <div className="px-3 py-2 bg-red-50 border border-red-100 text-sm text-red-600 rounded whitespace-pre-line">{error}</div>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Name" required>

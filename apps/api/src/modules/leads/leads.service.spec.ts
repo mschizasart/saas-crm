@@ -4,6 +4,8 @@ import { createMock, DeepMocked } from '@golevelup/ts-jest';
 import { LeadsService } from './leads.service';
 import { PrismaService } from '../../database/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { RecordSharingService } from '../record-sharing/record-sharing.service';
+import { ValidationRulesService } from '../validation-rules/validation-rules.service';
 
 function makeWithOrganization(prisma: DeepMocked<PrismaService>) {
   return jest
@@ -18,6 +20,8 @@ describe('LeadsService', () => {
   let prisma: DeepMocked<PrismaService>;
   let events: DeepMocked<EventEmitter2>;
   let activityLog: DeepMocked<ActivityLogService>;
+  let recordSharing: DeepMocked<RecordSharingService>;
+  let validationRules: DeepMocked<ValidationRulesService>;
 
   const ORG_ID = 'org_a';
   const USER_ID = 'user_a';
@@ -26,8 +30,19 @@ describe('LeadsService', () => {
     prisma = createMock<PrismaService>();
     events = createMock<EventEmitter2>();
     activityLog = createMock<ActivityLogService>();
+    recordSharing = createMock<RecordSharingService>();
+    validationRules = createMock<ValidationRulesService>();
+    // Default: no rules configured → loadCustomFieldValues yields an empty map
+    // and assertValid is a no-op (DeepMocked methods resolve undefined).
+    (validationRules.loadCustomFieldValues as jest.Mock).mockResolvedValue({});
     (prisma.withOrganization as any) = makeWithOrganization(prisma);
-    service = new LeadsService(prisma, events, activityLog);
+    service = new LeadsService(
+      prisma,
+      events,
+      activityLog,
+      recordSharing,
+      validationRules,
+    );
   });
 
   // ─── create ───────────────────────────────────────────────────

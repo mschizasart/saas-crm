@@ -31,6 +31,7 @@ import { KnowledgeBaseModule } from './modules/knowledge-base/knowledge-base.mod
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
+import { ValidationRulesModule } from './modules/validation-rules/validation-rules.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { EmailsModule } from './modules/emails/emails.module';
 import { EmailSettingsModule } from './modules/email-settings/email-settings.module';
@@ -193,6 +194,8 @@ import { BulkApiModule } from './modules/bulk-api/bulk-api.module';
     CallsModule,
     // Duplicate detection + record merge (migration 045)
     DedupModule,
+    // Salesforce-style save-time validation rules (migration 046)
+    ValidationRulesModule,
     OpportunitiesModule,
     CustomObjectsModule,
     ApprovalsModule,

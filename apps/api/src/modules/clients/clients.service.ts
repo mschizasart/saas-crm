@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { ValidationRulesService } from '../validation-rules/validation-rules.service';
 import { parse as parseCsvSync } from 'csv-parse/sync';
 import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
@@ -138,6 +139,7 @@ export class ClientsService {
     private prisma: PrismaService,
     private events: EventEmitter2,
     private activityLog: ActivityLogService,
+    private validationRules: ValidationRulesService,
   ) {}
 
   // ─── Export ───────────────────────────────────────────────
@@ -244,6 +246,17 @@ export class ClientsService {
 
   async create(orgId: string, dto: CreateClientDto, createdBy: string) {
     const client = await this.prisma.withOrganization(orgId, async (tx) => {
+      // Save-time validation rules (migration 046). Throws inside the tx if any
+      // active 'client' rule matches, aborting the create atomically. Client
+      // custom-field values are set via a dedicated endpoint (not part of this
+      // DTO), so cf:<slug> rules can't be evaluated on create here.
+      await this.validationRules.assertValid(
+        orgId,
+        'client',
+        dto as Record<string, any>,
+        tx as any,
+        null,
+      );
       return tx.client.create({ data: { ...dto, organizationId: orgId } });
     });
     this.events.emit('client.created', { client, orgId, createdBy });
@@ -253,6 +266,23 @@ export class ClientsService {
   async update(orgId: string, id: string, dto: Partial<CreateClientDto>, userId?: string) {
     const existing = await this.findOne(orgId, id);
     const updated = await this.prisma.withOrganization(orgId, async (tx) => {
+      // Save-time validation rules (migration 046). Evaluate against the MERGED
+      // record (existing row + incoming changes). cf:<slug> rules use the stored
+      // client custom-field values (loaded in this tx).
+      const merged = { ...(existing as any), ...dto };
+      const existingCfv = await this.validationRules.loadCustomFieldValues(
+        orgId,
+        'client',
+        id,
+        tx as any,
+      );
+      await this.validationRules.assertValid(
+        orgId,
+        'client',
+        merged,
+        tx as any,
+        existingCfv,
+      );
       return tx.client.update({ where: { id }, data: dto });
     });
 

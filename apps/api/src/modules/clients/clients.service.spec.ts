@@ -4,6 +4,7 @@ import { createMock, DeepMocked } from '@golevelup/ts-jest';
 import { ClientsService } from './clients.service';
 import { PrismaService } from '../../database/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { ValidationRulesService } from '../validation-rules/validation-rules.service';
 
 /**
  * `withOrganization(orgId, fn)` is the RLS wrapper. Every test that calls
@@ -27,6 +28,7 @@ describe('ClientsService', () => {
   let prisma: DeepMocked<PrismaService>;
   let events: DeepMocked<EventEmitter2>;
   let activityLog: DeepMocked<ActivityLogService>;
+  let validationRules: DeepMocked<ValidationRulesService>;
 
   const ORG_ID = 'org_abc';
   const USER_ID = 'user_123';
@@ -35,8 +37,12 @@ describe('ClientsService', () => {
     prisma = createMock<PrismaService>();
     events = createMock<EventEmitter2>();
     activityLog = createMock<ActivityLogService>();
+    validationRules = createMock<ValidationRulesService>();
+    // Default: no rules configured → loadCustomFieldValues yields an empty map
+    // and assertValid is a no-op (DeepMocked methods resolve undefined).
+    (validationRules.loadCustomFieldValues as jest.Mock).mockResolvedValue({});
     (prisma.withOrganization as any) = makeWithOrganization(prisma);
-    service = new ClientsService(prisma, events, activityLog);
+    service = new ClientsService(prisma, events, activityLog, validationRules);
   });
 
   // ─── create ───────────────────────────────────────────────────
