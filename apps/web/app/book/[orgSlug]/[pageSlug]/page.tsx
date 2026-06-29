@@ -102,7 +102,12 @@ export default function PublicBookingPage() {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [bookError, setBookError] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState<{ startTime: string; endTime: string } | null>(null);
+  // After a successful POST /book the booking is NOT confirmed yet — the visitor
+  // must click a link emailed to them (double opt-in). We capture the slot/email
+  // here to render the "check your email" state.
+  const [pending, setPending] = useState<{ startTime: string; endTime: string; email: string } | null>(
+    null,
+  );
 
   // ── Load page config ──
   useEffect(() => {
@@ -196,9 +201,13 @@ export default function PublicBookingPage() {
           : json?.message || `Booking failed (${res.status})`;
         throw new Error(msg);
       }
-      setConfirmed({
-        startTime: json.startTime ?? selectedSlot.start,
-        endTime: json.endTime ?? selectedSlot.end,
+      // Double opt-in: the backend returns { status:'pending' } and emails a
+      // confirmation link. The booking is NOT yet confirmed — show the
+      // "check your email" state.
+      setPending({
+        startTime: selectedSlot.start,
+        endTime: selectedSlot.end,
+        email,
       });
     } catch (err) {
       setBookError(err instanceof Error ? err.message : 'Booking failed');
@@ -229,29 +238,32 @@ export default function PublicBookingPage() {
 
   const { org, page } = config;
 
-  if (confirmed) {
+  if (pending) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
         <div className="max-w-md w-full text-center bg-white rounded-xl border border-gray-100 shadow-sm p-8">
-          <div className="w-14 h-14 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          <div className="w-14 h-14 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">You&apos;re booked!</h1>
-          <p className="text-sm text-gray-700 mb-1">
-            {fmtDateLong(confirmed.startTime, visitorTz)}
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Almost there — check your email</h1>
+          <p className="text-sm text-gray-700 mb-3">
+            We&apos;ve sent a confirmation link to{' '}
+            <span className="font-medium text-gray-900">{pending.email}</span>. Click it to finalize
+            your booking for:
           </p>
           <p className="text-sm text-gray-700 mb-1">
-            {fmtTime(confirmed.startTime, visitorTz)} – {fmtTime(confirmed.endTime, visitorTz)}
+            {fmtDateLong(pending.startTime, visitorTz)}
+          </p>
+          <p className="text-sm text-gray-700 mb-1">
+            {fmtTime(pending.startTime, visitorTz)} – {fmtTime(pending.endTime, visitorTz)}
           </p>
           <p className="text-xs text-gray-400 mb-4">Times shown in {visitorTz}</p>
-          {page.meetingLocation && (
-            <p className="text-sm text-gray-600 mb-4">
-              <span className="font-medium">Location:</span> {page.meetingLocation}
-            </p>
-          )}
-          <p className="text-xs text-gray-400">A confirmation has been sent to {email}.</p>
+          <p className="text-xs text-gray-400">
+            The link expires in 30 minutes. Your booking isn&apos;t confirmed until you click it.
+          </p>
+          <p className="text-[11px] text-gray-400 text-center mt-6">Powered by AppoinlyCRM</p>
         </div>
       </div>
     );
