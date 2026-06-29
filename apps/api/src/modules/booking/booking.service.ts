@@ -4,8 +4,10 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  GoneException,
   Optional,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { EmailsService } from '../emails/emails.service';
 import {
@@ -44,6 +46,9 @@ const RL_PAGE_DAY: RateLimit = { windowMs: 86_400_000, max: 100 }; // per-page: 
 
 /** key -> attempt timestamps (ms) currently inside the relevant window. */
 const bookHits = new Map<string, number[]>();
+
+/** Lifetime of an email double-opt-in confirm link (30 minutes). */
+const VERIFICATION_TTL_MS = 30 * 60_000;
 
 @Injectable()
 export class BookingService {
@@ -351,7 +356,12 @@ export class BookingService {
       );
     }
 
-    // ── Atomic conflict-check + insert ──
+    // ── Double-opt-in: a single-use verification secret embedded in the
+    //    confirm link emailed to the visitor. The pending row carries it until
+    //    verify() flips the booking to 'scheduled' and clears it. ──
+    const token = randomBytes(32).toString('hex');
+
+    // ── Atomic conflict-check + insert (as PENDING) ──
     const appt = await this.prisma.withOrganization(
       organization.id,
       async (tx: any) => {
@@ -360,11 +370,14 @@ export class BookingService {
         const windowStart = new Date(start.getTime() - bufMs);
         const windowEnd = new Date(end.getTime() + bufMs);
 
+        // Only CONFIRMED ('scheduled') bookings hold a slot. 'pending'
+        // (unverified double-opt-in) rows are excluded so they can't be used to
+        // DoS availability with unverified spam bookings.
         const conflict = await tx.appointment.findFirst({
           where: {
             organizationId: organization.id,
             staffId: page.staffId,
-            status: { notIn: ['cancelled'] },
+            status: 'scheduled',
             // overlap: existing.start < windowEnd AND existing.end > windowStart
             startTime: { lt: windowEnd },
             endTime: { gt: windowStart },
@@ -375,54 +388,180 @@ export class BookingService {
           throw new ConflictException('That slot is no longer available.');
         }
 
+        // Create as PENDING — does NOT hold the slot (excluded from conflict
+        // checks above) and is NOT guarded by the unique index (which is now
+        // scoped to status='scheduled'). The slot is only claimed when the
+        // visitor verifies their email via verify().
+        return await tx.appointment.create({
+          data: {
+            organizationId: organization.id,
+            staffId: page.staffId,
+            title: page.title,
+            description: dto.notes ? dto.notes.slice(0, 5000) : null,
+            location: page.meetingLocation ?? null,
+            startTime: start,
+            endTime: end,
+            status: 'pending',
+            source: 'booking-page',
+            bookingPageId: page.id,
+            attendeeName: dto.name.slice(0, 200),
+            attendeeEmail: dto.email.slice(0, 320),
+            verificationToken: token,
+            verificationExpiresAt: new Date(now + VERIFICATION_TTL_MS),
+          },
+        });
+      },
+    );
+
+    // ── Verification email ONLY (best-effort). Double-opt-in: the visitor must
+    //    click the emailed link to confirm. Staff are NOT notified and no
+    //    confirmation/.ics is sent until the booking is verified (see verify()).
+    //    This closes the email-relay gap: an unverified third-party email never
+    //    receives a "confirmed" message and never holds the slot. ──
+    await this.sendVerificationEmail(organization.id, page as any, appt, token);
+
+    return {
+      status: 'pending' as const,
+      message: 'Please check your email to confirm your booking.',
+    };
+  }
+
+  /**
+   * Public email double-opt-in: the visitor opens the link emailed by book()
+   * which carries `token`. Re-validates the slot is still bookable and free
+   * (only 'scheduled' bookings count as busy), then atomically flips the
+   * pending appointment to 'scheduled' — first verifier wins; a later verify
+   * for a now-taken slot gets a clean 409. On success, the confirmation +
+   * staff emails + .ics are sent (the work book() used to do inline).
+   */
+  async verify(token: string, ip: string | null) {
+    // Light per-IP burst limit — the token is itself a single-use secret, so
+    // this just blunts brute-force scanning of the token space.
+    if (!this.checkRateLimit(`vip:${ip ?? 'unknown'}`, RL_IP, Date.now())) {
+      throw new BadRequestException(
+        'Too many attempts. Please try again later.',
+      );
+    }
+
+    const t = String(token ?? '').trim();
+    if (!t) throw new BadRequestException('Invalid or expired link');
+
+    const appt = await this.prisma.appointment.findFirst({
+      where: { verificationToken: t },
+    });
+    if (!appt) {
+      throw new NotFoundException('Invalid or expired link');
+    }
+
+    // Idempotent: a second click on an already-confirmed booking succeeds.
+    if (appt.status === 'scheduled') {
+      return {
+        status: 'scheduled' as const,
+        startTime: appt.startTime.toISOString(),
+        endTime: appt.endTime.toISOString(),
+        meetingLocation: appt.location ?? null,
+      };
+    }
+    if (appt.status !== 'pending') {
+      throw new BadRequestException('Invalid or expired link');
+    }
+    if (
+      appt.verificationExpiresAt &&
+      appt.verificationExpiresAt.getTime() < Date.now()
+    ) {
+      throw new GoneException(
+        'This confirmation link has expired. Please book again.',
+      );
+    }
+
+    // Re-load the page config to re-validate the window/working-hours and to
+    // build the confirmation emails (location/title/buffer come from here).
+    const page = await this.prisma.bookingPage.findFirst({
+      where: { id: appt.bookingPageId ?? '', organizationId: appt.organizationId },
+    });
+    if (!page) {
+      // Page was deleted/unbound since the pending booking was made.
+      throw new BadRequestException('Invalid or expired link');
+    }
+
+    const start = appt.startTime;
+    const end = appt.endTime;
+
+    // ── Re-validate the booking window (lead time / max advance) at confirm. ──
+    const nowMs = Date.now();
+    const minStart = nowMs + page.minLeadTimeHours * 3_600_000;
+    const maxStart = nowMs + page.maxAdvanceDays * 86_400_000;
+    if (start.getTime() < minStart) {
+      throw new BadRequestException('This time is no longer bookable (too soon).');
+    }
+    if (start.getTime() > maxStart) {
+      throw new BadRequestException('This time is too far in the future.');
+    }
+    if (!this.startWithinWorkingHours(page as any, start)) {
+      throw new BadRequestException('This time is outside available hours.');
+    }
+
+    const confirmed = await this.prisma.withOrganization(
+      appt.organizationId,
+      async (tx: any) => {
+        // Buffer-aware conflict re-check — only confirmed bookings count.
+        const bufMs = page.bufferMinutes * 60_000;
+        const windowStart = new Date(start.getTime() - bufMs);
+        const windowEnd = new Date(end.getTime() + bufMs);
+
+        const conflict = await tx.appointment.findFirst({
+          where: {
+            organizationId: appt.organizationId,
+            staffId: page.staffId,
+            status: 'scheduled',
+            id: { not: appt.id },
+            startTime: { lt: windowEnd },
+            endTime: { gt: windowStart },
+          },
+          select: { id: true },
+        });
+        if (conflict) {
+          throw new ConflictException(
+            'That slot was just taken. Please book another time.',
+          );
+        }
+
         try {
-          return await tx.appointment.create({
+          return await tx.appointment.update({
+            where: { id: appt.id },
             data: {
-              organizationId: organization.id,
-              staffId: page.staffId,
-              title: page.title,
-              description: dto.notes ? dto.notes.slice(0, 5000) : null,
-              location: page.meetingLocation ?? null,
-              startTime: start,
-              endTime: end,
               status: 'scheduled',
-              source: 'booking-page',
-              bookingPageId: page.id,
-              attendeeName: dto.name.slice(0, 200),
-              attendeeEmail: dto.email.slice(0, 320),
+              verifiedAt: new Date(),
+              verificationToken: null,
             },
           });
         } catch (e: any) {
-          // DB-level double-booking guard (partial unique index
-          // appointments_org_staff_start_active_key) firing means another
-          // visitor grabbed this exact slot first — surface a clean 409.
-          // Prisma reports this as P2002; the raw Postgres code is 23505.
+          // The partial unique index (scoped to status='scheduled') firing means
+          // another visitor confirmed this exact slot first — clean 409.
+          // Prisma reports P2002; raw Postgres is 23505.
           const isUniqueViolation =
             e?.code === 'P2002' ||
             e?.code === '23505' ||
             e?.meta?.code === '23505' ||
             /unique constraint|23505/i.test(String(e?.message ?? ''));
           if (isUniqueViolation) {
-            throw new ConflictException('That slot is no longer available.');
+            throw new ConflictException(
+              'That slot was just taken. Please book another time.',
+            );
           }
-          throw e; // re-throw anything else unchanged
+          throw e;
         }
       },
     );
 
-    // ── Confirmation + staff notification emails (best-effort) ──
-    // NOTE (v1.1 hardening): the visitor's email is UNVERIFIED here — anyone can
-    // book on behalf of a third party, turning this into an email relay. Full
-    // double-opt-in (email verification before the slot is confirmed) is planned
-    // for v1.1. The current mitigation is the multi-dimensional rate limiting +
-    // per-page daily cap above (Fix C), which bounds relay-abuse volume.
-    await this.sendBookingEmails(organization.id, page as any, appt);
+    // ── Now (and only now) send confirmation + staff notification + .ics. ──
+    await this.sendBookingEmails(appt.organizationId, page as any, confirmed);
 
     return {
-      id: appt.id,
-      startTime: appt.startTime.toISOString(),
-      endTime: appt.endTime.toISOString(),
-      status: appt.status,
+      status: 'scheduled' as const,
+      startTime: confirmed.startTime.toISOString(),
+      endTime: confirmed.endTime.toISOString(),
+      meetingLocation: page.meetingLocation ?? null,
     };
   }
 
@@ -495,15 +634,17 @@ export class BookingService {
     }
     if (candidates.length === 0) return [];
 
-    // Fetch existing non-cancelled appointments overlapping this day window
-    // (widened by buffer) for the staff member, once.
+    // Fetch existing CONFIRMED appointments overlapping this day window
+    // (widened by buffer) for the staff member, once. Only 'scheduled' bookings
+    // hold a slot — 'pending' (unverified double-opt-in) and 'cancelled' rows are
+    // excluded so unverified spam bookings can't DoS availability.
     const dayLo = candidates[0].start.getTime() - bufMs;
     const dayHi = candidates[candidates.length - 1].end.getTime() + bufMs;
     const existing = await this.prisma.appointment.findMany({
       where: {
         organizationId: orgId,
         staffId: page.staffId,
-        status: { notIn: ['cancelled'] },
+        status: 'scheduled',
         startTime: { lt: new Date(dayHi) },
         endTime: { gt: new Date(dayLo) },
       },
@@ -665,6 +806,43 @@ export class BookingService {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Double-opt-in: email the visitor a single-use confirm link. This is the
+   * ONLY message sent at book() time — staff are not notified and no .ics goes
+   * out until the booking is verified. Best-effort (logged, non-fatal).
+   */
+  private async sendVerificationEmail(
+    orgId: string,
+    page: { title: string; meetingLocation: string | null },
+    appt: { id: string; startTime: Date; attendeeName: string | null; attendeeEmail: string | null },
+    token: string,
+  ) {
+    if (!this.emails) return;
+    if (!appt.attendeeEmail) return;
+
+    const base = (process.env.APP_URL ?? '').replace(/\/$/, '');
+    const link = `${base}/book/verify/${token}`;
+    const when = appt.startTime.toUTCString();
+
+    try {
+      await this.emails.queue({
+        orgId,
+        to: appt.attendeeEmail,
+        subject: `Confirm your booking: ${page.title}`,
+        html: `<p>Hi ${escapeHtml(appt.attendeeName ?? '')},</p>
+<p>Please confirm your booking for <strong>${escapeHtml(page.title)}</strong> by clicking the link below.</p>
+<p><strong>When:</strong> ${escapeHtml(when)} (UTC)</p>
+${page.meetingLocation ? `<p><strong>Where:</strong> ${escapeHtml(page.meetingLocation)}</p>` : ''}
+<p><a href="${link}">Confirm my booking</a></p>
+<p>This link expires in 30 minutes. If you didn't request this, you can ignore this email — nothing is booked until you confirm.</p>`,
+      });
+    } catch (e) {
+      this.logger.warn(
+        `Failed to queue verification email for ${appt.id}: ${(e as Error).message}`,
+      );
     }
   }
 

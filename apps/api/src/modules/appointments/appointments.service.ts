@@ -31,7 +31,9 @@ export class AppointmentsService {
     orgId: string,
     query: { from?: string; to?: string; staffId?: string },
   ) {
-    const where: any = { organizationId: orgId };
+    // Exclude unverified double-opt-in bookings (status='pending') so they
+    // don't clutter staff calendars until the visitor confirms via email.
+    const where: any = { organizationId: orgId, status: { not: 'pending' } };
     if (query.staffId) where.staffId = query.staffId;
     if (query.from || query.to) {
       where.startTime = {};

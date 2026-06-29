@@ -50,7 +50,10 @@ export class PublicBookingController {
   @Post(':orgSlug/:pageSlug/book')
   @Public()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Book a slot — creates an Appointment' })
+  @ApiOperation({
+    summary:
+      'Request a booking — creates a PENDING Appointment and emails a confirm link (double-opt-in)',
+  })
   book(
     @Param('orgSlug') orgSlug: string,
     @Param('pageSlug') pageSlug: string,
@@ -58,5 +61,19 @@ export class PublicBookingController {
     @Ip() ip: string,
   ) {
     return this.service.book(orgSlug, pageSlug, body, ip ?? null);
+  }
+
+  /**
+   * Email double-opt-in confirm: the visitor opens the link emailed by /book.
+   * Flips the pending appointment to 'scheduled' (first verifier wins) and sends
+   * the confirmation + staff emails. The token is a single-use secret, so this
+   * carries low abuse risk; the per-IP burst limit still guards it.
+   */
+  @Post('verify/:token')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Confirm a pending booking via its email link token' })
+  verify(@Param('token') token: string, @Ip() ip: string) {
+    return this.service.verify(token, ip ?? null);
   }
 }
