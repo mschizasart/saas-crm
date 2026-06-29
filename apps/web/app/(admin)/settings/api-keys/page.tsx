@@ -24,6 +24,24 @@ interface ApiKeyItem {
   createdAt: string;
 }
 
+interface ScopeItem {
+  value: string;
+  label: string;
+}
+
+// Fallback catalog used when GET /integration/scopes is unavailable. Mirrors
+// the backend ALLOWED_SCOPES so the picker still works offline / on error.
+const FALLBACK_SCOPES: ScopeItem[] = [
+  { value: 'leads.read', label: 'Read leads' },
+  { value: 'leads.write', label: 'Create / update leads' },
+  { value: 'clients.read', label: 'Read clients' },
+  { value: 'clients.write', label: 'Create / update clients' },
+  { value: 'invoices.read', label: 'Read invoices' },
+  { value: 'opportunities.read', label: 'Read opportunities' },
+  { value: 'webhooks.subscribe', label: 'Subscribe to webhooks' },
+  { value: '*', label: 'Full access' },
+];
+
 export default function ApiKeysPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +50,8 @@ export default function ApiKeysPage() {
   // Form
   const [name, setName] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
+  const [scopes, setScopes] = useState<string[]>([]);
+  const [scopeCatalog, setScopeCatalog] = useState<ScopeItem[]>(FALLBACK_SCOPES);
   const [saving, setSaving] = useState(false);
 
   // Created key modal
@@ -47,13 +67,29 @@ export default function ApiKeysPage() {
     } catch { /* ignore */ } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  const loadScopes = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/integration/scopes`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      if (Array.isArray(data?.scopes) && data.scopes.length > 0) {
+        setScopeCatalog(data.scopes);
+      }
+    } catch { /* keep fallback catalog */ }
+  };
+
+  useEffect(() => { load(); loadScopes(); }, []);
+
+  const toggleScope = (value: string) => {
+    setScopes((prev) => prev.includes(value) ? prev.filter((s) => s !== value) : [...prev, value]);
+  };
 
   const handleCreate = async () => {
     setSaving(true);
     try {
       const body: any = { name };
       if (expiresAt) body.expiresAt = expiresAt;
+      if (scopes.length > 0) body.scopes = scopes;
       const res = await fetch(`${API_BASE}/api/v1/api-keys`, {
         method: 'POST', headers: authHeaders(), body: JSON.stringify(body),
       });
@@ -63,6 +99,7 @@ export default function ApiKeysPage() {
       setShowForm(false);
       setName('');
       setExpiresAt('');
+      setScopes([]);
       load();
     } catch { /* ignore */ } finally { setSaving(false); }
   };
@@ -129,11 +166,24 @@ export default function ApiKeysPage() {
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Expiry Date (optional)</label>
               <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Scopes</label>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">Grant the minimum scopes this key needs. Leave empty for an unscoped key. <code className="font-mono">*</code> grants full access.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {scopeCatalog.map((s) => (
+                  <label key={s.value} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={scopes.includes(s.value)} onChange={() => toggleScope(s.value)} className="rounded border-gray-300 text-primary focus:ring-primary/30" />
+                    <code className="font-mono text-xs">{s.value}</code>
+                    <span className="text-gray-400 dark:text-gray-500">— {s.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
             <div className="flex items-center gap-3 pt-2">
               <button onClick={handleCreate} disabled={saving || !name.trim()} className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50">
                 {saving ? 'Creating...' : 'Create Key'}
               </button>
-              <button onClick={() => { setShowForm(false); setName(''); setExpiresAt(''); }} className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800">Cancel</button>
+              <button onClick={() => { setShowForm(false); setName(''); setExpiresAt(''); setScopes([]); }} className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800">Cancel</button>
             </div>
           </div>
         </SettingsSection>

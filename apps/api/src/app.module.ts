@@ -103,6 +103,7 @@ import { ActivityCaptureModule } from './modules/activity-capture/activity-captu
 // semantics; opt-in JwtOrApiKeyGuard so customers can drive it
 // from public-API keys).
 import { BulkApiModule } from './modules/bulk-api/bulk-api.module';
+import { IntegrationModule } from './modules/integration/integration.module';
 
 @Module({
   imports: [
@@ -222,6 +223,9 @@ import { BulkApiModule } from './modules/bulk-api/bulk-api.module';
     ActivityCaptureModule,
     // Wave H3 — Bulk API + CSV import
     BulkApiModule,
+    // Wave H3 (E3.1) — Public Integration API (Zapier/Make) — scope-gated
+    // re-export of leads/clients/invoices/opportunities + webhook subscribe.
+    IntegrationModule,
   ],
   providers: [
     // TenantInterceptor must run before AuditContextInterceptor so
