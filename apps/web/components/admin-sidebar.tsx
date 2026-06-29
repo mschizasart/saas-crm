@@ -448,6 +448,7 @@ function useNavItems(): NavItem[] {
         { label: 'Branding', href: '/settings/branding', icon: Palette },
         { label: t('nav.paymentGateways'), href: '/settings?tab=gateways', icon: CreditCard },
         { label: t('nav.customFields'), href: '/settings/custom-fields', icon: FileText },
+        { label: 'Validation Rules', href: '/settings/validation-rules', icon: ShieldCheck },
         { label: 'Custom Objects', href: '/settings/custom-objects', icon: Package },
         // Wave E2 — field history / audit trail
         { label: 'Audit Trail', href: '/audit', icon: Activity },

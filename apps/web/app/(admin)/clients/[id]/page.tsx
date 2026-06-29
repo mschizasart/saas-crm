@@ -9,6 +9,7 @@ import { DocumentPanel } from '@/components/ui/document-panel';
 import { CallsPanel } from '@/components/ui/calls-panel';
 import { FindDuplicatesAction, type FindDuplicatesHandle } from '@/components/ui/find-duplicates-action';
 import ClientStatementModal from './client-statement-modal';
+import { parseApiErrors } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -285,7 +286,11 @@ export default function ClientDetailPage() {
         headers: authHeaders(),
         body: JSON.stringify(editForm),
       });
-      if (!res.ok) throw new Error(`Save failed with status ${res.status}`);
+      if (!res.ok) {
+        const errs = await parseApiErrors(res, 'Failed to save');
+        setSaveError(errs.join('\n'));
+        return;
+      }
       const updated: Client = await res.json();
       setClient(updated);
       setEditing(false);
@@ -375,7 +380,7 @@ export default function ClientDetailPage() {
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm p-6 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Edit Client</h2>
           {saveError && (
-            <div className="mb-4 px-3 py-2 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg">
+            <div className="mb-4 px-3 py-2 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg whitespace-pre-line">
               {saveError}
             </div>
           )}

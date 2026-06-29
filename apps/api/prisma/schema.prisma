@@ -167,6 +167,8 @@ model Organization {
   quoteLineItems          QuoteLineItem[]
   // Duplicate detection + record merge (migration 045)
   mergeAudits             MergeAudit[]
+  // Validation rules (migration 046) — Salesforce-style save-time guards.
+  validationRules         ValidationRule[]
 
   @@map("organizations")
 }
@@ -4128,4 +4130,44 @@ model MergeAudit {
 
   @@index([organizationId, entityType])
   @@map("merge_audit")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  VALIDATION RULES (migration 046)
+//
+//  Salesforce-style save-time validation. Each rule defines a
+//  condition (an array of field/operator/value clauses combined
+//  with AND/OR). When the condition evaluates TRUE for the record
+//  being saved, the save is BLOCKED and `errorMessage` is returned.
+//  All active rules for an entity are evaluated; every violated
+//  message is collected and surfaced together.
+//
+//  Conditions may reference custom fields via a `cf:<slug>` field
+//  prefix, resolved against the record's custom-field values at
+//  evaluation time. Tenant isolation is enforced at the service
+//  layer via prisma.withOrganization() (no RLS — same as
+//  dedup / sequences / calls).
+// ═══════════════════════════════════════════════════════════════
+
+model ValidationRule {
+  id             String   @id @default(uuid())
+  organizationId String
+  // Entity singular: 'lead' | 'client' (extensible to other entities).
+  fieldTo        String
+  name           String
+  description    String?
+  // 'AND' | 'OR' — how the individual conditions combine.
+  conditionLogic String   @default("AND")
+  // Array of { field: string, operator: string, value?: any }.
+  conditions     Json     @default("[]")
+  errorMessage   String
+  active         Boolean  @default(true)
+  order          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, fieldTo])
+  @@map("validation_rules")
 }

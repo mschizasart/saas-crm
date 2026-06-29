@@ -6,9 +6,12 @@ import { HealthScoreService } from './health-score.service';
 // ApiKeyStrategy, which the controller opts into for public-API key
 // auth on top of the existing JWT path.
 import { PublicApiModule } from '../public-api/public-api.module';
+// Migration 046 — save-time validation rules. Exports ValidationRulesService
+// (no leads/clients dependency back → no cycle).
+import { ValidationRulesModule } from '../validation-rules/validation-rules.module';
 
 @Module({
-  imports: [PublicApiModule],
+  imports: [PublicApiModule, ValidationRulesModule],
   controllers: [ClientsController],
   providers: [ClientsService, HealthScoreService],
   exports: [ClientsService, HealthScoreService],

@@ -11,6 +11,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EmailsService } from '../emails/emails.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
 import { RecordSharingService } from '../record-sharing/record-sharing.service';
+import { ValidationRulesService } from '../validation-rules/validation-rules.service';
 import { parse as parseCsvSync } from 'csv-parse/sync';
 import { EXPORT_ROW_CAP } from '../../common/csv/csv-writer';
 
@@ -85,6 +86,7 @@ export class LeadsService {
     private events: EventEmitter2,
     private activityLog: ActivityLogService,
     private recordSharing: RecordSharingService,
+    private validationRules: ValidationRulesService,
     @Optional() private emailsService?: EmailsService,
   ) {}
 
@@ -368,6 +370,16 @@ export class LeadsService {
   async create(orgId: string, dto: CreateLeadDto, createdBy: string) {
     const lead = await this.prisma.withOrganization(orgId, async (tx) => {
       const data = await this.resolveLeadData(tx, orgId, dto);
+      // Save-time validation rules (migration 046). Throws BadRequestException
+      // ({ message, errors }) inside this tx if any active 'lead' rule matches,
+      // aborting the create atomically.
+      await this.validationRules.assertValid(
+        orgId,
+        'lead',
+        data,
+        tx as any,
+        dto.customFieldValues ?? null,
+      );
       return tx.lead.create({
         data: {
           ...data,
@@ -384,6 +396,25 @@ export class LeadsService {
 
     const updated = await this.prisma.withOrganization(orgId, async (tx) => {
       const data = await this.resolveLeadData(tx, orgId, dto);
+      // Save-time validation rules (migration 046). Evaluate against the MERGED
+      // record (existing row + incoming changes) so native-field rules see the
+      // post-save state. Custom-field rules merge stored cf values (loaded in
+      // this tx) under the incoming dto.customFieldValues.
+      const merged = { ...(existing as any), ...data };
+      const existingCfv = await this.validationRules.loadCustomFieldValues(
+        orgId,
+        'lead',
+        id,
+        tx as any,
+      );
+      const mergedCfv = { ...existingCfv, ...(dto.customFieldValues ?? {}) };
+      await this.validationRules.assertValid(
+        orgId,
+        'lead',
+        merged,
+        tx as any,
+        mergedCfv,
+      );
       return tx.lead.update({ where: { id }, data });
     });
 

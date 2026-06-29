@@ -7,6 +7,7 @@ import { CustomFieldsForm } from '../../../../components/custom-fields-form';
 import { FormPageLayout } from '@/components/layouts/form-page-layout';
 import { Button } from '@/components/ui/button';
 import { AiImproveButton } from '@/components/ui/ai-improve-button';
+import { parseApiErrors } from '@/lib/api';
 
 interface LeadForm {
   name: string;
@@ -78,7 +79,11 @@ export default function NewLeadPage() {
         },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(`Failed to create lead (${res.status})`);
+      if (!res.ok) {
+        const errs = await parseApiErrors(res, 'Failed to create lead');
+        setError(errs.join('\n'));
+        return;
+      }
       const created = await res.json();
       const createdId = created.id ?? created.data?.id;
       if (Object.keys(customFieldValues).length > 0 && createdId) {
@@ -113,7 +118,7 @@ export default function NewLeadPage() {
     >
       <div className="space-y-4">
         {error && (
-          <div className="px-3 py-2 bg-red-50 border border-red-100 text-sm text-red-600 rounded">
+          <div className="px-3 py-2 bg-red-50 border border-red-100 text-sm text-red-600 rounded whitespace-pre-line">
             {error}
           </div>
         )}

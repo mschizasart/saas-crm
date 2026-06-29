@@ -8,6 +8,9 @@ import { LeadScoringListener } from './lead-scoring.listener';
 import { RecordSharingModule } from '../record-sharing/record-sharing.module';
 // Wave H3 (E3.1) — JwtOrApiKeyGuard so public-API keys can hit /leads.
 import { PublicApiModule } from '../public-api/public-api.module';
+// Migration 046 — save-time validation rules. Exports ValidationRulesService
+// (no leads/clients dependency back → no cycle).
+import { ValidationRulesModule } from '../validation-rules/validation-rules.module';
 
 @Module({
   imports: [
@@ -20,6 +23,8 @@ import { PublicApiModule } from '../public-api/public-api.module';
     RecordSharingModule,
     // Wave H3 (E3.1) — JwtOrApiKeyGuard provider supply.
     PublicApiModule,
+    // Migration 046 — validation rules enforcement in create/update.
+    ValidationRulesModule,
   ],
   controllers: [LeadsController],
   providers: [
