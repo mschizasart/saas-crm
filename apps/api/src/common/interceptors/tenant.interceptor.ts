@@ -57,6 +57,11 @@ export class TenantInterceptor implements NestInterceptor {
       // modules/campaigns/public-campaigns.controller.ts.
       url.startsWith('/api/v1/public/campaigns') ||
       url.startsWith('/api/public/campaigns') ||
+      // Public self-service booking (Calendly-style): org-less (no JWT, no
+      // subdomain). The controller resolves the org from the :orgSlug path
+      // param itself. See modules/booking/public-booking.controller.ts.
+      url.startsWith('/api/v1/public/booking') ||
+      url.startsWith('/api/public/booking') ||
       // FX currencies are global reference data — no org context needed.
       // The route uses @Public() but the interceptor's skip list is
       // hand-maintained (see gotchas memory: TenantInterceptor doesn't

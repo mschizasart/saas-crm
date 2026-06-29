@@ -169,6 +169,8 @@ model Organization {
   mergeAudits             MergeAudit[]
   // Validation rules (migration 046) — Salesforce-style save-time guards.
   validationRules         ValidationRule[]
+  // Public self-service booking pages (migration 047 — Calendly-style).
+  bookingPages            BookingPage[]
 
   @@map("organizations")
 }
@@ -2526,13 +2528,63 @@ model Appointment {
   status         String   @default("scheduled") // scheduled | confirmed | cancelled | completed
   reminderSent   Boolean  @default(false)
   hash           String   @unique @default(uuid())
+  // Public self-service booking (migration 047). Set when the appointment was
+  // created from a BookingPage; attendee* capture the unauthenticated visitor's
+  // contact details, `source` distinguishes booking-page rows from manual ones.
+  source         String? // e.g. 'booking-page' | null (manual)
+  bookingPageId  String?
+  attendeeName   String?
+  attendeeEmail  String?
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bookingPage  BookingPage? @relation(fields: [bookingPageId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([organizationId, staffId])
+  @@index([organizationId, staffId, startTime])
+  // NOTE: a partial UNIQUE index "appointments_org_staff_start_active_key" on
+  // (organizationId, staffId, startTime) WHERE status <> 'cancelled' enforces
+  // the double-booking guard for public booking. It lives in
+  // prisma/manual-migrations/047-booking-pages.sql because Prisma cannot express
+  // a partial-WHERE unique constraint in schema. Keep them in sync.
   @@map("appointments")
+}
+
+// Public self-service booking page (Calendly-style — migration 047). Each row
+// is a configurable public link a tenant exposes; external visitors pick a
+// slot computed from `workingHours` (expressed in `timezone`) and book a slot,
+// which creates an Appointment (source='booking-page'). No RLS — tenant
+// isolation is enforced in the service layer via prisma.withOrganization().
+model BookingPage {
+  id               String   @id @default(uuid())
+  organizationId   String
+  // public URL key — lowercase-hyphen, unique per org
+  slug             String
+  title            String
+  description      String?
+  // The User (type='staff') who gets booked. Scalar (no FK relation) to mirror
+  // Appointment.staffId, which is a plain column with no users FK.
+  staffId          String
+  durationMinutes  Int      @default(30)
+  bufferMinutes    Int      @default(0) // gap enforced between bookings
+  minLeadTimeHours Int      @default(0) // earliest bookable = now + this
+  maxAdvanceDays   Int      @default(30) // latest bookable = now + this
+  // IANA tz the working hours are expressed in (defaults to staff/org tz at create)
+  timezone         String   @default("UTC")
+  // { mon:[{start:"09:00",end:"17:00"}], tue:[...], ... } ; missing/empty weekday = closed
+  workingHours     Json     @default("{}")
+  meetingLocation  String? // e.g. "Google Meet", phone, address (shown on confirmation)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("booking_pages")
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -69,6 +69,7 @@ import { AutomationsModule } from './modules/automations/automations.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
+import { BookingModule } from './modules/booking/booking.module';
 import { ProductsModule } from './modules/products/products.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { SuggestionsModule } from './modules/suggestions/suggestions.module';
@@ -183,6 +184,7 @@ import { BulkApiModule } from './modules/bulk-api/bulk-api.module';
     WebhooksModule,
     ApiKeysModule,
     AppointmentsModule,
+    BookingModule,
     ProductsModule,
     ChatModule,
     SuggestionsModule,
