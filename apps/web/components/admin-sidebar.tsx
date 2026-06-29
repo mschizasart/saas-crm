@@ -12,7 +12,7 @@ import {
   Activity, Tag, Lock, MessageCircle, MessageSquare, Workflow, Webhook, Key, CalendarCheck, Package, X, FileCode,
   ShieldX, Inbox, KeyRound, Sparkles, Clock, Mail,
   Briefcase, TrendingUp, ShieldCheck, Map, AtSign,
-  Wrench, Truck, Upload, Phone, Copy,
+  Wrench, Truck, Upload, Phone, Copy, Code,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { getSocket } from '@/lib/socket';
@@ -476,6 +476,7 @@ function useNavItems(): NavItem[] {
         { label: 'Automations', href: '/settings/automations', icon: Workflow },
         { label: 'Webhooks', href: '/settings/webhooks', icon: Webhook },
         { label: 'API Keys', href: '/settings/api-keys', icon: Key },
+        { label: 'Developers', href: '/settings/developers', icon: Code },
         // Wave E3 — public REST API surface (scoped keys + signed
         // outbound webhooks with retry). Distinct from the legacy
         // 'API Keys' / 'Webhooks' entries above, which power the simple
