@@ -49,6 +49,10 @@ export const ALL_PERMISSIONS = {
   // (no @Permissions uses them yet) so a finer split can land later
   // without a re-seed.
   calls: { view: true, create: true, log: true, record: true },
+  // Booking pages (migration 047) — public self-service booking (Calendly-style).
+  // Gates the admin CRUD at /booking-pages/*. The public visitor endpoints
+  // (/public/booking/*) are unauthenticated (@Public) and need no permission.
+  bookingPages: { view: true, create: true, edit: true, delete: true },
   // Opportunities (deal pipeline + weighted forecast — migration 027)
   opportunities: {
     view: true,
