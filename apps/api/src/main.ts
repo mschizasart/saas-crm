@@ -58,8 +58,19 @@ async function bootstrap() {
   // JSON.stringify fallback (both already non-load-bearing in prod).
 
   // CORS
+  //
+  // The web app (APP_URL) plus the Outlook add-in taskpane, which is
+  // hosted by Microsoft on the outlook.office.com family of origins and
+  // must be allowed to call the API cross-origin. `credentials: true`
+  // is preserved for the web app's cookie/Authorization flows.
+  const corsOrigins = [
+    process.env.APP_URL || 'http://localhost:3000',
+    'https://outlook.office.com',
+    'https://outlook.office365.com',
+    'https://outlook.live.com',
+  ];
   app.enableCors({
-    origin: process.env.APP_URL || 'http://localhost:3000',
+    origin: corsOrigins,
     credentials: true,
   });
 
