@@ -53,6 +53,12 @@ import { InboundSmsCaptureListener } from './inbound-sms.listener';
     OutboundSmsCaptureListener,
     InboundSmsCaptureListener,
   ],
-  exports: [ActivityCaptureService, ActivityCaptureSettingsService],
+  exports: [
+    ActivityCaptureService,
+    ActivityCaptureSettingsService,
+    // Exported so the Add-in module can resolve a sender email to a
+    // CRM record via the same strictly org-scoped resolver.
+    ContactResolverService,
+  ],
 })
 export class ActivityCaptureModule {}

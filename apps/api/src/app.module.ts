@@ -104,6 +104,9 @@ import { ActivityCaptureModule } from './modules/activity-capture/activity-captu
 // from public-API keys).
 import { BulkApiModule } from './modules/bulk-api/bulk-api.module';
 import { IntegrationModule } from './modules/integration/integration.module';
+// Outlook email add-in (Office.js taskpane) backend — reuse-only
+// layer over ContactResolver + Leads + Clients.
+import { AddinModule } from './modules/addin/addin.module';
 
 @Module({
   imports: [
@@ -226,6 +229,7 @@ import { IntegrationModule } from './modules/integration/integration.module';
     // Wave H3 (E3.1) — Public Integration API (Zapier/Make) — scope-gated
     // re-export of leads/clients/invoices/opportunities + webhook subscribe.
     IntegrationModule,
+    AddinModule,
   ],
   providers: [
     // TenantInterceptor must run before AuditContextInterceptor so

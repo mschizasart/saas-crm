@@ -438,6 +438,7 @@ function useNavItems(): NavItem[] {
         { label: 'Security', href: '/settings/security', icon: KeyRound },
         { label: 'Notifications', href: '/settings/notifications', icon: Bell },
         { label: t('nav.email'), href: '/settings/email', icon: Bell },
+        { label: 'Email Add-in', href: '/settings/email-integration', icon: Mail },
         { label: 'AI', href: '/settings/ai', icon: Sparkles },
         { label: 'Tax', href: '/settings/tax', icon: Receipt },
         { label: 'SMS', href: '/settings/sms', icon: MessageSquare },
