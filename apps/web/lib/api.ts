@@ -117,4 +117,28 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   return res;
 }
 
+/**
+ * Reads a non-OK Response body and returns a flat list of human-readable error
+ * messages. Validation Rules (and other backend guards) throw a
+ * `BadRequestException` with payload `{ message: 'Validation failed', errors: string[] }`.
+ * We surface every entry in `errors[]` when present, otherwise fall back to the
+ * single `message`, otherwise a generic status string.
+ *
+ * Pass the result straight to a toast loop or join it into an error banner.
+ */
+export async function parseApiErrors(res: Response, fallback = 'Request failed'): Promise<string[]> {
+  const body = await res.json().catch(() => null);
+  if (body && Array.isArray(body.errors) && body.errors.length > 0) {
+    return body.errors.map((e: unknown) => String(e));
+  }
+  if (body && typeof body.message === 'string') {
+    return [body.message];
+  }
+  if (body && Array.isArray(body.message) && body.message.length > 0) {
+    // Nest validation errors (class-validator) also arrive as message: string[]
+    return body.message.map((e: unknown) => String(e));
+  }
+  return [`${fallback} (${res.status})`];
+}
+
 export { API_BASE };
