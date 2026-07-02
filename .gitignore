@@ -36,3 +36,6 @@ test/stress/.bin/
 test/stress/.tmp-*.js
 test/results/stress-*.json
 test/results/stress.json
+
+# Local transfer notes — contains plaintext prod credentials, never commit
+TRANSFER_NOTES.md
